@@ -43,6 +43,12 @@ else()
 endif()
 
 add_executable (MultiCamCui
+    ${SRC_DIR}/MOADCui.cpp
+
+    ${SRC_DIR}/RealSenseHandler.cpp
+    ${SRC_DIR}/CanonHandler.cpp
+    ${SER_DIR}/SimpleSerial.cpp
+    
     ${SRC_DIR}/CameraEvent.cpp
     ${SRC_DIR}/Download.cpp
     ${SRC_DIR}/PreSetting.cpp
@@ -50,10 +56,10 @@ add_executable (MultiCamCui
     ${SRC_DIR}/Property.cpp
     ${SRC_DIR}/TakePicture.cpp
     ${SRC_DIR}/DownloadEvf.cpp
-    ${SRC_DIR}/RealSenseHandler.cpp
-    ${SER_DIR}/SimpleSerial.cpp
     
-    ${SRC_DIR}/MultiCamCui.cpp
+    
+    #${SRC_DIR}/MultiCamCui.cpp
+    #${SRC_DIR}/MOADCui.cpp
 )
 
 set_target_properties(MultiCamCui PROPERTIES

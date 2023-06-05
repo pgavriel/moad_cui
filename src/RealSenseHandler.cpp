@@ -10,7 +10,7 @@
 #include <pcl/filters/passthrough.h>
 #include "RealSenseHandler.h"
 
-// typedef Matrix<float, 4, 4> Matrix4f;
+
 using std::string;
 using std::cout;
 using std::endl;
@@ -37,14 +37,6 @@ Eigen::Matrix4f createRotationMatrix(float angle_degrees)
 }
 
 RealSenseHandler::RealSenseHandler() {
-    // Find all RS cameras and open streams
-    try {
-        device_check();
-    }
-    catch(const rs2::error & e) {
-        std::cerr << "RealSense error calling " << e.get_failed_function() << "(" << e.get_failed_args() << "):\n " << e.what() << endl;
-    }
-
     // Assign camera names based on serial numbers
     camera_names["215122257111"] = "rs1";
     camera_names["239222302632"] = "rs2";
@@ -54,33 +46,33 @@ RealSenseHandler::RealSenseHandler() {
     
     // Assign camera transforms to corresponding serial number
     Eigen::Matrix4f rs1_tx {
-        {0.999556, -0.029785, -0.000139, -0.091555},
-        {-0.001520, -0.055665, 0.998448, -0.764727},
-        {-0.029747, -0.998005, -0.055686, 0.008485},
+        {0.998133, -0.057994, 0.019142, -0.079213},
+        {-0.023726, -0.079419, 0.996559, -0.764634},
+        {-0.056274, -0.995153, -0.080647, 0.071262},
         {0.000000, 0.000000, 0.000000, 1.000000}  };
     camera_transforms["215122257111"] = rs1_tx;
     Eigen::Matrix4f rs2_tx {
-        {0.994012, 0.002213, 0.109254, -0.100621},
-        {-0.098899, -0.407027, 0.908046, -0.747729},
-        {0.046479, -0.913413, -0.404371, 0.313535},
+        {0.996240, -0.033589, 0.079854, -0.082825},
+        {-0.086597, -0.412081, 0.907023, -0.729931},
+        {0.002440, -0.910528, -0.413440, 0.372486},
         {0.000000, 0.000000, 0.000000, 1.000000}  };
     camera_transforms["239222302632"] = rs2_tx;
     Eigen::Matrix4f rs3_tx {
-        {0.998339, -0.057336, -0.005646, -0.064391},
-        {-0.037418, -0.719789, 0.693184, -0.591681},
-        {-0.043808, -0.691821, -0.720739, 0.597262},
+        {0.999344, -0.029679, 0.020743, -0.087933},
+        {-0.035898, -0.737118, 0.674810, -0.574988},
+        {-0.004738, -0.675112, -0.737700, 0.649989},
         {0.000000, 0.000000, 0.000000, 1.000000}  };
     camera_transforms["213522251284"] = rs3_tx;
     Eigen::Matrix4f rs4_tx {
-        {0.997339, -0.060110, 0.041251, -0.076013},
-        {-0.070616, -0.937141, 0.341730, -0.343180},
-        {0.018116, -0.343734, -0.938892, 0.759501},
+        {0.998020, -0.052458, 0.034693, -0.071821},
+        {-0.061411, -0.931829, 0.357664, -0.331198},
+        {0.013565, -0.359087, -0.933206, 0.814315},
         {0.000000, 0.000000, 0.000000, 1.000000}  };
     camera_transforms["213622251144"] = rs4_tx;
     Eigen::Matrix4f rs5_tx {
-        {0.999806, -0.003745, 0.019353, -0.078961},
-        {-0.002804, -0.998822, -0.048440, -0.066665},
-        {0.019511, 0.048377, -0.998639, 0.798789},
+        {0.999721, -0.010826, 0.020993, -0.082966},
+        {-0.010539, -0.999850, -0.013728, -0.036477},
+        {0.021138, 0.013503, -0.999685, 0.850775},
         {0.000000, 0.000000, 0.000000, 1.000000}  };
     camera_transforms["215122254603"] = rs5_tx;
 
@@ -95,16 +87,43 @@ RealSenseHandler::RealSenseHandler() {
     temporal_filter.set_option(RS2_OPTION_FILTER_SMOOTH_DELTA, 20.0f); // Temporal filter smooth delta
 
     //Create Output folder
-    save_dir = "C:\\Users\\csrobot\\Documents\\Version13.16.01\\Output";
-    if (CreateDirectory(save_dir.c_str(), NULL) ||
-        ERROR_ALREADY_EXISTS == GetLastError()) {
-        cout << "RealSense using output dir: "<<save_dir << endl;
+    // save_dir = "C:\\Users\\csrobot\\Documents\\Version13.16.01\\Output";
+    // if (CreateDirectory(save_dir.c_str(), NULL) ||
+    //     ERROR_ALREADY_EXISTS == GetLastError()) {
+    //     cout << "RealSense using output dir: "<<save_dir << endl;
+    // }
+    // else {
+    //    std::cerr << "Failed to create RealSense output directory: "
+    //     << save_dir << endl;
+    // }
+}
+
+RealSenseHandler::~RealSenseHandler() {
+    std::cout << "Shutting down RealSense Handler... ";
+    for (auto &&pipe : pipelines) {
+            pipe.stop();
     }
-    else {
-       std::cerr << "Failed to create RealSense output directory: "
-        << save_dir << endl;
+    std::cout << "Done.\n";
+}
+
+void RealSenseHandler::initialize() {
+    // Find all RS cameras and open streams
+    try {
+        device_check();
+    }
+    catch(const rs2::error & e) {
+        std::cerr << "RealSense error calling " << e.get_failed_function() << "(" << e.get_failed_args() << "):\n " << e.what() << endl;
     }
 }
+
+void RealSenseHandler::update_config(std::map<std::string, std::string>& cfg) {
+    config = cfg;
+    save_depth_img = bool(stoi(config["rs_depth"]));
+    save_color_img = bool(stoi(config["rs_color"]));
+    save_pointcloud = bool(stoi(config["rs_pointcloud"]));
+    raw_pointclouds = bool(stoi(config["rs_raw_pointcloud"]));
+}
+
 
 // Checks for all connected realsense devices, starts a pipeline for each,
 // and adds them all to the pipelines vector.
@@ -122,9 +141,9 @@ int RealSenseHandler::device_check() {
         rs2::pipeline pipe(ctx);
         rs2::config cfg;
         cfg.enable_device(dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER));
-        // cfg.enable_stream(RS2_STREAM_COLOR,640,360,RS2_FORMAT_RGB8,5); 
+        cfg.enable_stream(RS2_STREAM_COLOR,640,360,RS2_FORMAT_RGB8,5); 
         // cfg.enable_stream(RS2_STREAM_DEPTH,640,360,RS2_FORMAT_Z16,5);  
-        cfg.enable_stream(RS2_STREAM_COLOR,1280,720,RS2_FORMAT_RGB8,5);
+        // cfg.enable_stream(RS2_STREAM_COLOR,1280,720,RS2_FORMAT_RGB8,5);
         cfg.enable_stream(RS2_STREAM_DEPTH,1280,720,RS2_FORMAT_Z16,5); 	
 
         // Start the stream
@@ -159,7 +178,7 @@ void RealSenseHandler::get_frames(int num_frames, int timeout_ms) {
     cout << " [DONE]\n";
 }
 
-// Collects relevant MOAD data from all devices
+// Collects relevant MOAD data from all RealSense devices
 void RealSenseHandler::get_current_frame(int timeout_ms) {
     cout << "Getting RS - \n";
     rs2::colorizer color_map;
@@ -232,6 +251,7 @@ void RealSenseHandler::process_frames(rs2::frameset fs, std::string serial_numbe
         
             cloud->push_back(point);
         }
+        // Output 'rsx:C' indicates the pointcloud object has been constructed.
         cout << camera_names[serial_number] << ":C ";
 
         // Don't apply transforms and filters if raw_pointclouds is true
@@ -239,6 +259,7 @@ void RealSenseHandler::process_frames(rs2::frameset fs, std::string serial_numbe
             //Apply appropriate pointcloud transform
             pcl::transformPointCloud(*cloud, *cloud, camera_transforms[serial_number]);
             pcl::transformPointCloud(*cloud, *cloud, rot_matrix);
+            // Output 'rsx:T' indicates the appropriate pointcloud transforms have been performed.
             cout << camera_names[serial_number] << ":T ";
             //Apply passthrough filters to remove background
             pcl::PassThrough<pcl::PointXYZRGB> pass;
@@ -255,8 +276,9 @@ void RealSenseHandler::process_frames(rs2::frameset fs, std::string serial_numbe
 
             pass.setInputCloud(cloud);
             pass.setFilterFieldName("z");
-            pass.setFilterLimits(-0.05, 5);
+            pass.setFilterLimits(0.002, 2);
             pass.filter(*cloud);
+            // Output 'rsx:F' indicates the pointcloud has been filtered.
             cout << camera_names[serial_number] << ":F ";
         }
         
@@ -266,9 +288,10 @@ void RealSenseHandler::process_frames(rs2::frameset fs, std::string serial_numbe
         out_file << save_dir << "\\" << camera_names[serial_number] << "_"
             << std::setfill('0') << std::setw(3) << turntable_position << "_cloud.ply";
         // Save the point cloud to a PLY file
+        // Output 'rsx:S' indicates the pointcloud is now being saved.
         cout << camera_names[serial_number] << ":S ";
         pcl::io::savePLYFile(out_file.str(), *cloud);
-        cout << camera_names[serial_number] << " point cloud saved." << endl;
+        cout << endl << camera_names[serial_number] << " point cloud saved.";
     }
     
     // SAVE COLOR IMAGE
@@ -294,29 +317,9 @@ void RealSenseHandler::process_frames(rs2::frameset fs, std::string serial_numbe
             << std::setfill('0') << std::setw(3) << turntable_position << "_depth.png";
         cv::imwrite(out_file.str(), depth_mat);
     }
+    cout << endl;
 }
 
-// void RealSenseHandler::save_pointcloud(rs2::frameset& fs, std::string camera_id) {
-    
-//     // Retrieve the color and depth frames
-//     rs2::frame color_frame = fs.get_color_frame();
-//     rs2::frame depth_frame = fs.get_depth_frame();
-
-//     // Create pointcloud from the depth frame
-//     rs2::pointcloud pc;
-//     rs2::points points = pc.calculate(depth_frame);
-
-//     // Map the pointcloud to the color frame
-//     pc.map_to(color_frame);
-
-//     // Save the point cloud to a PCD file
-//     std::stringstream out_file;
-//     out_file << save_dir << "\\" << camera_id << "_"
-//             << std::setfill('0') << std::setw(3) << turntable_position << "_cloud.ply";
-//     points.export_to_ply(out_file.str(), color_frame);
-
-//     std::cout << camera_id << " point cloud saved successfully." << std::endl;
-// }
 
 void RealSenseHandler::print_device(rs2::device dev, bool print_streams) {
         cout << "RealSense Device: " << endl;

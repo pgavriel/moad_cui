@@ -1,8 +1,11 @@
 ﻿#include <iostream>
 #include <windows.h>
+#include <filesystem>
 #include <iterator>
 #include <list>
 #include <regex>
+#include <fstream>
+#include <map>
 #include <string>
 #include <vector>
 #include <thread>
@@ -19,6 +22,37 @@
 #include "RealSenseHandler.h"
 
 using namespace std::chrono_literals;
+namespace fs = std::filesystem;
+
+std::map<std::string, std::string> loadParameters(const std::string& filename) {
+    std::map<std::string, std::string> parameters;
+    std::ifstream file(filename);
+    if (file.is_open()) {
+        std::string line;
+        while (std::getline(file, line)) {
+            // Skip empty lines or lines starting with #
+            if (line.empty() || line[0] == '#')
+                continue;
+            
+            // Split the line into key and value
+            size_t delimiterPos = line.find('=');
+            if (delimiterPos != std::string::npos) {
+                std::string key = line.substr(0, delimiterPos);
+                std::string value = line.substr(delimiterPos + 1);
+                
+                // Remove leading/trailing whitespaces from key and value
+                key.erase(0, key.find_first_not_of(" \t"));
+                key.erase(key.find_last_not_of(" \t") + 1);
+                value.erase(0, value.find_first_not_of(" \t"));
+                value.erase(value.find_last_not_of(" \t") + 1);
+                
+                parameters[key] = value;
+            }
+        }
+        file.close();
+    }
+    return parameters;
+}
 
 std::string control_number = "";
 bool keyflag;
@@ -51,7 +85,6 @@ EdsInt32 getvalue()
 	return(-1);
 }
 
-
 void pause_return()
 {
 	//	system("pause");
@@ -59,16 +92,48 @@ void pause_return()
 	getvalue();
 }
 
-int main()
+int create_folder(std::string path) {
+	std::cout << std::endl;
+	if (!fs::exists(path)) {
+        // Create the folder and any necessary higher level folders
+        if (fs::create_directories(path)) {
+            std::cout << "Folder created: " << path << std::endl;
+        } else {
+            std::cerr << "Failed to create folder: " << path << std::endl;
+            return 1;
+        }
+    } else {
+        std::cout << "WARNING!: Folder already exists: " << path << std::endl
+			<< "\tYou may accidentally overwrite data.\n";
+    }
+	return 0;
+}
+
+int main(int argc, char* argv[])
 {	
+	// Read in Parameters from config file
+	fs::path executablePath(argv[0]);
+	fs::path projectDir = executablePath.parent_path().parent_path().parent_path();
+	std::string config_file = projectDir.string() + "\\moad_config.txt";
+	std::cout << "Loading Config File: " << config_file << std::endl;
+	std::map<std::string, std::string> config = loadParameters(config_file);
+	// Print the config map
+	std::cout << "Initial Settings Loaded:\n";
+    for (auto it = config.begin(); it != config.end(); ++it) {
+        std::cout << it->first << " = " << it->second << std::endl;
+    }
+	// Create object folder 
+	std::string scan_folder = config["output_dir"]+"/"+config["object_name"];
+    create_folder(scan_folder);
+
 	// Setup Realsense Cameras
-	// try {
 	std::cout << "\nAttempting Realsense setup...\n";
 	// Create RealSense Handler
 	RealSenseHandler rshandle;
+	rshandle.update_config(config);
 	// Get some frames to settle autoexposure.
 	rshandle.get_frames(10); // make 30 later
-	rshandle.get_current_frame();
+	// rshandle.get_current_frame();
 
 	// Setup Arduino serial port connection
 	std::cout << "\nAttempting Serial Motor Control setup...\n";
@@ -104,8 +169,6 @@ int main()
 	std::shared_ptr<std::thread> th = std::shared_ptr<std::thread>();
 
 
-	
-	
 	std::cout << "\nEntering DSLR Setup...\n";
 	while (true)
 	{
@@ -282,7 +345,8 @@ int main()
 					<< "[11] Get Live View \n"
 					<< "[12] File Download \n"
 					<< "[13] Run Photo Loop \n" 
-					<< "[14] Turntable Control \n" << std::endl;
+					<< "[14] Turntable Control \n"
+					<< "[15] Set Object Name \n" << std::endl;
 				std::cout << "--------------------------------" << std::endl;
 				std::cout << "Enter the number of the control.\n"
 					<< "\tor 'r' (=Return)" << std::endl;
@@ -477,11 +541,15 @@ int main()
 							TakePicture(cameraArray, bodyID);
 							//DownloadImageAll(cameraArray, bodyID);
 							EdsGetEvent();
-							rshandle.turntable_position = degree_tracker;
-							degree_tracker += stoi(degree_inc);
-							rshandle.get_current_frame(10000);
-							std::cout << "Image " << rots+1 << "/" << num_moves << " taken. " << std::endl;
+
+							if(bool(stoi(config["collect_rs"]))) {
+								rshandle.turntable_position = degree_tracker;
+								rshandle.get_current_frame(15000);
+							}
 							
+
+							degree_tracker += stoi(degree_inc);
+							std::cout << "Image " << rots+1 << "/" << num_moves << " taken. " << std::endl;
 						}
 						pause_return();
 						clr_screen();
@@ -516,6 +584,17 @@ int main()
 						pause_return();
 						clr_screen();
 						loop = true;
+					}
+					// Set Object Name
+					else if (control_number == "15")
+					{	
+						std::string obj_name;
+						std::cout << "\n\nEnter Object Name: ";
+						std::cin >> obj_name; 
+						scan_folder = config["output_dir"]+"/"+obj_name;
+    					create_folder(scan_folder);
+						config["object_name"] = obj_name;
+						rshandle.update_config(config);
 					}
 					else
 					{

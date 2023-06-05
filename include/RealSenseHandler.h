@@ -9,11 +9,12 @@
 
 class RealSenseHandler {
 private:
-    bool save_depth_img = true;
-    bool save_color_img = true;
+    bool save_depth_img = false;
+    bool save_color_img = false;
     bool save_pointcloud = true;
-    bool raw_pointclouds = true;
-    std::string save_dir;
+    bool raw_pointclouds = false;
+    
+    std::map<std::string, std::string> config;
     std::map<std::string, std::string> camera_names;
     std::map<std::string, Eigen::Matrix4f> camera_transforms;
     Eigen::Matrix4f rot_matrix;
@@ -31,8 +32,12 @@ private:
     void process_frames(rs2::frameset fs, std::string serial_number);
 public:
     int turntable_position = 0;
+    std::string save_dir;
     RealSenseHandler();
+    ~RealSenseHandler();
     int device_check();
+    void initialize();
     void get_frames(int num_frames=1, int timeout_ms=10000);
     void get_current_frame(int timeout_ms=10000);
+    void update_config(std::map<std::string, std::string>& cfg);
 };

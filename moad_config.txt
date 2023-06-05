@@ -1,0 +1,15 @@
+output_dir=C:/Users/csrobot/Documents/Version13.16.01/Output
+object_name=test_object
+
+# Serial port Configuration (COM[x]) (Double digit ports will need to modify source code)
+serial_com_port=5
+
+# RealSense Configuration
+collect_rs=0
+rs_color=0
+rs_depth=0
+rs_pointcloud=1
+rs_raw_pointcloud=0
+
+# Canon Configuration
+collect_dslr=1

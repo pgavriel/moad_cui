@@ -5,6 +5,7 @@
 #include <filesystem>
 #include "EDSDK.h"
 #include "EDSDKTypes.h"
+#include "CanonHandler.h"
 
 namespace fs = std::filesystem;
 
@@ -44,14 +45,21 @@ EdsError downloadImage(EdsDirectoryItemRef  directoryItem, EdsVoid* _bodyID)
 	// create folder  ex) cam1
 	EdsUInt32 camid;
 	camid = (EdsUInt64)_bodyID;
-	std::string directory_tree = "cam" + std::to_string(camid);
+	// std::cout << "Download " << camid << std::endl;
+	std::string directory_tree = canonhandle.save_dir;// + "\\cam" + std::to_string(camid);
 	if (fs::exists(directory_tree) == FALSE)
 	{
 		std::filesystem::create_directories(directory_tree);
 	}
 
+	// Create filename
 	std::string tmp;
-	tmp = directory_tree + "\\" + dirItemInfo.szFileName;
+	std::stringstream out_file;
+	out_file.str("");
+	out_file << "\\cam" <<  std::to_string(camid) << "_" 
+		<< std::setfill('0') << std::setw(3) << canonhandle.turntable_position << "_img.jpg";
+	tmp = directory_tree + out_file.str();
+	std::cout << "Saving: " << out_file.str() << std::endl;
 	char* filename = new char[tmp.size() + 1];
 	strcpy(filename, tmp.c_str());
 
@@ -76,6 +84,8 @@ EdsError downloadImage(EdsDirectoryItemRef  directoryItem, EdsVoid* _bodyID)
 	if (stream != NULL) {
 		EdsRelease(stream);   stream = NULL;
 	}
+
+	canonhandle.images_downloaded++;
 
 	return err;
 }
