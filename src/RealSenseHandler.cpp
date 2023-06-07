@@ -8,6 +8,7 @@
 #include <pcl/point_types.h>
 #include <pcl/common/transforms.h>
 #include <pcl/filters/passthrough.h>
+#include <pcl/filters/statistical_outlier_removal.h>
 #include "RealSenseHandler.h"
 
 
@@ -222,6 +223,7 @@ void RealSenseHandler::process_frames(rs2::frameset fs, std::string serial_numbe
     depth = threshold_filter.process(depth);
     depth = spatial_filter.process(depth);
     depth = temporal_filter.process(depth);
+    // Depth and color frames must have the same resolution for clouds to be colored properly
     cout << camera_names[serial_number] << " Color: " << color.get_width() << "x" << color.get_height();
     cout << "   Depth : " << depth.get_width() << "x" << depth.get_height() << endl;
 
@@ -229,7 +231,7 @@ void RealSenseHandler::process_frames(rs2::frameset fs, std::string serial_numbe
     if (save_pointcloud) {
         // Create PCL point cloud
         pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
-        pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_filtered (new pcl::PointCloud<pcl::PointXYZRGB>);
+        // pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_filtered (new pcl::PointCloud<pcl::PointXYZRGB>);
 
         rs2::pointcloud pc;
         rs2::points points = pc.calculate(depth);
@@ -252,7 +254,7 @@ void RealSenseHandler::process_frames(rs2::frameset fs, std::string serial_numbe
             cloud->push_back(point);
         }
         // Output 'rsx:C' indicates the pointcloud object has been constructed.
-        cout << camera_names[serial_number] << ":C ";
+        cout << "[" << camera_names[serial_number] << ":C]";
 
         // Don't apply transforms and filters if raw_pointclouds is true
         if (!raw_pointclouds) {
@@ -260,26 +262,55 @@ void RealSenseHandler::process_frames(rs2::frameset fs, std::string serial_numbe
             pcl::transformPointCloud(*cloud, *cloud, camera_transforms[serial_number]);
             pcl::transformPointCloud(*cloud, *cloud, rot_matrix);
             // Output 'rsx:T' indicates the appropriate pointcloud transforms have been performed.
-            cout << camera_names[serial_number] << ":T ";
+            cout << "[" << camera_names[serial_number] << ":T]";
             //Apply passthrough filters to remove background
             pcl::PassThrough<pcl::PointXYZRGB> pass;
+            float fmin, fmax;
+            if (bool(stoi(config["rs_xpass"]))) {
+                fmin = stof(config["rs_xpass_min"]);
+                fmax = stof(config["rs_xpass_max"]);
+                cout << "[" << camera_names[serial_number] << ":X:" << fmin << "," << fmax << "]";
+                pass.setInputCloud(cloud);
+                pass.setFilterFieldName("x");
+                pass.setFilterLimits(fmin, fmax);
+                pass.filter(*cloud);
+            }
+            
+            if (bool(stoi(config["rs_ypass"]))) {
+                fmin = stof(config["rs_ypass_min"]);
+                fmax = stof(config["rs_ypass_max"]);
+                cout << "[" << camera_names[serial_number] << ":Y:" << fmin << "," << fmax << "]";
+                pass.setInputCloud(cloud);
+                pass.setFilterFieldName("y");
+                pass.setFilterLimits(fmin, fmax);
+                pass.filter(*cloud);
+            }
+            
+            if (bool(stoi(config["rs_zpass"]))) {
+                fmin = stof(config["rs_zpass_min"]);
+                fmax = stof(config["rs_zpass_max"]);
+                cout << "[" << camera_names[serial_number] << ":Z:" << fmin << "," << fmax << "]";
+                pass.setInputCloud(cloud);
+                pass.setFilterFieldName("z");
+                pass.setFilterLimits(fmin, fmax);
+                pass.filter(*cloud);
+            }
+            
+            if (bool(stoi(config["rs_sor"]))) {
+                pcl::StatisticalOutlierRemoval<pcl::PointXYZRGB> sor(true);
+                fmin = stof(config["rs_sor_stddev"]);
+                int k = stoi(config["rs_sor_meank"]);
+                sor.setInputCloud(cloud);
+                sor.setMeanK(k);  // Number of neighbors to use for mean distance estimation
+                sor.setStddevMulThresh(fmin);  // Standard deviation threshold for outlier detection
+                sor.filter(*cloud);
+                int removed = sor.getRemovedIndices()->size();
+                cout << "[" << camera_names[serial_number] << ":SOR:" << removed << " points]";
+            }
+            
 
-            pass.setInputCloud(cloud);
-            pass.setFilterFieldName("x");
-            pass.setFilterLimits(-0.3, 0.3);
-            pass.filter(*cloud);
-
-            pass.setInputCloud(cloud);
-            pass.setFilterFieldName("y");
-            pass.setFilterLimits(-0.3, 0.3);
-            pass.filter(*cloud);
-
-            pass.setInputCloud(cloud);
-            pass.setFilterFieldName("z");
-            pass.setFilterLimits(0.002, 2);
-            pass.filter(*cloud);
             // Output 'rsx:F' indicates the pointcloud has been filtered.
-            cout << camera_names[serial_number] << ":F ";
+            cout << "[" << camera_names[serial_number] << ":F]";
         }
         
 
@@ -289,9 +320,9 @@ void RealSenseHandler::process_frames(rs2::frameset fs, std::string serial_numbe
             << std::setfill('0') << std::setw(3) << turntable_position << "_cloud.ply";
         // Save the point cloud to a PLY file
         // Output 'rsx:S' indicates the pointcloud is now being saved.
-        cout << camera_names[serial_number] << ":S ";
+        cout << "[" << camera_names[serial_number] << ":S]";
         pcl::io::savePLYFile(out_file.str(), *cloud);
-        cout << endl << camera_names[serial_number] << " point cloud saved.";
+        cout << "[" << camera_names[serial_number] << ":SAVED]\n";
     }
     
     // SAVE COLOR IMAGE
@@ -320,7 +351,8 @@ void RealSenseHandler::process_frames(rs2::frameset fs, std::string serial_numbe
     cout << endl;
 }
 
-
+/* Prints out RealSense device information, if print_streams is true, 
+it will print all available stream formats (it's a lot of text)*/
 void RealSenseHandler::print_device(rs2::device dev, bool print_streams) {
         cout << "RealSense Device: " << endl;
         cout << "  Name: " << dev.get_info(RS2_CAMERA_INFO_NAME) << endl;

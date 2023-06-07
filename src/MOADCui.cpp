@@ -10,6 +10,7 @@
 #include <vector>
 #include <thread>
 #include <memory>
+#include <chrono>
 
 #include "CanonHandler.h"
 #include "EDSDK.h"
@@ -25,6 +26,8 @@
 
 using namespace std::chrono_literals;
 namespace fs = std::filesystem;
+using std::cout;
+using std::endl;
 
 std::map<std::string, std::string> loadParameters(const std::string& filename) {
     std::map<std::string, std::string> parameters;
@@ -68,9 +71,9 @@ void CheckKey()// After key is entered, _ endthread is automatically called.
 
 void clr_screen()
 {
-	// std::cout << "\033[2J"; // screen clr
-	// std::cout << "\033[0;0H"; // move low=0, column=0
-	std::cout << "\n\n\n\n\n";
+	// cout << "\033[2J"; // screen clr
+	// cout << "\033[0;0H"; // move low=0, column=0
+	cout << "\n\n\n\n\n";
 }
 
 EdsInt32 getvalue()
@@ -91,23 +94,23 @@ EdsInt32 getvalue()
 void pause_return()
 {
 	//	system("pause");
-	std::cout << "\n" << "Press the RETURN key." << std::endl;
+	cout << "\n" << "Press the RETURN key." << endl;
 	getvalue();
 }
 
 int create_folder(std::string path, bool quiet = false) {
-	if (!quiet) std::cout << std::endl;
+	if (!quiet) cout << endl;
 	if (!fs::exists(path)) {
         // Create the folder and any necessary higher level folders
         if (fs::create_directories(path)) {
-            std::cout << "Folder created: " << path << std::endl;
+            cout << "Folder created: " << path << endl;
         } else {
-            std::cerr << "Failed to create folder: " << path << std::endl;
+            std::cerr << "Failed to create folder: " << path << endl;
             return 1;
         }
     } else {
 		if (!quiet)
-			std::cout << "WARNING!: Folder already exists: " << path << std::endl
+			cout << "WARNING!: Folder already exists: " << path << endl
 				<< "\tYou may accidentally overwrite data.\n";
     }
 	return 0;
@@ -115,25 +118,35 @@ int create_folder(std::string path, bool quiet = false) {
 
 int main(int argc, char* argv[])
 {	
+	// SETUP ----------------------------------------------------------------------------------------------
+	int degree_tracker = 0;
+	std::string obj_name;
+	std::smatch  match_results;
+    std::shared_ptr<std::thread> th = std::shared_ptr<std::thread>();
+	bool loop = true;
+
 	// Read in Parameters from config file
 	fs::path executablePath(argv[0]);
 	fs::path projectDir = executablePath.parent_path().parent_path().parent_path();
 	std::string config_file = projectDir.string() + "\\moad_config.txt";
-	std::cout << "Loading Config File: " << config_file << std::endl;
+	cout << "Loading Config File: " << config_file << endl;
 	std::map<std::string, std::string> config = loadParameters(config_file);
 	// Print the config map
-	std::cout << "Initial Settings Loaded:\n";
+	cout << "Initial Settings Loaded:\n";
     for (auto it = config.begin(); it != config.end(); ++it) {
-        std::cout << it->first << " = " << it->second << std::endl;
+        cout << it->first << " = " << it->second << endl;
     }
 	// Create object folder 
 	std::string scan_folder = config["output_dir"]+"/"+config["object_name"];
     create_folder(scan_folder);
+	// Set initial Object name
+	obj_name = config["object_name"];
+
 
 	// Setup Realsense Cameras
 	RealSenseHandler rshandle;
 	if (bool(stoi(config["collect_rs"]))) {
-		std::cout << "\nAttempting Realsense setup...\n";
+		cout << "\nAttempting Realsense setup...\n";
 		// Create RealSense Handler
 		rshandle.initialize();
 		rshandle.save_dir = scan_folder + "\\realsense";
@@ -143,49 +156,38 @@ int main(int argc, char* argv[])
 		rshandle.get_frames(10); // make 30 later
 		// rshandle.get_current_frame();
 	} else {
-		std::cout << "Skipping RealSense setup, 'collect_rs=0'.\n";
+		cout << "\nSkipping RealSense setup, 'collect_rs=0'.\n";
 	}
 	
 
 	// Setup Arduino serial port connection
-	std::cout << "\nAttempting Serial Motor Control setup...\n";
+	cout << "\nAttempting Serial Motor Control setup...\n";
 	char com_port[] = "\\\\.\\COMX";
 	com_port[7] = config["serial_com_port"].at(0);
 	DWORD COM_BAUD_RATE = CBR_9600;
 
 	SimpleSerial Serial(com_port, COM_BAUD_RATE);
 	if(Serial.connected_) {
-		std::cout << "Serial connected to " << com_port << std::endl;
+		cout << "Serial connected to " << com_port << endl;
 	} else {
-		std::cout << "Error creating serial connection.\n";
+		cout << "Error creating serial connection.\n";
 	}
 
 
 	// Initialization of Canon SDK
 	if (bool(stoi(config["collect_dslr"]))) {
-		std::cout << "\nEntering DSLR Setup...\n";
+		cout << "\nEntering DSLR Setup...\n";
 		// CanonHandler canonhandle;
 		canonhandle.initialize();
 		canonhandle.save_dir = scan_folder + "\\DSLR";
 		create_folder(canonhandle.save_dir,true);
 		PreSetting(canonhandle.cameraArray, canonhandle.bodyID);
 	} else {
-		std::cout << "Skipping DSLR setup, 'collect_dslr=0'.\n";
+		cout << "\nSkipping DSLR setup, 'collect_dslr=0'.\n";
 	}
-    
 
-	// pause_return();
 
-	// int i;
-	int degree_tracker = 0;
-	std::smatch  match_results;
-    std::shared_ptr<std::thread> th = std::shared_ptr<std::thread>();
-	bool loop = true;
-
-	
-
-	clr_screen();
-
+	// RUNNING MENU LOOP -----------------------------------------------------------------------------
 	while (true)
 	{
 		//control menu
@@ -195,8 +197,8 @@ int main(int argc, char* argv[])
 			//_beginthread(CheckKey, 0, NULL); // Start waiting for keystrokes
 			th = std::make_shared<std::thread>(CheckKey);
 
-			std::cout << "--------------------------------" << std::endl;
-			std::cout
+			cout << "--------------------------------" << endl;
+			cout
 				<< "[ 1] Collect & Download Data \n"
 				<< "[ 2] Press Halfway \n"
 				<< "[ 3] Press Completely \n"
@@ -209,13 +211,16 @@ int main(int argc, char* argv[])
 				<< "[10] AE Mode (read only) \n"
 				<< "[11] Get Live View \n"
 				<< "[12] File Download \n"
-				<< "[13] Run Photo Loop \n" 
+				<< "[13] Run Object Scan \n" 
 				<< "[14] Turntable Control \n"
-				<< "[15] Set Object Name \n" << std::endl;
-			std::cout << "--------------------------------" << std::endl;
-			std::cout << "Enter the number of the control.\n"
-				<< "\tor 'r' (=Return)" << std::endl;
-			std::cout << "> ";
+				<< "[15] Set Object Name \n"
+				<< "[16] Set Turntable Position \n";
+			cout << "--------------------------------" << endl;
+			cout << "Object:\t\t" << obj_name << "\nPosition:\t" << degree_tracker << endl;
+			cout << "--------------------------------" << endl;
+			cout << "Enter the number of the control.\n"
+				<< "\tor 'r' (=Return)" << endl;
+			cout << "> ";
 			loop = false;
 		}
 
@@ -231,10 +236,10 @@ int main(int argc, char* argv[])
 				{	
 					if (bool(stoi(config["collect_dslr"]))) {
 						EdsError err;
-						std::cout << "Collecting DSLR images...\n";
+						cout << "Collecting DSLR images...\n";
 						canonhandle.turntable_position = degree_tracker;
 						err = TakePicture(canonhandle.cameraArray, canonhandle.bodyID);
-						std::cout << err << std::endl;
+						cout << err << endl;
 						EdsGetEvent();
 					}
 					if (bool(stoi(config["collect_rs"]))) {
@@ -275,8 +280,8 @@ int main(int argc, char* argv[])
 					GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Tv, tv_table);
 					GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Tv, tv_table);
 
-					std::cout << "input no. (ex. 54 = 1/250)" << std::endl;
-					std::cout << ">";
+					cout << "input no. (ex. 54 = 1/250)" << endl;
+					cout << ">";
 
 					canonhandle.data = getvalue();
 					if (canonhandle.data != -1)
@@ -293,8 +298,8 @@ int main(int argc, char* argv[])
 				{
 					GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Av, av_table);
 					GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Av, av_table);
-					std::cout << "input Av (ex. 21 = 5.6)" << std::endl;
-					std::cout << ">";
+					cout << "input Av (ex. 21 = 5.6)" << endl;
+					cout << ">";
 
 					canonhandle.data = getvalue();
 					if (canonhandle.data != -1)
@@ -311,8 +316,8 @@ int main(int argc, char* argv[])
 				{
 					GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_ISOSpeed, iso_table);
 					GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_ISOSpeed, iso_table);
-					std::cout << "input ISOSpeed (ex. 8 = ISO 200)" << std::endl;
-					std::cout << ">";
+					cout << "input ISOSpeed (ex. 8 = ISO 200)" << endl;
+					cout << ">";
 
 					canonhandle.data = getvalue();
 					if (canonhandle.data != -1)
@@ -329,8 +334,8 @@ int main(int argc, char* argv[])
 				{
 					GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_WhiteBalance, whitebalance_table);
 					GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_WhiteBalance, whitebalance_table);
-					std::cout << "input WhiteBalance (ex. 0 = Auto)" << std::endl;
-					std::cout << ">";
+					cout << "input WhiteBalance (ex. 0 = Auto)" << endl;
+					cout << ">";
 
 					canonhandle.data = getvalue();
 					if (canonhandle.data != -1)
@@ -347,8 +352,8 @@ int main(int argc, char* argv[])
 				{
 					GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_DriveMode, drivemode_table);
 					GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_DriveMode, drivemode_table);
-					std::cout << "input Drive Mode (ex. 0 = Single shooting)" << std::endl;
-					std::cout << ">";
+					cout << "input Drive Mode (ex. 0 = Single shooting)" << endl;
+					cout << ">";
 
 					canonhandle.data = getvalue();
 					if (canonhandle.data != -1)
@@ -390,64 +395,74 @@ int main(int argc, char* argv[])
 					loop = true;
 					continue;
 				}
-				//Run photo loop
+				//Run Object Scan
 				else if (control_number == "13")
 				{	
 					std::string degree_inc;
 					int num_moves = 0;
 					// 
-					std::cout << "Enter degrees per move: ";
+					cout << "Enter degrees per move: ";
 					std::cin >> degree_inc;
-					std::cout << "Enter number of moves: ";
+					cout << "Enter number of moves: ";
 					std::cin >> num_moves;
 					PressShutter(canonhandle.cameraArray, canonhandle.bodyID, kEdsCameraCommand_ShutterButton_Halfway);
 					Sleep(200);
+					// Start the loop timer
+    				auto start = std::chrono::high_resolution_clock::now();
 					for (int rots = 0; rots < num_moves; rots++)
 					{
-						char *send = &degree_inc[0];
-						bool is_sent = Serial.WriteSerialPort(send);
-
-						if (is_sent) {
-							int wait_time = std::ceil(((abs(stoi(degree_inc))*200)+500)/1000)+5;
-							std::cout << "Message sent, waiting up to " << wait_time << " seconds.\n";
-							std::string incoming = Serial.ReadSerialPort(wait_time, "json");
-							std::cout << "Incoming: " << incoming;// << std::endl;
-							std::this_thread::sleep_for(250ms);
-						} 
-
+						// Collect DSLR Data
 						if(bool(stoi(config["collect_dslr"]))) {
 							canonhandle.images_downloaded = 0;
 							int c = 0;
+							int timeout = stoi(config["dslr_timeout_sec"]) * 20; // 20 = 1s
 							EdsError err;
-							std::cout << "Collecting DSLR images...\n";
+							cout << "Collecting DSLR images...\n";
 							canonhandle.turntable_position = degree_tracker;
 							err = TakePicture(canonhandle.cameraArray, canonhandle.bodyID);
-							std::cout << "Result: " << err << std::endl;
-							while (canonhandle.images_downloaded < canonhandle.cameras_found && c < 50) {
+							// cout << "Result: " << err << endl;
+							while (canonhandle.images_downloaded < canonhandle.cameras_found && c < timeout) {
 								EdsGetEvent();
-								std::this_thread::sleep_for(100ms);
+								std::this_thread::sleep_for(50ms);
 								c++;
 							}
-							std::cout << "C: " << c << std::endl;
-							
-							EdsGetEvent();
-							std::this_thread::sleep_for(50ms);
-							EdsGetEvent();
-							std::this_thread::sleep_for(50ms);
-							EdsGetEvent();
-							std::this_thread::sleep_for(50ms);
-							EdsGetEvent();
-							std::this_thread::sleep_for(50ms);
+							cout << "DSLR Timeout Count: " << c << "/" << timeout << endl;
 						}
+
+						// Collect RealSense Data
 						if(bool(stoi(config["collect_rs"]))) {
 							rshandle.turntable_position = degree_tracker;
 							rshandle.get_current_frame(15000);
 						}
 						
+						// Issue command to move turntable.
+						char *send = &degree_inc[0];
+						bool is_sent = Serial.WriteSerialPort(send);
+
+						if (is_sent) {
+							int wait_time = std::ceil(((abs(stoi(degree_inc))*200)+500)/1000)+5;
+							cout << "Message sent, waiting up to " << wait_time << " seconds.\n";
+							std::string incoming = Serial.ReadSerialPort(wait_time, "json");
+							cout << "Incoming: " << incoming;// << endl;
+							std::this_thread::sleep_for(200ms);
+						} else {
+							cout << "WARNING: Serial command not sent, something went wrong.\n";
+						}
 
 						degree_tracker += stoi(degree_inc);
-						std::cout << "Image " << rots+1 << "/" << num_moves << " taken. " << std::endl;
+						cout << "Image " << rots+1 << "/" << num_moves << " taken. " << endl;
 					}
+					// Stop the loop timer
+    				auto end = std::chrono::high_resolution_clock::now();
+					// Calculate the elapsed time
+					auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+					// Convert the duration to minutes, seconds, and milliseconds
+					int minutes = duration.count() / 60000;
+					int seconds = (duration.count() % 60000) / 1000;
+					cout << "Scan Time: " << std::setfill('0') << std::setw(2) << minutes << ":" 
+						<< std::setfill('0') << std::setw(2) << seconds << endl;
+					std::this_thread::sleep_for(3000ms);
+
 					pause_return();
 					clr_screen();
 					loop = true;
@@ -456,10 +471,10 @@ int main(int argc, char* argv[])
 				// Turntable control
 				else if (control_number == "14")
 				{	
-					std::cout << "\n\n\nTURNTABLE CONTROL\n\n";
+					cout << "\n\n\nTURNTABLE CONTROL\n\n";
 					std::string degree_inc;
 					while(degree_inc != "r"){
-						std::cout << "Enter degrees to move (r = Return): ";
+						cout << "Enter degrees to move (r = Return): ";
 						std::cin >> degree_inc;
 						if (degree_inc == "r")
 							break;
@@ -469,24 +484,24 @@ int main(int argc, char* argv[])
 							// TODO: Calculate wait time based on degrees entered and motor speed ||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
 							if (is_sent) {
 								int wait_time = std::ceil(((abs(stoi(degree_inc))*200)+500)/1000)+5;
-								std::cout << "Message sent, waiting up to " << wait_time << " seconds.\n";
+								cout << "Message sent, waiting up to " << wait_time << " seconds.\n";
 								std::string incoming = Serial.ReadSerialPort(wait_time, "json");
-								std::cout << "Incoming: " << incoming;// << std::endl;
+								cout << "Incoming: " << incoming;// << endl;
 								//Sleep(4000);
 							} 
 						}
 					}
 					
 
-					pause_return();
+					// pause_return();
 					clr_screen();
 					loop = true;
 				}
 				// Set Object Name
 				else if (control_number == "15")
 				{	
-					std::string obj_name;
-					std::cout << "\n\nEnter Object Name: ";
+					// std::string obj_name;
+					cout << "\n\nEnter Object Name: ";
 					std::cin >> obj_name; 
 					scan_folder = config["output_dir"]+"/"+obj_name;
 					create_folder(scan_folder);
@@ -498,6 +513,14 @@ int main(int argc, char* argv[])
 					canonhandle.save_dir = scan_folder + "\\DSLR";
 					create_folder(canonhandle.save_dir,true);
 
+					loop = true;
+				}
+				// Set Turntable Position
+				else if (control_number == "16")
+				{	
+					cout << "\n\nEnter Turntable Position: ";
+					std::cin >> degree_tracker; 
+					
 					loop = true;
 				}
 				else
@@ -523,7 +546,7 @@ int main(int argc, char* argv[])
 			}
 		}
 		// send getevent periodically
-		// std::cout << "Event check.\n";
+		// cout << "Event check.\n";
 		EdsGetEvent();
 		std::this_thread::sleep_for(200ms);
 	}

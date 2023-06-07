@@ -1,15 +1,30 @@
-output_dir=C:/Users/csrobot/Documents/Version13.16.01/Output
-object_name=test_object
+output_dir=D:/MOAD
+object_name=test
 
 # Serial port Configuration (COM[x]) (Double digit ports will need to modify source code)
 serial_com_port=5
 
+# Canon Configuration
+collect_dslr=0
+dslr_timeout_sec= 5
+
 # RealSense Configuration
-collect_rs=0
+collect_rs=1
 rs_color=0
 rs_depth=0
 rs_pointcloud=1
 rs_raw_pointcloud=0
 
-# Canon Configuration
-collect_dslr=1
+# RealSense Pointcloud Filters
+rs_xpass=1
+rs_xpass_min=-0.3
+rs_xpass_max=0.3
+rs_ypass=1
+rs_ypass_min=-0.3
+rs_ypass_max=0.3
+rs_zpass=1
+rs_zpass_min=0.01
+rs_zpass_max=0.5
+rs_sor=1
+rs_sor_meank=8
+rs_sor_stddev=1.0

@@ -18,8 +18,8 @@ EdsError EDSCALLBACK handleObjectEvent(EdsObjectEvent event, EdsBaseRef  object,
 		// std:: cout << err;
 		// EdsUInt32 serial;
 		// err = EdsGetPropertyData(camera, kEdsPropID_BodyIDEx, 0, sizeof(serial), &serial);
-		// if (err == EDS_ERR_OK) {
-		std::cout << "Image event is caught." << std::endl;
+		// // if (err == EDS_ERR_OK) {
+		// std::cout << "Image event is caught." << std::endl;
 		// } else {
 		// 	std::cout << "Failed to retrieve camera serial number\n";
 		// }
