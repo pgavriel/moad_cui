@@ -85,7 +85,7 @@ int CanonHandler::camera_check() {
 
     //Connect to all available cameras
     if (err == EDS_ERR_OK) {
-        std::cout << "connecting to all cameras..." << std::endl;
+        std::cout << "Connecting to all cameras..." << std::endl;
         for (int i = 0; i < count; i++)
         {
             err = EdsGetChildAtIndex(cameraList, i, &camera);

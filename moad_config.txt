@@ -1,12 +1,14 @@
 output_dir=D:/MOAD
-object_name=test
+object_name=nist_atb1_connbnc_f
 
 # Serial port Configuration (COM[x]) (Double digit ports will need to modify source code)
 serial_com_port=5
+# Delay before collecting data after movement
+turntable_delay_ms=250
 
 # Canon Configuration
-collect_dslr=0
-dslr_timeout_sec= 5
+collect_dslr=1
+dslr_timeout_sec=5
 
 # RealSense Configuration
 collect_rs=1
@@ -14,17 +16,24 @@ rs_color=0
 rs_depth=0
 rs_pointcloud=1
 rs_raw_pointcloud=0
+rs_timeout_sec=9
 
 # RealSense Pointcloud Filters
 rs_xpass=1
-rs_xpass_min=-0.3
-rs_xpass_max=0.3
+#rs_xpass_min=-0.3
+#rs_xpass_max=0.3
+rs_xpass_min=-0.1
+rs_xpass_max=0.1
 rs_ypass=1
-rs_ypass_min=-0.3
-rs_ypass_max=0.3
+#rs_ypass_min=-0.3
+#rs_ypass_max=0.3
+rs_ypass_min=-0.1
+rs_ypass_max=0.1
 rs_zpass=1
-rs_zpass_min=0.01
+rs_zpass_min=0.0
 rs_zpass_max=0.5
 rs_sor=1
-rs_sor_meank=8
+rs_sor_meank=6
 rs_sor_stddev=1.0
+rs_voxel=0
+rs_voxel_leafsize=0.001

@@ -141,10 +141,12 @@ int main(int argc, char* argv[])
     create_folder(scan_folder);
 	// Set initial Object name
 	obj_name = config["object_name"];
+	int turntable_delay_ms = stoi(config["turntable_delay_ms"]);
 
 
 	// Setup Realsense Cameras
 	RealSenseHandler rshandle;
+	int rs_timeout = stoi(config["rs_timeout_sec"]) * 1000;
 	if (bool(stoi(config["collect_rs"]))) {
 		cout << "\nAttempting Realsense setup...\n";
 		// Create RealSense Handler
@@ -175,6 +177,7 @@ int main(int argc, char* argv[])
 
 
 	// Initialization of Canon SDK
+	int dslr_timeout = stoi(config["dslr_timeout_sec"]) * 20;
 	if (bool(stoi(config["collect_dslr"]))) {
 		cout << "\nEntering DSLR Setup...\n";
 		// CanonHandler canonhandle;
@@ -244,7 +247,7 @@ int main(int argc, char* argv[])
 					}
 					if (bool(stoi(config["collect_rs"]))) {
 						rshandle.turntable_position = degree_tracker;
-						rshandle.get_current_frame(15000);
+						rshandle.get_current_frame(rs_timeout);
 					}
 					clr_screen();
 					loop = true;
@@ -405,7 +408,7 @@ int main(int argc, char* argv[])
 					std::cin >> degree_inc;
 					cout << "Enter number of moves: ";
 					std::cin >> num_moves;
-					PressShutter(canonhandle.cameraArray, canonhandle.bodyID, kEdsCameraCommand_ShutterButton_Halfway);
+					// PressShutter(canonhandle.cameraArray, canonhandle.bodyID, kEdsCameraCommand_ShutterButton_Halfway);
 					Sleep(200);
 					// Start the loop timer
     				auto start = std::chrono::high_resolution_clock::now();
@@ -415,24 +418,28 @@ int main(int argc, char* argv[])
 						if(bool(stoi(config["collect_dslr"]))) {
 							canonhandle.images_downloaded = 0;
 							int c = 0;
-							int timeout = stoi(config["dslr_timeout_sec"]) * 20; // 20 = 1s
+							// int timeout = stoi(config["dslr_timeout_sec"]) * 20; // 20 = 1s
 							EdsError err;
-							cout << "Collecting DSLR images...\n";
+							cout << "Getting DSLR Data...\n";
 							canonhandle.turntable_position = degree_tracker;
 							err = TakePicture(canonhandle.cameraArray, canonhandle.bodyID);
 							// cout << "Result: " << err << endl;
-							while (canonhandle.images_downloaded < canonhandle.cameras_found && c < timeout) {
+							while (canonhandle.images_downloaded < canonhandle.cameras_found && c < dslr_timeout) {
 								EdsGetEvent();
 								std::this_thread::sleep_for(50ms);
 								c++;
 							}
-							cout << "DSLR Timeout Count: " << c << "/" << timeout << endl;
+							cout << "DSLR Timeout Count: " << c << "/" << dslr_timeout << endl;
 						}
 
 						// Collect RealSense Data
 						if(bool(stoi(config["collect_rs"]))) {
 							rshandle.turntable_position = degree_tracker;
-							rshandle.get_current_frame(15000);
+							rshandle.get_current_frame(rs_timeout);
+							if (rshandle.fail_count > 0) {
+								cout << "RS Failure - " << rshandle.fail_count << endl;
+								break;
+							}
 						}
 						
 						// Issue command to move turntable.
@@ -444,7 +451,9 @@ int main(int argc, char* argv[])
 							cout << "Message sent, waiting up to " << wait_time << " seconds.\n";
 							std::string incoming = Serial.ReadSerialPort(wait_time, "json");
 							cout << "Incoming: " << incoming;// << endl;
-							std::this_thread::sleep_for(200ms);
+							// std::this_thread::sleep_for(250ms);
+							
+							std::this_thread::sleep_for(std::chrono::milliseconds(turntable_delay_ms));
 						} else {
 							cout << "WARNING: Serial command not sent, something went wrong.\n";
 						}
@@ -461,6 +470,7 @@ int main(int argc, char* argv[])
 					int seconds = (duration.count() % 60000) / 1000;
 					cout << "Scan Time: " << std::setfill('0') << std::setw(2) << minutes << ":" 
 						<< std::setfill('0') << std::setw(2) << seconds << endl;
+					cout << "RS Fail Count: " << rshandle.fail_count << endl;
 					std::this_thread::sleep_for(3000ms);
 
 					pause_return();
