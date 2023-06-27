@@ -20,15 +20,11 @@ rs_timeout_sec=9
 
 # RealSense Pointcloud Filters
 rs_xpass=1
-#rs_xpass_min=-0.3
-#rs_xpass_max=0.3
-rs_xpass_min=-0.1
-rs_xpass_max=0.1
+rs_xpass_min=-0.3
+rs_xpass_max=0.3
 rs_ypass=1
-#rs_ypass_min=-0.3
-#rs_ypass_max=0.3
-rs_ypass_min=-0.1
-rs_ypass_max=0.1
+rs_ypass_min=-0.3
+rs_ypass_max=0.3
 rs_zpass=1
 rs_zpass_min=0.0
 rs_zpass_max=0.5
