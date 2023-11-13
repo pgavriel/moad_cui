@@ -11,6 +11,8 @@
 #include <pcl/filters/passthrough.h>
 #include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/features/normal_3d.h>
+#include <pcl/features/normal_3d_omp.h>
 #include "RealSenseHandler.h"
 
 using std::string;
@@ -115,7 +117,11 @@ int RealSenseHandler::device_check() {
     auto devices_list = ctx.query_devices();
     device_count = devices_list.size();
     cout << device_count << " RealSense detected.\n";
- 
+    
+    for (auto&& dev : devices_list) {
+        std::string serial = dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
+        cout << "[" << camera_names[serial] << "] " << serial << endl;
+    }
     for (auto&& dev : devices_list) {
         // Print Device Information
         bool print_available_streams = false;
@@ -237,7 +243,7 @@ void RealSenseHandler::get_current_frame(int timeout_ms) {
     for (const auto& pipe : pipeline_map) {
         thread_vector.emplace_back([&, pipe, timeout_ms]() {
             process_frames(pipe.second,timeout_ms);});
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
     for (auto& thread : thread_vector) {
@@ -284,10 +290,10 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
         cout << "WARNING: " << camera_names[serial_number] << " did not get frames.\n";
         return;
     }
-    cout  << camera_names[serial_number] << ": " << fs.size() << " frames retrieved\n";
+    // cout  << camera_names[serial_number] << ": " << fs.size() << " frames retrieved\n";
 
     rs2::align align_to_depth(RS2_STREAM_DEPTH);
-    cout  << "[" << camera_names[serial_number] << ":A]";
+    // cout  << "[" << camera_names[serial_number] << ":A]";
     try {
         fs = align_to_depth.process(fs);
     } catch (const std::exception& ex) {
@@ -301,29 +307,32 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
         // return;
     }
     
-    cout  << "[" << camera_names[serial_number] << ":B]";
+    // cout  << "[" << camera_names[serial_number] << ":B]";
     
     rs2::video_frame color = fs.get_color_frame();
-    cout  << "[" << camera_names[serial_number] << ":C:" << color.get_width() << "x" << color.get_height() << "]";
+    // cout  << "[" << camera_names[serial_number] << ":C:" << color.get_width() << "x" << color.get_height() << "]";
     rs2::depth_frame depth = fs.get_depth_frame();
-    cout  << "[" << camera_names[serial_number] << ":D:" << depth.get_width() << "x" << depth.get_height() << "]";
+    // cout  << "[" << camera_names[serial_number] << ":D:" << depth.get_width() << "x" << depth.get_height() << "]";
     // Apply filters
     // color = decimation_filter.process(color);
     // depth = decimation_filter.process(depth); // Reduces frame size
     depth = threshold_filter.process(depth);
-    cout  << "[" << camera_names[serial_number] << ":1]";
+    // cout  << "[" << camera_names[serial_number] << ":1]";
     depth = spatial_filter.process(depth);
-    cout  << "[" << camera_names[serial_number] << ":2]";
+    // cout  << "[" << camera_names[serial_number] << ":2]";
     depth = temporal_filter.process(depth);
-    cout  << "[" << camera_names[serial_number] << ":3]";
+    // cout  << "[" << camera_names[serial_number] << ":3]";
     // Depth and color frames must have the same resolution for clouds to be colored properly
-    cout << camera_names[serial_number] << " Color: " << color.get_width() << "x" << color.get_height();
-    cout << "   Depth : " << depth.get_width() << "x" << depth.get_height() << endl;
+    // cout << camera_names[serial_number] << " Color: " << color.get_width() << "x" << color.get_height();
+    // cout << "   Depth : " << depth.get_width() << "x" << depth.get_height() << endl;
 
     // SAVE POINTCLOUD
     if (save_pointcloud) {
         // Create PCL point cloud
         pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+        pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr normal_cloud(new pcl::PointCloud<pcl::PointXYZRGBNormal>);
+        // Define the origin point (0, 0, 0, 1)
+        Eigen::Vector4f origin(0.0f, 0.0f, 0.0f, 1.0f);
         // pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_filtered (new pcl::PointCloud<pcl::PointXYZRGB>);
 
         rs2::pointcloud pc;
@@ -347,48 +356,58 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
             cloud->push_back(point);
         }
         // Output 'rsx:C' indicates the pointcloud object has been constructed.
-        cout << "[" << camera_names[serial_number] << ":C]";
+        // cout << "[" << camera_names[serial_number] << ":C]";
 
         // Don't apply transforms and filters if raw_pointclouds is true
         if (!raw_pointclouds) {
+            
             //Apply appropriate pointcloud transform
             pcl::transformPointCloud(*cloud, *cloud, camera_transforms[serial_number]);
             pcl::transformPointCloud(*cloud, *cloud, rot_matrix);
+            // pcl::transformPointCloud(*normal_cloud, *normal_cloud, camera_transforms[serial_number]);
+            // pcl::transformPointCloud(*normal_cloud, *normal_cloud, rot_matrix);
+            origin = camera_transforms[serial_number] * origin;
+            origin = rot_matrix * origin;
+            // cout << "[" << camera_names[serial_number] << ":Torigin:" << origin.transpose() << "]";
             // Output 'rsx:T' indicates the appropriate pointcloud transforms have been performed.
-            cout << "[" << camera_names[serial_number] << ":T]";
+            // cout << "[" << camera_names[serial_number] << ":T]";
             //Apply passthrough filters to remove background
             pcl::PassThrough<pcl::PointXYZRGB> pass;
             float fmin, fmax;
+            // If rs_xpass=1, apply x-pass filter
             if (bool(stoi(config["rs_xpass"]))) {
                 fmin = stof(config["rs_xpass_min"]);
                 fmax = stof(config["rs_xpass_max"]);
-                cout << "[" << camera_names[serial_number] << ":X:" << fmin << "," << fmax << "]";
+                // cout << "[" << camera_names[serial_number] << ":X:" << fmin << "," << fmax << "]";
                 pass.setInputCloud(cloud);
                 pass.setFilterFieldName("x");
                 pass.setFilterLimits(fmin, fmax);
                 pass.filter(*cloud);
             }
-            
+
+            // If rs_ypass=1, apply y-pass filter
             if (bool(stoi(config["rs_ypass"]))) {
                 fmin = stof(config["rs_ypass_min"]);
                 fmax = stof(config["rs_ypass_max"]);
-                cout << "[" << camera_names[serial_number] << ":Y:" << fmin << "," << fmax << "]";
+                // cout << "[" << camera_names[serial_number] << ":Y:" << fmin << "," << fmax << "]";
                 pass.setInputCloud(cloud);
                 pass.setFilterFieldName("y");
                 pass.setFilterLimits(fmin, fmax);
                 pass.filter(*cloud);
             }
-            
+
+            // If rs_zpass=1, apply z-pass filter
             if (bool(stoi(config["rs_zpass"]))) {
                 fmin = stof(config["rs_zpass_min"]);
                 fmax = stof(config["rs_zpass_max"]);
-                cout << "[" << camera_names[serial_number] << ":Z:" << fmin << "," << fmax << "]";
+                // cout << "[" << camera_names[serial_number] << ":Z:" << fmin << "," << fmax << "]";
                 pass.setInputCloud(cloud);
                 pass.setFilterFieldName("z");
                 pass.setFilterLimits(fmin, fmax);
                 pass.filter(*cloud);
             }
-            
+
+            // If rs_sor=1, apply Statistical outlier removal filter
             if (bool(stoi(config["rs_sor"]))) {
                 pcl::StatisticalOutlierRemoval<pcl::PointXYZRGB> sor(true);
                 fmin = stof(config["rs_sor_stddev"]);
@@ -398,31 +417,55 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
                 sor.setStddevMulThresh(fmin);  // Standard deviation threshold for outlier detection
                 sor.filter(*cloud);
                 int removed = sor.getRemovedIndices()->size();
-                cout << "[" << camera_names[serial_number] << ":SOR:" << removed << " points]";
+                // cout << "[" << camera_names[serial_number] << ":SOR:" << removed << " points]";
             }
-            
+
+            // If rs_voxel=1, apply Voxel Filter with rs_voxel_leafsize parameter
             if (bool(stoi(config["rs_voxel"]))) {
                 pcl::VoxelGrid<pcl::PointXYZRGB> voxel_grid_filter;
                 fmin = stof(config["rs_voxel_leafsize"]);
                 voxel_grid_filter.setInputCloud(cloud);
                 voxel_grid_filter.setLeafSize(fmin, fmin, fmin); // Adjust the values as per your needs
                 voxel_grid_filter.filter(*cloud);
-                cout << "[" << camera_names[serial_number] << ":VOX:" << fmin << "]";
+                // cout << "[" << camera_names[serial_number] << ":VOX:" << fmin << "]";
             }
 
             // Output 'rsx:F' indicates the pointcloud has been filtered.
-            cout << "[" << camera_names[serial_number] << ":F]";
+            // cout << "[" << camera_names[serial_number] << ":F]";
+        }
+
+        // Compute Normals
+        if (bool(stoi(config["rs_compute_normals"]))) {
+            // Create a NormalEstimation object
+            // pcl::NormalEstimation<pcl::PointXYZRGB, pcl::Normal> ne;
+            // ne.setInputCloud(cloud);
+            // Set the number of neighbors to be considered when estimating normals
+            // ne.setKSearch(4);
+            // Compute the normals
+            pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
+            pcl::NormalEstimationOMP<pcl::PointXYZRGB, pcl::Normal> ne;
+            ne.setInputCloud(cloud);
+            ne.setSearchMethod(pcl::search::KdTree<pcl::PointXYZRGB>::Ptr(new pcl::search::KdTree<pcl::PointXYZRGB>));
+            ne.setKSearch(4);
+            ne.setViewPoint(origin[0],origin[1],origin[2]);
+            // cout << "[" << camera_names[serial_number] << ":compN]";
+            ne.compute(*normals);
+            // Concatenate the original point cloud and the computed normals
+            // cout << "[" << camera_names[serial_number] << ":catN]";
+            pcl::concatenateFields(*cloud, *normals, *normal_cloud);
+
+            // Output 'rsx:N' indicates the normals have been calculated  
+            // cout << "[" << camera_names[serial_number] << ":N]";
         }
         
-
         // Generate pointcloud name and save
         out_file.str("");
         out_file << save_dir << "\\" << camera_names[serial_number] << "_"
             << std::setfill('0') << std::setw(3) << turntable_position << "_cloud.ply";
         // Save the point cloud to a PLY file
         // Output 'rsx:S' indicates the pointcloud is now being saved.
-        cout << "[" << camera_names[serial_number] << ":S]";
-        pcl::io::savePLYFile(out_file.str(), *cloud);
+        // cout << "[" << camera_names[serial_number] << ":S]";
+        pcl::io::savePLYFile(out_file.str(), *normal_cloud);
         cout << "[" << camera_names[serial_number] << ":SAVED]\n";
     }
     

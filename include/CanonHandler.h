@@ -32,6 +32,9 @@ public:
     EdsUInt32 data;
     std::vector<EdsCameraRef> cameraArray;
 	std::vector<EdsUInt64> bodyID;
+
+    bool rename_cameras = false;
+    std::map<std::string, std::string> camera_names;
 };
 
 extern CanonHandler canonhandle;

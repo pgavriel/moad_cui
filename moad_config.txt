@@ -1,5 +1,5 @@
 output_dir=D:/MOAD
-object_name=nist_atb1_connbnc_f
+object_name=nist_atb1_board-empty-2
 
 # Serial port Configuration (COM[x]) (Double digit ports will need to modify source code)
 serial_com_port=5
@@ -9,12 +9,20 @@ turntable_delay_ms=250
 # Canon Configuration
 collect_dslr=1
 dslr_timeout_sec=5
+# This is a bad way to handle naming, but the SDK was giving me too many problems
+dslr_name_override=1
+cam1_rename=4
+cam2_rename=2
+cam3_rename=5
+cam4_rename=1
+cam5_rename=3
 
 # RealSense Configuration
 collect_rs=1
 rs_color=0
 rs_depth=0
 rs_pointcloud=1
+rs_compute_normals=1
 rs_raw_pointcloud=0
 rs_timeout_sec=9
 

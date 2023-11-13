@@ -53,10 +53,15 @@ EdsError downloadImage(EdsDirectoryItemRef  directoryItem, EdsVoid* _bodyID)
 	}
 
 	// Create filename
+	std::string cam_name = std::to_string(camid);
+	if (canonhandle.rename_cameras) {
+		std::cout << "Renamed cam" << cam_name << " -> cam" << canonhandle.camera_names[std::to_string(camid)] << std::endl;
+		cam_name = canonhandle.camera_names[std::to_string(camid)];
+	}
 	std::string tmp;
 	std::stringstream out_file;
 	out_file.str("");
-	out_file << "\\cam" <<  std::to_string(camid) << "_" 
+	out_file << "\\cam" << cam_name << "_" 
 		<< std::setfill('0') << std::setw(3) << canonhandle.turntable_position << "_img.jpg";
 	tmp = directory_tree + out_file.str();
 	std::cout << "Saving: " << out_file.str() << std::endl;

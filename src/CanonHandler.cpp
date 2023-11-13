@@ -68,7 +68,11 @@ int CanonHandler::camera_check() {
             err = EdsGetDeviceInfo(camera, &deviceInfo);
             // EdsUInt32 serial;
             // err = EdsGetPropertyData(camera, kEdsPropID_BodyIDEx, 0, sizeof(serial), &serial);
+            // EdsChar serialNumber[EDS_MAX_NAME];
+            // err = EdsGetPropertyData(camera, kEdsPropID_BodyIDEx, 0, sizeof(serialNumber), serialNumber);
+            
             std::cout << err << std::endl;
+            // std::cout << serialNumber << std::endl;
             if (err == EDS_ERR_OK && camera == NULL)
             {
                 std::cout << "Camera is not found." << std::endl;

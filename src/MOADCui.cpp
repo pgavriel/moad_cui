@@ -185,6 +185,12 @@ int main(int argc, char* argv[])
 		canonhandle.save_dir = scan_folder + "\\DSLR";
 		create_folder(canonhandle.save_dir,true);
 		PreSetting(canonhandle.cameraArray, canonhandle.bodyID);
+		canonhandle.rename_cameras = bool(stoi(config["dslr_name_override"]));
+		canonhandle.camera_names["1"] = config["cam1_rename"];
+		canonhandle.camera_names["2"] = config["cam2_rename"];
+		canonhandle.camera_names["3"] = config["cam3_rename"];
+		canonhandle.camera_names["4"] = config["cam4_rename"];
+		canonhandle.camera_names["5"] = config["cam5_rename"];
 	} else {
 		cout << "\nSkipping DSLR setup, 'collect_dslr=0'.\n";
 	}
