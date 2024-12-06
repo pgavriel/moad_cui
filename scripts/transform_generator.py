@@ -1,9 +1,29 @@
 import os
+import datetime
 from os.path import join
 import json
 import numpy as np
 import transforms3d
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
+def list_folders_by_creation_date(directory, target_date):
+    """
+    List folder names within the specified directory created on or after a specific date.
+
+    :param directory: The directory to scan for folders.
+    :param target_date: The date (datetime.date) to filter by.
+    :return: A list of folder names.
+    """
+    folder_names = []
+    for entry in os.scandir(directory):
+        if entry.is_dir():
+            # Get creation time in seconds since epoch
+            creation_time = os.path.getctime(entry.path)
+            creation_date = datetime.date.fromtimestamp(creation_time)
+            if creation_date >= target_date:
+                folder_names.append(entry.name)
+    return folder_names
 
 # Function to load a JSON file and return its contents as a dictionary
 def load_json(file_path):
@@ -14,7 +34,7 @@ def load_json(file_path):
 
 def load_align_txt(file_path):
     print(f"Loading Alignment Textfile: {file_path}")
-    data = np.loadtxt(file_path, dtype=float)
+    data = np.loadtxt(file_path, dtype=float, comments='#')
     return data
 
 def print_array(array, name=None):
@@ -146,7 +166,7 @@ class MoadTransformGenerator:
         if self.visualize:
             self.visualize_frames(transformed_matrices,frames)
 
-    def visualize_frames(self,tfs,frames,show_origin=True):
+    def visualize_frames(self,tfs,frames,show_origin=False):
         print("Visualizing Camera Transforms...")
         # Determine bounds 
         transformed_points = []
@@ -155,8 +175,8 @@ class MoadTransformGenerator:
             transformed_points.append(point)
         min_val = np.min(np.asarray(transformed_points))
         max_val = np.max(np.asarray(transformed_points))
-        print(f"Min: {min_val}")
-        print(f"Max: {max_val}")
+        # print(f"Min: {min_val}")
+        # print(f"Max: {max_val}")
 
         # Visualize
         fig = plt.figure()
@@ -169,12 +189,14 @@ class MoadTransformGenerator:
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
         ax.set_zlabel('Z')
-        ax.set_title('Transformed Points')
+        ax.set_title(f'Camera Transforms\nCalibration: {self.mode}')
         c = 1
         for f in frames:
             point = np.dot(f["transform_matrix"], np.array([0, 0, 0, 1]))
             ax.scatter(point[0], point[1], point[2])
-            print(f'Point {c}: {point}')
+            if len(frames) <= 5:
+                ax.text(point[0], point[1], point[2], f"cam{c}", color='black')
+            # print(f'Point {c}: {point}')
             c += 1
 
         if show_origin:
@@ -184,6 +206,22 @@ class MoadTransformGenerator:
             ax.scatter(0, 0, 1,c="#0000ff")
 
         plt.show()
+
+    def batch_generate(self,object_list):
+        vis_temp = self.visualize
+        self.visualize = False
+        self.auto_save = True
+        
+        self.load_transforms()
+        c = 1
+        for obj in object_list:
+            print(f"Generating transforms for {obj}...")
+            self.object_name = obj
+            if c == len(object_list):
+                self.visualize = vis_temp
+            self.calculate_transforms()
+            c += 1 
+
 
     def save_json(self,out_dir=None,out_file="transforms.json"):
         if out_dir is None:
@@ -196,10 +234,20 @@ class MoadTransformGenerator:
 
 
 tf_gen = MoadTransformGenerator()
-tf_gen.mode = '18mm'
-tf_gen.object_name = "t3_plane_bot"
+# Set the directory containing calibrations and the calibration (subfolder) to use.
+tf_gen.calibration_dir = "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/calibration"
+tf_gen.mode = '55mm-noscale'
+# Set the directory containing object data and the object (subfoler) to write to.
+tf_gen.output_dir = "E:/MOAD"
+tf_gen.object_name = "t1_zoomcan"
+# Set the angle increment of the collected image data.
+tf_gen.scan_angle_inc = 5
 tf_gen.visualize = True
-tf_gen.auto_save = False
-tf_gen.load_transforms()
-tf_gen.calculate_transforms()
+tf_gen.auto_save = True
+# tf_gen.load_transforms()
+# tf_gen.calculate_transforms()
+target_date = datetime.date(2024, 12, 4)
+obj_list = list_folders_by_creation_date(tf_gen.output_dir,target_date)
+print(f"Object List: {obj_list}")
+tf_gen.batch_generate(obj_list)
 print("Done.")
