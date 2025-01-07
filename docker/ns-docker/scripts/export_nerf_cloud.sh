@@ -5,8 +5,8 @@
 # Default values
 base_dir="/workspace"
 object_default="None"
-crop_sz_default="0.42"
-crop_z_default="-0.6"
+crop_sz_default="0.80" # was 0.42
+crop_z_default="-0.6" # was -0.6
 points_default="1000000" #1000000
 normal_method="open3d" # {open3d,model_output} 
 # Get arguments or use default values

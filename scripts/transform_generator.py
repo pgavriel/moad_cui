@@ -5,7 +5,7 @@ import json
 import numpy as np
 import transforms3d
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
+# from mpl_toolkits.mplot3d import Axes3D
 
 def list_folders_by_creation_date(directory, target_date):
     """
@@ -23,8 +23,38 @@ def list_folders_by_creation_date(directory, target_date):
             creation_date = datetime.date.fromtimestamp(creation_time)
             if creation_date >= target_date:
                 folder_names.append(entry.name)
-    return folder_names
+    return sorted(folder_names)
 
+def get_folders_with_prefix(root_dir, prefix):
+    """
+    Returns a list of folders in the root directory that start with the given prefix.
+
+    Args:
+        root_dir (str): The root directory to search (non-recursive).
+        prefix (str): The prefix to filter folder names.
+
+    Returns:
+        list: A list of folder names that start with the specified prefix.
+    """
+    try:
+        # List all entries in the root directory
+        entries = os.listdir(root_dir)
+        
+        # Filter entries to include only directories that start with the prefix
+        folders = [
+            entry for entry in entries 
+            if os.path.isdir(os.path.join(root_dir, entry)) and entry.startswith(prefix)
+        ]
+        
+        return sorted(folders)
+    
+    except FileNotFoundError:
+        print(f"Error: The directory '{root_dir}' does not exist.")
+        return []
+    except PermissionError:
+        print(f"Error: Permission denied to access '{root_dir}'.")
+        return []
+    
 # Function to load a JSON file and return its contents as a dictionary
 def load_json(file_path):
     print(f"Loading JSON: {file_path}")
@@ -70,6 +100,9 @@ class MoadTransformGenerator:
         self.scan_range = 360
         # self.scan_init_angle = 0
         self.num_cameras = 5
+
+        self.exclude_cams = []
+        self.exclude_frames = None
 
         self.apply_alignment = True
         self.auto_save = True
@@ -154,12 +187,15 @@ class MoadTransformGenerator:
                     "position_deg": current_position,
                     "transform_matrix": camera_tf.tolist()
                 }
-                frames.append(frame)
+                # TESTING EXCLUDING CAMERA AND FRAMES
+                if current_camera not in self.exclude_cams:
+                    if self.exclude_frames is None or current_position not in self.exclude_frames[current_camera]:
+                        frames.append(frame)
                 frame_count += 1
                 current_position += self.scan_angle_inc
 
         self.transform_json["frames"] = frames
-        
+        print(f"Frames Generated: {len(frames)}")
         if self.auto_save:
             self.save_json()
 
@@ -207,7 +243,7 @@ class MoadTransformGenerator:
 
         plt.show()
 
-    def batch_generate(self,object_list):
+    def batch_generate(self,object_list,excl_cams=[],excl_frames=None):
         vis_temp = self.visualize
         self.visualize = False
         self.auto_save = True
@@ -235,19 +271,59 @@ class MoadTransformGenerator:
 
 tf_gen = MoadTransformGenerator()
 # Set the directory containing calibrations and the calibration (subfolder) to use.
-tf_gen.calibration_dir = "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/calibration"
-tf_gen.mode = '55mm-noscale'
+tf_gen.calibration_dir = "/home/csrobot/moad_cui/calibration"
+tf_gen.mode = '55mm'
 # Set the directory containing object data and the object (subfoler) to write to.
-tf_gen.output_dir = "E:/MOAD"
-tf_gen.object_name = "t1_zoomcan"
+tf_gen.output_dir = "/home/csrobot/ns-data"
+tf_gen.object_name = None #"t1_zoomcan"
 # Set the angle increment of the collected image data.
 tf_gen.scan_angle_inc = 5
 tf_gen.visualize = True
 tf_gen.auto_save = True
 # tf_gen.load_transforms()
 # tf_gen.calculate_transforms()
-target_date = datetime.date(2024, 12, 4)
-obj_list = list_folders_by_creation_date(tf_gen.output_dir,target_date)
+
+# Camera IDs to exclude entirely
+tf_gen.exclude_cameras = [] # [1, 2, 3, 4, 5]
+# Specific frames to exclude
+tf_gen.exclude_frames = {
+    1: [95, 175, 295, 335],
+    2: [35, 85, 185],
+    3: [255],
+    4: [],
+    5: [235]
+}
+excluded_frames = sum(len(positions) for positions in tf_gen.exclude_frames.values())
+
+generate_modes = ["name", "date", "prefix"]
+mode = 0
+
+if generate_modes[mode] == "name":
+    # SET OBJECT NAMES
+    obj_list = ["a2-engine-bot"]
+    
+elif generate_modes[mode] == "date":
+    # SET DATE, RETURN ALL FOLDERS CREATED DURING OR AFTER
+    target_date = datetime.date(2024, 12, 4)
+    obj_list = list_folders_by_creation_date(tf_gen.output_dir,target_date)
+    
+elif generate_modes[mode] == "prefix":
+    # SET PREFIX, RETURN ALL FOLDERS STARTING WITH PREFIX
+    prefix = "a2-"
+    obj_list = get_folders_with_prefix(tf_gen.output_dir,prefix)
+
+
+if len(tf_gen.exclude_cameras) != 0: 
+    print(f"EXCLUDING CAMERAS {tf_gen.exclude_cameras}")
+else:
+    print("No cameras excluded.")
+if excluded_frames != 0: 
+    print(f"EXCLUDING {excluded_frames} FRAMES")
+else:
+    print("No frames being excluded.")
+print(f"Calibration Folder: {join(tf_gen.calibration_dir,tf_gen.mode)}")
 print(f"Object List: {obj_list}")
+input("Continue? (Ctrl+C to cancel)")
 tf_gen.batch_generate(obj_list)
+
 print("Done.")

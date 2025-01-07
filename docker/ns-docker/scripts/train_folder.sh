@@ -8,6 +8,8 @@ subfolder="DSLR"
 stop_after_training="True"
 predict_normals="False"
 camera_optimizer="SO3xR3" #default: SO3xR3, can set to 'off'
+far_plane="3.0" # Default 1000.0
+rays_per_batch="4096" # Default: 4096   
 
 echo "Base Dir: $base_dir"
 echo "Object: $object"
@@ -57,7 +59,11 @@ ns-train nerfacto --data $target_directory \
     --viewer.quit-on-train-completion $stop_after_training \
     --pipeline.model.predict-normals $predict_normals \
     --pipeline.model.camera-optimizer.mode $camera_optimizer \
-    --pipeline.model.far-plane 1000.0 \
+    --pipeline.model.far-plane $far_plane \
+    --pipeline.datamanager.pixel-sampler.num-rays-per-batch $rays_per_batch \
+    --pipeline.datamanager.eval-num-rays-per-batch $rays_per_batch \
+    --pipeline.datamanager.train-num-rays-per-batch $rays_per_batch \
+    --pipeline.model.disable-scene-contraction True \
     --log-gradients True
 
 

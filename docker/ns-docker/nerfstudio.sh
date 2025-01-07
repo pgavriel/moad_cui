@@ -5,9 +5,10 @@ docker run --gpus all \
             -u $(id -u) \
             -v /home/csrobot/ns-data:/workspace/ \
             -v /home/csrobot/.cache/:/home/user/.cache/ \
-            -v /home/csrobot/ns-docker/scripts:/workspace/scripts/ \
+            -v /home/csrobot/moad_cui/docker/ns-docker/scripts:/workspace/scripts/ \
             -p 7007:7007 \
             --rm \
             -it \
             --shm-size=32gb \
-            ghcr.io/nerfstudio-project/nerfstudio 
+            ghcr.io/nerfstudio-project/nerfstudio "/workspace/scripts/init.sh"
+            
