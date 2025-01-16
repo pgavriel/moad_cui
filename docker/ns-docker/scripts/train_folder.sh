@@ -6,11 +6,12 @@ base_dir="/workspace"
 object="$1"
 subfolder="DSLR"
 stop_after_training="True"
-predict_normals="False"
+predict_normals="True"
 camera_optimizer="SO3xR3" #default: SO3xR3, can set to 'off'
 far_plane="3.0" # Default 1000.0
 rays_per_batch="4096" # Default: 4096   
 
+# Display the values
 echo "Base Dir: $base_dir"
 echo "Object: $object"
 echo "Data Subfolder: $subfolder"
@@ -65,17 +66,5 @@ ns-train nerfacto --data $target_directory \
     --pipeline.datamanager.train-num-rays-per-batch $rays_per_batch \
     --pipeline.model.disable-scene-contraction True \
     --log-gradients True
-
-
-# docker run --gpus all \
-# 	    --name nerfstudio \
-#             -u $(id -u) \
-#             -v /home/csrobot/ns-data:/workspace/ \
-#             -v /home/csrobot/.cache/:/home/user/.cache/ \
-#             -p 7007:7007 \
-#             --rm \
-#             -it \
-#             --shm-size=24gb \
-#             ghcr.io/nerfstudio-project/nerfstudio ns-train nerfacto --data /workspace/$1 --output-dir /workspace/$1 --viewer.quit-on-train-completion True
-            
+          
 # echo "Done!"

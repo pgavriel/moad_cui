@@ -217,26 +217,6 @@ def colored_cloud_registration(source,target,vx_rad_list,max_iter_list,viz_downs
     # draw_registration_result_original_color(source, target, result_icp.transformation)
     return result_icp.transformation
 
-# Global variables to track point size
-point_size = 3.0
-
-def increase_point_size(vis):
-    """Increase the point size."""
-    global point_size
-    point_size += 1.0
-    vis.get_render_option().point_size = point_size
-    print(f"Point size increased to: {point_size}")
-    return False
-
-def decrease_point_size(vis):
-    """Decrease the point size."""
-    global point_size
-    if point_size > 1.0:
-        point_size -= 1.0
-        vis.get_render_option().point_size = point_size
-        print(f"Point size decreased to: {point_size}")
-    return False
-
 
 # Main visualization function
 def visualize_with_keybindings(pcd_list,crop_bb=None):
@@ -253,7 +233,7 @@ def visualize_with_keybindings(pcd_list,crop_bb=None):
     for i, pcd in enumerate(pcd_list):
         vis.add_geometry(pcd)#, reset_bounding_box=(i == 0))  # Reset view for the first point cloud
 
-    # Create a coordinate frame as a persistent placeholder
+    # Create a coordinate frame as a persistent placeholder to prevent crashing
     placeholder = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
     vis.add_geometry(placeholder)
 
@@ -303,15 +283,10 @@ def visualize_with_keybindings(pcd_list,crop_bb=None):
     for i in range(len(pcd_list)):
         vis.register_key_callback(ord(str(i + 1)), make_toggle_callback(i))  # Press "1", "2", etc.
 
-    # Set up keybindings
-    vis.register_key_callback(ord("w"), increase_point_size)  # Press "+" to increase point size
-    vis.register_key_callback(ord("q"), decrease_point_size)  # Press "-" to decrease point size
 
     print("Controls:")
     for i in range(len(pcd_list)):
         print(f"  {i + 1} : Toggle visibility of point cloud {i + 1}")
-    print("  w : Increase point size")
-    print("  q : Decrease point size")
 
     # Run the visualizer
     vis.run()

@@ -8,12 +8,14 @@ object_default="None"
 crop_sz_default="0.80" # was 0.42
 crop_z_default="-0.6" # was -0.6
 points_default="1000000" #1000000
-normal_method="open3d" # {open3d,model_output} 
+normal_method="model_output" # {open3d,model_output} 
+
 # Get arguments or use default values
 object="${1:-$object_default}"
 crop_sz="${2:-$crop_sz_default}"
 crop_z="${3:-$crop_z_default}"
 points="${4:-$points_default}"
+
 # Display the values
 echo "Exporting pointcloud for NeRF object: $object"
 echo "Crop Size: $crop_sz"
