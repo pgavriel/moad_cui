@@ -1,5 +1,5 @@
 import os
-import sys
+import argparse
 import datetime
 from os.path import join
 import json
@@ -271,11 +271,17 @@ class MoadTransformGenerator:
 
 
 # Get CLI arguments
-arg_list = sys.argv[1:]
-if len(arg_list) < 1:
-    print("Args Error: Missing object_name")
-    print("     python3 scripts/transform_generator.py [object_name]")
-    exit() 
+parser = argparse.ArgumentParser()
+parser.add_argument('object_name')
+parser.add_argument('-d', '--degree', type=int, default=5, help="Degree difference between each image (Default: 5)")
+parser.add_argument('-v', '--visualize', action="store_true", help="Flag: Visualize the 3D position of the camera")
+
+args = parser.parse_args()
+# arg_list = sys.argv[1:]
+# if len(arg_list) < 1:
+#     print("Args Error: Missing object_name")
+#     print("     python3 scripts/transform_generator.py [object_name]")
+#     exit() 
 
 tf_gen = MoadTransformGenerator()
 # Set the directory containing calibrations and the calibration (subfolder) to use.
@@ -283,10 +289,10 @@ tf_gen.calibration_dir = "/home/csrobot/moad_cui/calibration"
 tf_gen.mode = '55mm'
 # Set the directory containing object data and the object (subfoler) to write to.
 tf_gen.output_dir = "/home/csrobot/ns-data"
-tf_gen.object_name = None #"t1_zoomcan"
+tf_gen.object_name = args.object_name #"t1_zoomcan"
 # Set the angle increment of the collected image data.
-tf_gen.scan_angle_inc = 5
-tf_gen.visualize = True
+tf_gen.scan_angle_inc = args.degree
+tf_gen.visualize = args.visualize
 tf_gen.auto_save = True
 # tf_gen.load_transforms()
 # tf_gen.calculate_transforms()
@@ -308,7 +314,7 @@ mode = 0
 
 if generate_modes[mode] == "name":
     # SET OBJECT NAMES
-    obj_list = [arg_list[0]]
+    obj_list = [args.object_name]
     
 elif generate_modes[mode] == "date":
     # SET DATE, RETURN ALL FOLDERS CREATED DURING OR AFTER
