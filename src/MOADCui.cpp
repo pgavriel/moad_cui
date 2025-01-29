@@ -570,9 +570,9 @@ int main(int argc, char* argv[])
 						<< obj_name << " "
 						<< "-d " << degree_inc << " "
 						<< "-v";
-						
+
 					// Execute command
-					const char* c_command = command_stream.str().c_str()
+					const char* c_command = command_stream.str().c_str();
 					system(c_command);
 					
 					// Clean screen
