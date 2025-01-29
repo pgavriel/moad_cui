@@ -1,4 +1,5 @@
 import os
+import sys
 import datetime
 from os.path import join
 import json
@@ -269,6 +270,13 @@ class MoadTransformGenerator:
         print("Done.")
 
 
+# Get CLI arguments
+arg_list = sys.argv[1:]
+if len(arg_list) < 1:
+    print("Args Error: Missing object_name")
+    print("     python3 scripts/transform_generator.py [object_name]")
+    exit() 
+
 tf_gen = MoadTransformGenerator()
 # Set the directory containing calibrations and the calibration (subfolder) to use.
 tf_gen.calibration_dir = "/home/csrobot/moad_cui/calibration"
@@ -287,11 +295,11 @@ tf_gen.auto_save = True
 tf_gen.exclude_cameras = [] # [1, 2, 3, 4, 5]
 # Specific frames to exclude
 tf_gen.exclude_frames = {
-    1: [95, 175, 295, 335],
-    2: [35, 85, 185],
-    3: [255],
+    1: [],
+    2: [],
+    3: [],
     4: [],
-    5: [235]
+    5: []
 }
 excluded_frames = sum(len(positions) for positions in tf_gen.exclude_frames.values())
 
@@ -300,7 +308,7 @@ mode = 0
 
 if generate_modes[mode] == "name":
     # SET OBJECT NAMES
-    obj_list = ["a2-engine-bot"]
+    obj_list = [arg_list[0]]
     
 elif generate_modes[mode] == "date":
     # SET DATE, RETURN ALL FOLDERS CREATED DURING OR AFTER
@@ -309,7 +317,7 @@ elif generate_modes[mode] == "date":
     
 elif generate_modes[mode] == "prefix":
     # SET PREFIX, RETURN ALL FOLDERS STARTING WITH PREFIX
-    prefix = "a2-"
+    prefix = "robot"
     obj_list = get_folders_with_prefix(tf_gen.output_dir,prefix)
 
 
