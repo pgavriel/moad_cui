@@ -7,6 +7,7 @@
 #include <fstream>
 #include <map>
 #include <string>
+#include <sstream>
 #include <vector>
 #include <thread>
 #include <memory>
@@ -223,7 +224,8 @@ int main(int argc, char* argv[])
 				<< "[13] Run Object Scan \n" 
 				<< "[14] Turntable Control \n"
 				<< "[15] Set Object Name \n"
-				<< "[16] Set Turntable Position \n";
+				<< "[16] Set Turntable Position \n"
+				<< "[17] Run Transform Generator \n";
 			cout << "--------------------------------" << endl;
 			cout << "Object:\t\t" << obj_name << "\nPosition:\t" << degree_tracker << endl;
 			cout << "--------------------------------" << endl;
@@ -538,6 +540,43 @@ int main(int argc, char* argv[])
 					std::cin >> degree_tracker; 
 					
 					loop = true;
+				}
+				else if (control_number == "17"){
+					// Call the transform generator
+					// Get extra information
+					// - degree_inc
+					std::string degree_inc;
+					cout << "\n\nEnter Degree Interval (r) : ";
+					std::cin >> degree_inc;
+					std::regex number_only("^([0-9]+|r)$");
+					if (!std::regex_match(degree_inc, number_only)) {
+						cout << "\n\nInvalid input for degree";
+						continue;
+					}
+					// - visualize
+					std::string visualize;
+					cout << "\n\nVisualize after finishing the transform? (y/n): ";
+					std::cin >> visualize;
+					std::regex confirmation_only("^(y|n)$");
+					if (!std::regex_match(visualize, confirmation_only)) {
+						cout << "\n\nInvalid input for visualize";
+						continue;
+					}
+
+					std::stringstream command_stream;
+					command_stream 
+						<< "python3 " 
+						<< "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/scripts/transform_generator.py "
+						<< obj_name << " "
+						<< "-d " << degree_inc << " "
+						<< "-v";
+					// Execute command
+					system(command_stream.str());
+					
+					// Clean screen
+					clr_screen();
+					loop = true;
+					continue; 
 				}
 				else
 				{
