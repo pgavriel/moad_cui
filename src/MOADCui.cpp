@@ -568,9 +568,9 @@ int main(int argc, char* argv[])
 					// - visualize
 					std::string visualize;
 					std::regex confirmation_only("^(y|n|r)$");
-					validate_input("\n\nVisualize after finishing the transform? (y/n): ", degree_inc, number_only);
+					validate_input("\n\nVisualize after finishing the transform? (y/n): ", degree_inc, confirmation_only);
 
-					if (degree_inc != 'r' && visualize != 'r') {
+					if (degree_inc != "r" && visualize != "r") {
 						std::stringstream command_stream;
 						command_stream 
 							<< "python3 " 
