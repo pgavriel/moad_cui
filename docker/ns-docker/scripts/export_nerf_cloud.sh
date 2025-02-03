@@ -7,8 +7,8 @@ base_dir="/workspace"
 object_default="None"
 crop_sz_default="0.80" # was 0.42
 crop_z_default="-0.6" # was -0.6
-points_default="1000000" #1000000
-normal_method="model_output" # {open3d,model_output} 
+points_default="1000000" # 1000000
+normal_method="model_output" # {open3d,model_output} (model_output can only be used if nerf was trained with computing normals on)
 
 # Get arguments or use default values
 object="${1:-$object_default}"
@@ -21,6 +21,7 @@ echo "Exporting pointcloud for NeRF object: $object"
 echo "Crop Size: $crop_sz"
 echo "Crop Z Center: $crop_z"
 echo "Number of points: $points"
+echo "Normal Method: $normal_method"
 
 # Set output directory
 output_dir="$base_dir/$object/exports"
@@ -48,7 +49,9 @@ if [ -n "$most_recent_folder" ]; then
         --obb_scale $crop_sz $crop_sz $crop_sz
 
     file_count=$(find "$output_dir" -maxdepth 1 -type f | wc -l)
-    file_name="$object-cloud-$file_count-$points.ply"
+
+    name_mod=$([[ $normal_method == "model_output" ]] && echo "-normals" || echo "")
+    file_name="$object-cloud-$file_count$name_mod.ply"
     echo "Rename File To: $file_name"
     old_cloud_file="$output_dir/point_cloud.ply"
     new_cloud_file="$output_dir/$file_name"
