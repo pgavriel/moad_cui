@@ -583,7 +583,9 @@ int main(int argc, char* argv[])
 						}
 
 						// Execute command
-						const char* c_command = command_stream.str().c_str();
+						std::string command = command_stream.str(); 
+						const char* c_command = command.c_str();
+						std::cout << "\nExecuting Command: " << command; 
 						system(c_command);
 					}
 
