@@ -285,6 +285,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('object_name')
 parser.add_argument('-p', '--path', type=str, default="/home/csrobot/ns-data" if is_linux else "G:/", help="Directory where the object is located")
 parser.add_argument('-d', '--degree', type=int, default=5, help="Degree difference between each image (Default: 5)")
+parser.add_argument('-r', '--range', type=int, default=360, help="Max angle of rotation (Default: 360)")
 parser.add_argument('-v', '--visualize', action="store_true", help="Flag: Visualize the 3D position of the camera")
 
 args = parser.parse_args()
@@ -297,6 +298,7 @@ tf_gen.mode = '55mm'
 tf_gen.output_dir = args.path
 tf_gen.object_name = args.object_name #"t1_zoomcan"
 # Set the angle increment of the collected image data.
+tf_gen.scan_range = args.range
 tf_gen.scan_angle_inc = args.degree
 tf_gen.visualize = args.visualize
 tf_gen.auto_save = True
