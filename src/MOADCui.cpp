@@ -117,6 +117,21 @@ int create_folder(std::string path, bool quiet = false) {
 	return 0;
 }
 
+void validate_input(std::string text, std::string& input, std::regex validation) {
+	bool validated = false;
+	do {
+		std::cout << text;
+		std::cin >> input;
+
+		validated = std::regex_match(input, validation);
+
+		if (!validated) {
+			std::cout << "Input Invalid";
+		}
+	}
+	while (!validated);
+}
+
 int main(int argc, char* argv[])
 {	
 	// SETUP ----------------------------------------------------------------------------------------------
@@ -481,6 +496,8 @@ int main(int argc, char* argv[])
 					cout << "RS Fail Count: " << rshandle.fail_count << endl;
 					std::this_thread::sleep_for(3000ms);
 
+					// Generate transform
+
 					pause_return();
 					clr_screen();
 					loop = true;
@@ -546,34 +563,30 @@ int main(int argc, char* argv[])
 					// Get extra information
 					// - degree_inc
 					std::string degree_inc;
-					cout << "\n\nEnter Degree Interval (r) : ";
-					std::cin >> degree_inc;
 					std::regex number_only("^([0-9]+|r)$");
-					if (!std::regex_match(degree_inc, number_only)) {
-						cout << "\n\nInvalid input for degree";
-						continue;
-					}
+					validate_input("\n\nEnter Degree Interval (integer): ", degree_inc, number_only);
 					// - visualize
 					std::string visualize;
-					cout << "\n\nVisualize after finishing the transform? (y/n): ";
-					std::cin >> visualize;
-					std::regex confirmation_only("^(y|n)$");
-					if (!std::regex_match(visualize, confirmation_only)) {
-						cout << "\n\nInvalid input for visualize";
-						continue;
+					std::regex confirmation_only("^(y|n|r)$");
+					validate_input("\n\nVisualize after finishing the transform? (y/n): ", degree_inc, number_only);
+
+					if (degree_inc != 'r' && visualize != 'r') {
+						std::stringstream command_stream;
+						command_stream 
+							<< "python3 " 
+							<< "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/scripts/transform_generator.py "
+							<< obj_name << " "
+							<< "-d " << degree_inc << " ";
+
+						if (visualize == "y") {
+							command_stream << "-v";
+						}
+
+						// Execute command
+						const char* c_command = command_stream.str().c_str();
+						system(c_command);
 					}
 
-					std::stringstream command_stream;
-					command_stream 
-						<< "python3 " 
-						<< "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/scripts/transform_generator.py "
-						<< obj_name << " "
-						<< "-d " << degree_inc << " "
-						<< "-v";
-
-					// Execute command
-					const char* c_command = command_stream.str().c_str();
-					system(c_command);
 					
 					// Clean screen
 					clr_screen();
