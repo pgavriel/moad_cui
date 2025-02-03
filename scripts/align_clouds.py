@@ -71,7 +71,7 @@ def filter_statistical_outliers(pcd, nb_neighbors=20, std_ratio=2.0):
     return inlier_cloud, outlier_cloud
 
 
-def generate_bounding_box(center, x, y, z_bot, z_top):
+def generate_bounding_box(center, x, y, z_bot, height):
     """
     Crop a point cloud to the specified dimensions.
     
@@ -90,8 +90,8 @@ def generate_bounding_box(center, x, y, z_bot, z_top):
     x_max = center[0] + x / 2
     y_min = center[1] - y / 2
     y_max = center[1] + y / 2
-    z_min = center[2] - z_bot / 2
-    z_max = center[2] + z_top / 2
+    z_min = center[2] + z_bot
+    z_max = z_min + height
 
     # Define the axis-aligned bounding box
     bounding_box = o3d.geometry.AxisAlignedBoundingBox(
@@ -248,9 +248,9 @@ def visualize_with_keybindings(pcd_list,crop_bb=None):
         vis.get_view_control().convert_from_pinhole_camera_parameters(params)
 
     camera_params = capture_camera_params(vis)
-    print("Camera Parameters")
-    print(f"Intrinsics:\n{camera_params.intrinsic}")
-    print(f"Extrinsics:\n{camera_params.extrinsic}\n")
+    # print("Camera Parameters")
+    # print(f"Intrinsics:\n{camera_params.intrinsic}")
+    # print(f"Extrinsics:\n{camera_params.extrinsic}\n")
 
 
     # Keybinding: Toggle visibility for each point cloud
@@ -293,9 +293,12 @@ def visualize_with_keybindings(pcd_list,crop_bb=None):
     vis.destroy_window()
 
 # Load the point clouds
-root_dir = "/home/csrobot/pc-testing/"
-top_pc = "a2-engine.ply"
-bot_pc = "a2-engine-bot.ply"
+root_dir = "/home/csrobot/Documents/pointclouds"
+root_dir = "/home/csrobot/data-mount/pointclouds/engine"
+top_pc = "a2-engine-cloud-2-normals.ply"
+bot_pc = "a2-engine-bot-cloud-1-normals.ply"
+output_file = 'pc_aligned.ply'
+origin_mode = "centermass" # [floor, bbcenter, centermass]
 pcd1 = o3d.io.read_point_cloud(join(root_dir,top_pc))
 pcd2 = o3d.io.read_point_cloud(join(root_dir,bot_pc))
 metrics1 = analyze_pointcloud(pcd1,top_pc)
@@ -304,12 +307,12 @@ metrics2 = analyze_pointcloud(pcd2,bot_pc)
 # Stage 1
 # Crop Bounding Box
 bounds = {
-    'x': 0.22,
+    'x': 0.25,
     'y': 0.3,
-    'z_bot': 0.0,
-    'z_top': 0.5
+    'z_bot': -0.035,
+    'height': 0.25
 }
-bb = generate_bounding_box(metrics1['bounding_box_center'],bounds['x'],bounds['y'],bounds['z_bot'],bounds['z_top'])
+bb = generate_bounding_box(metrics1['bounding_box_center'],bounds['x'],bounds['y'],bounds['z_bot'],bounds['height'])
 
 #Stage 2
 #Filter Settings
@@ -322,10 +325,8 @@ rotation_matrix = euler_to_rotation_matrix(0, 180, 0)
 # Parameters for ICP Registration
 voxel_radius = [0.01, 0.002, 0.001]
 max_iter = [500, 100, 100]
-#
 
-
-stage = 4
+stage = 4#4
 
 
 viz_all = True
@@ -335,14 +336,14 @@ viz_all = True
 #STAGE 1: Determine Appropriate Crop Bounding Box
 if stage >= 1:
     pass
-    visualize_with_keybindings([pcd1, pcd2],crop_bb=bb)
-
+    if viz_all: visualize_with_keybindings([pcd1, pcd2],crop_bb=bb)
+# exit()
 #STAGE 2: Apply Crop & Filtering
 if stage >= 2:
     pcd1 = crop_cloud(pcd1, bb)
     pcd2 = crop_cloud(pcd2, bb)
     
-    visualize_with_keybindings([pcd1, pcd2])
+    if viz_all: visualize_with_keybindings([pcd1, pcd2])
 
 #STAGE 3: Automatic Alignment
 if stage >= 3: 
@@ -350,7 +351,7 @@ if stage >= 3:
     # Apply filtering
     pcd1_filtered, outliers1 = filter_statistical_outliers(pcd1, nb_neighbors=filter_neighbors, std_ratio=filter_ratio)
     pcd2_filtered, outliers2 = filter_statistical_outliers(pcd2, nb_neighbors=filter_neighbors, std_ratio=filter_ratio)
-    visualize_with_keybindings([pcd1_filtered, pcd2_filtered])
+    if viz_all: visualize_with_keybindings([pcd1_filtered, pcd2_filtered])
     # Initial 180 degree rotation
     pcd2.rotate(rotation_matrix, center=metrics2['bounding_box_center'])
     pcd2_filtered.rotate(rotation_matrix, center=metrics2['bounding_box_center'])
@@ -365,8 +366,8 @@ if stage >= 3:
     print(f"Align Translate: {bb_translate}")
     pcd2.translate(bb_translate)
     pcd2_filtered.translate(bb_translate)
-    visualize_with_keybindings([pcd1_filtered, pcd2_filtered])
-    
+    if viz_all: visualize_with_keybindings([pcd1_filtered, pcd2_filtered])
+    # exit()
     # Calculate Alignment transform using filtered clouds
     transformation = colored_cloud_registration(pcd2_filtered, pcd1_filtered, voxel_radius, max_iter)
     # Apply transformation to the original point cloud
@@ -378,26 +379,39 @@ if stage == 4:
     # Fuse the point clouds
     fused_pcd = pcd1 + pcd2
     
-    # Get the bounding box of the fused cloud
-    bbox = fused_pcd.get_axis_aligned_bounding_box()
-    
-    # Find the bottom z-coordinate of the bounding box
+    fused_filtered, outliers2 = filter_statistical_outliers(fused_pcd, nb_neighbors=filter_neighbors, std_ratio=filter_ratio)
+    # Get the bounding box of the filtered fused cloud
+    bbox = fused_filtered.get_axis_aligned_bounding_box()
     bbox_min = bbox.get_min_bound()  # [x_min, y_min, z_min]
-    z_min = bbox_min[2]
+    bb_center = bbox.get_center() # bounding box center
+    cloud_center = fused_filtered.get_center() # center of mass
+
+    print(f"Origin Mode: {origin_mode}")
+    if origin_mode == "floor:":
+        origin = cloud_center
+        origin[2] = bbox_min[2]
+    elif origin_mode == "bbcenter":
+        origin = bb_center
+    elif origin_mode == "centermass":
+        origin = cloud_center
+    else:
+        print("WARNING: origin mode not recognized, set to [0,0,0]")
+        origin = [0,0,0]
     
-    # Translate the point cloud so the bottom of the bounding box is at z=0
-    translation_vector = np.array([0, 0, -z_min])
+    # Apply origin translation
+    translation_vector = np.array(-origin)
+    print(f"Translating Fused Cloud: {translation_vector}")
     fused_pcd.translate(translation_vector)
+
     visualize_with_keybindings([fused_pcd],crop_bb=None)
 
     # Save the fused and recentered point cloud to the specified file
-    output_file = 'pc_aligned.ply'
     output_path = join(root_dir,output_file)
     o3d.io.write_point_cloud(output_path, fused_pcd)
     print(f"Fused point cloud saved to {output_path}")
 
-if stage > 1: bb = None
-if stage <= 3:
-    visualize_with_keybindings([pcd1, pcd2],crop_bb=bb)
+# if stage > 1: bb = None
+# if stage <= 3:
+#     visualize_with_keybindings([pcd1, pcd2],crop_bb=bb)
 # else:
 #     visualize_with_keybindings([pcd1_filtered, pcd2_filtered],crop_bb=bb)
