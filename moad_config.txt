@@ -40,3 +40,12 @@ rs_sor_meank=6
 rs_sor_stddev=1.0
 rs_voxel=0
 rs_voxel_leafsize=0.001
+
+# Transform Generator Parameters
+tg_output_dir_linux=/home/csrobot/ns-data
+tg_output_dir_windows=G:/
+tg_calibration_dir_linux=/home/csrobot/moad_cui/calibration
+tg_calibration_dir_windows=C:/Users/csrobot/Documents/Version13.16.01/moad_cui/calibration
+tg_calibration_mode=55mm
+tg_degree_angle=5
+tg_visualize=False
