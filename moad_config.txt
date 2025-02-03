@@ -1,4 +1,4 @@
-output_dir=E:/MOAD
+output_dir=G:/
 object_name=checker_calibration
 # Serial port Configuration (COM[x]) (Double digit ports will need to modify source code)
 serial_com_port=5
@@ -48,4 +48,5 @@ tg_calibration_dir_linux=/home/csrobot/moad_cui/calibration
 tg_calibration_dir_windows=C:/Users/csrobot/Documents/Version13.16.01/moad_cui/calibration
 tg_calibration_mode=55mm
 tg_degree_angle=5
-tg_visualize=False
+tg_scan_range=360
+tg_visualize=True
