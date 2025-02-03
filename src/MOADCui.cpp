@@ -497,6 +497,23 @@ int main(int argc, char* argv[])
 					std::this_thread::sleep_for(3000ms);
 
 					// Generate transform
+					bool visualize = config["tg_visualize"] == "True";
+					std::stringstream command_stream;
+					command_stream 
+						<< "python3 " 
+						<< "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/scripts/transform_generator.py "
+						<< obj_name << " "
+						<< "-d " << degree_inc << " ";
+
+					if (visualize) {
+						command_stream << "-v";
+					}
+
+					// Execute command
+					std::string command = command_stream.str(); 
+					const char* c_command = command.c_str();
+					std::cout << "\nExecuting Command: " << command; 
+					system(c_command);
 
 					pause_return();
 					clr_screen();
