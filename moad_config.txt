@@ -50,3 +50,4 @@ tg_calibration_mode=55mm
 tg_degree_angle=5
 tg_scan_range=360
 tg_visualize=True
+tg_force=False
