@@ -510,10 +510,10 @@ int main(int argc, char* argv[])
 						<< "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/scripts/transform_generator.py "
 						<< obj_name << " "
 						<< "-d " << degree_inc << " "
-						<< "-r" << range << " "
-						<< "-c" << calibration << " "
-						<< "--calibration_dir" << calibration_dir << " "
-						<< "-p" << output_dir;
+						<< "-r " << range << " "
+						<< "-c " << calibration << " "
+						<< "--calibration_dir " << calibration_dir << " "
+						<< "-p " << output_dir;
 
 					if (visualize) {
 						command_stream << " -v";
@@ -562,8 +562,8 @@ int main(int argc, char* argv[])
 					}
 					
 					// Update degree tracker
-					degree_tracker += std::stoi(degree_inc);
-					degree_tracker = degree_tracker % 360;
+					// degree_tracker += std::stoi(degree_inc);
+					// degree_tracker = degree_tracker % 360;
 
 					// pause_return();
 					clr_screen();
