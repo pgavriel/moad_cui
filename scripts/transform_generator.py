@@ -282,18 +282,21 @@ is_linux = check_os() == "Linux"
 
 # Get CLI arguments
 parser = argparse.ArgumentParser()
-parser.add_argument('object_name')
+parser.add_argument('object_name', help="Name of the scanned object")
 parser.add_argument('-p', '--path', type=str, default="/home/csrobot/ns-data" if is_linux else "G:/", help="Directory where the object is located")
 parser.add_argument('-d', '--degree', type=int, default=5, help="Degree difference between each image (Default: 5)")
 parser.add_argument('-r', '--range', type=int, default=360, help="Max angle of rotation (Default: 360)")
+parser.add_argument('-c', '--calibration', type=str, default="55mm", choices=["55mm", "18mm"], help="Type of calibration that the camera is configured")
+parser.add_argument('--calibration_dir', type=str, default="/home/csrobot/moad_cui/calibration" if is_linux else "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/calibration", help="Directory where the calibration files are")
 parser.add_argument('-v', '--visualize', action="store_true", help="Flag: Visualize the 3D position of the camera")
+parser.add_argument('-f', '--force', action="store_true", help="Bypass the confirmation prompt before calculating the transform position")
 
 args = parser.parse_args()
 
 tf_gen = MoadTransformGenerator()
 # Set the directory containing calibrations and the calibration (subfolder) to use.
-tf_gen.calibration_dir = "/home/csrobot/moad_cui/calibration" if is_linux else "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/calibration"
-tf_gen.mode = '55mm'
+tf_gen.calibration_dir = args.calibration_dir
+tf_gen.mode = args.calibration
 # Set the directory containing object data and the object (subfoler) to write to.
 tf_gen.output_dir = args.path
 tf_gen.object_name = args.object_name #"t1_zoomcan"
@@ -345,7 +348,10 @@ else:
     print("No frames being excluded.")
 print(f"Calibration Folder: {join(tf_gen.calibration_dir,tf_gen.mode)}")
 print(f"Object List: {obj_list}")
-input("Continue? (Ctrl+C to cancel)")
+
+if not args.force:
+    input("Continue? (Ctrl+C to cancel)")
+
 tf_gen.batch_generate(obj_list)
 
 print("Done.")
