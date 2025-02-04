@@ -500,8 +500,8 @@ int main(int argc, char* argv[])
 					bool force = config["tg_force"] == "True";
 					bool visualize = config["tg_visualize"] == "True";
 					std::string calibration_dir = config["tg_calibration_dir_windows"];
-					std::string calibration = config['tg_calibration_mode'];
-					std::string output_dir = config['tg_output_dir_windows'];
+					std::string calibration = config["tg_calibration_mode"];
+					std::string output_dir = config["tg_output_dir_windows"];
 
 					int range = std::stoi(degree_inc) * num_moves;
 					std::stringstream command_stream;
