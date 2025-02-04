@@ -498,12 +498,14 @@ int main(int argc, char* argv[])
 
 					// Generate transform
 					bool visualize = config["tg_visualize"] == "True";
+					int range = std::stoi(degree_inc) * num_moves;
 					std::stringstream command_stream;
 					command_stream 
 						<< "python3 " 
 						<< "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/scripts/transform_generator.py "
 						<< obj_name << " "
-						<< "-d " << degree_inc << " ";
+						<< "-d " << degree_inc << " "
+						<< "-r" << range << " ";
 
 					if (visualize) {
 						command_stream << "-v";
