@@ -517,6 +517,9 @@ int main(int argc, char* argv[])
 					std::cout << "\nExecuting Command: " << command; 
 					system(c_command);
 
+					// Recalculate angle
+					degree_tracker = degree_tracker % 360;
+
 					pause_return();
 					clr_screen();
 					loop = true;
@@ -546,6 +549,9 @@ int main(int argc, char* argv[])
 						}
 					}
 					
+					// Update degree tracker
+					degree_tracker += std::stoi(degree_inc);
+					degree_tracker = degree_tracker % 360;
 
 					// pause_return();
 					clr_screen();
