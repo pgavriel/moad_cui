@@ -559,11 +559,11 @@ int main(int argc, char* argv[])
 								//Sleep(4000);
 							} 
 						}
+						// Update degree tracker
+						degree_tracker += std::stoi(degree_inc);
+						degree_tracker = degree_tracker % 360;
 					}
 					
-					// Update degree tracker
-					// degree_tracker += std::stoi(degree_inc);
-					// degree_tracker = degree_tracker % 360;
 
 					// pause_return();
 					clr_screen();
