@@ -1,5 +1,5 @@
 output_dir=G:/
-object_name=checker_calibration
+object_name=test_1
 # Serial port Configuration (COM[x]) (Double digit ports will need to modify source code)
 serial_com_port=5
 # Delay before collecting data after movement (was 250)
