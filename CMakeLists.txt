@@ -2,13 +2,13 @@
 cmake_minimum_required (VERSION 3.8)
 
 # Use vcpkg to include PCL
-# set(CMAKE_TOOLCHAIN_FILE "C:/src/vcpkg/scripts/buildsystems/vcpkg.cmake")
+set(CMAKE_TOOLCHAIN_FILE "C:/src/vcpkg/scripts/buildsystems/vcpkg.cmake")
 
 project(MultiCamCui CXX)
 
 set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
 set(INC_DIR ${PROJECT_SOURCE_DIR}/include)
-# set(SER_DIR ${PROJECT_SOURCE_DIR}/../simple_serial_port)
+set(SER_DIR ${PROJECT_SOURCE_DIR}/../simple_serial_port)
 
 
 set(RS_INCLUDE_DIR "C:\\Program Files (x86)\\Intel RealSense SDK 2.0\\include") # folder where librealsense2 folder is found
@@ -26,7 +26,7 @@ find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})
 
 # set(PCL_DIR "C:\\src\\vcpkg\\installed\\x64-windows\\share\\pcl")
-# find_package(PCL 1.3 REQUIRED COMPONENTS)
+find_package(PCL 1.3 REQUIRED COMPONENTS)
 
 if(MSVC)
     string(REPLACE "/W3" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
@@ -56,7 +56,7 @@ add_executable (MultiCamCui
     ${SRC_DIR}/Property.cpp
     ${SRC_DIR}/TakePicture.cpp
     ${SRC_DIR}/DownloadEvf.cpp
-    
+
     ${SRC_DIR}/MenuHandler.cpp
     
     
@@ -75,13 +75,13 @@ set_target_properties(MultiCamCui PROPERTIES
 target_include_directories(MultiCamCui
   PUBLIC ${SRC_DIR}
   PUBLIC ${INC_DIR}
-#   PUBLIC ${INC_DIR}/Camera
-#   PUBLIC ${INC_DIR}/Class
-#   PUBLIC ${INC_DIR}/Command
-#   PUBLIC ${PROJECT_SOURCE_DIR}/../EDSDK/Header
-#   PUBLIC ${SER_DIR}
-#   PUBLIC ${RS_INCLUDE_DIR}
-#   PRIVATE ${PCL_INCLUDE_DIRS}
+  PUBLIC ${INC_DIR}/Camera
+  PUBLIC ${INC_DIR}/Class
+  PUBLIC ${INC_DIR}/Command
+  PUBLIC ${PROJECT_SOURCE_DIR}/../EDSDK/Header
+  PUBLIC ${SER_DIR}
+  PUBLIC ${RS_INCLUDE_DIR}
+  PRIVATE ${PCL_INCLUDE_DIRS}
   )
 
   
@@ -91,18 +91,18 @@ if(MSVC)
     target_link_libraries(MultiCamCui
         PRIVATE
             ${EDSDK_LDIR}/Library/EDSDK.lib
-            # ${PCL_LIBRARIES}
+            ${PCL_LIBRARIES}
         PUBLIC
-            # ${REALSENSE2_FOUND}
+            ${REALSENSE2_FOUND}
             ${OpenCV_LIBS}
     )
 elseif(UNIX AND NOT APPLE)
     target_link_libraries(MultiCamCui
         PRIVATE
-            # ${EDSDK_LDIR}/Library/libEDSDK.so
-            # ${PCL_LIBRARIES}
+            ${EDSDK_LDIR}/Library/libEDSDK.so
+            ${PCL_LIBRARIES}
         PUBLIC
-            # ${REALSENSE2_FOUND}
+            ${REALSENSE2_FOUND}
             ${OpenCV_LIBS}
     )
 elseif(APPLE)
