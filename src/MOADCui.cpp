@@ -42,6 +42,9 @@ std::map<std::string, std::string> config;
 std::string scan_folder;
 int rs_timeout;
 int dslr_timeout;
+int turntable_delay_ms;
+
+RealSenseHandler rshandle;
 
 
 std::map<std::string, std::string> loadParameters(const std::string& filename) {
@@ -566,11 +569,10 @@ int main(int argc, char* argv[])
 		{"7", getLiveView},
 		{"8", option8}
 	});
+	
 	menu_handler.setTitle("MOAD - CLI Menu");
-	menu_handler.initialize();
 
 	degree_tracker = 0;
-	obj_name;
 	std::smatch match_results;
     std::shared_ptr<std::thread> th = std::shared_ptr<std::thread>();
 	bool loop = true;
@@ -595,7 +597,7 @@ int main(int argc, char* argv[])
 
 
 	// Setup Realsense Cameras
-	RealSenseHandler rshandle;
+	
 	rs_timeout = stoi(config["rs_timeout_sec"]) * 1000;
 	if (bool(stoi(config["collect_rs"]))) {
 		cout << "\nAttempting Realsense setup...\n";
@@ -645,8 +647,8 @@ int main(int argc, char* argv[])
 		cout << "\nSkipping DSLR setup, 'collect_dslr=0'.\n";
 	}
 
-
 	// RUNNING MENU LOOP -----------------------------------------------------------------------------
+	menu_handler.initialize();
 	// while (true)
 	// {
 	// 	//control menu
@@ -1092,30 +1094,30 @@ int main(int argc, char* argv[])
 	// }
 
 	//Release camera list
-	if (canonhandle.cameraList != NULL)
-	{
-		EdsRelease(canonhandle.cameraList);
-	}
+	// if (canonhandle.cameraList != NULL)
+	// {
+	// 	EdsRelease(canonhandle.cameraList);
+	// }
 
-	// Release Camera
-	for (i = 0; i < canonhandle.cameraArray.size(); i++)
-	{
-		if (canonhandle.cameraArray[i] != NULL)
-		{
-			EdsRelease(canonhandle.cameraArray[i]);
-			canonhandle.cameraArray[i] = NULL;
-		}
-	}
-	//Remove elements before looping. Memory is automatically freed at the destructor of the vector when it leaves the scope.
-	canonhandle.cameraArray.clear();
-	canonhandle.bodyID.clear();
-	clr_screen();
+	// // Release Camera
+	// for (i = 0; i < canonhandle.cameraArray.size(); i++)
+	// {
+	// 	if (canonhandle.cameraArray[i] != NULL)
+	// 	{
+	// 		EdsRelease(canonhandle.cameraArray[i]);
+	// 		canonhandle.cameraArray[i] = NULL;
+	// 	}
+	// }
+	// //Remove elements before looping. Memory is automatically freed at the destructor of the vector when it leaves the scope.
+	// canonhandle.cameraArray.clear();
+	// canonhandle.bodyID.clear();
+	// clr_screen();
 
 	
-	if (isSDKLoaded)
-	{
-		EdsTerminateSDK();
-	}
+	// if (isSDKLoaded)
+	// {
+	// 	EdsTerminateSDK();
+	// }
 
 	return false;
 }
