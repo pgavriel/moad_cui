@@ -45,6 +45,7 @@ int dslr_timeout;
 int turntable_delay_ms;
 
 RealSenseHandler rshandle;
+SimpleSerial* Serial;
 
 
 std::map<std::string, std::string> loadParameters(const std::string& filename) {
@@ -191,12 +192,12 @@ bool fullScan() {
 		
 		// Issue command to move turntable.
 		char *send = &degree_inc[0];
-		bool is_sent = Serial.WriteSerialPort(send);
+		bool is_sent = Serial->WriteSerialPort(send);
 
 		if (is_sent) {
 			int wait_time = std::ceil(((abs(stoi(degree_inc))*200)+500)/1000)+5;
 			cout << "Message sent, waiting up to " << wait_time << " seconds.\n";
-			std::string incoming = Serial.ReadSerialPort(wait_time, "json");
+			std::string incoming = Serial->ReadSerialPort(wait_time, "json");
 			cout << "Incoming: " << incoming;// << endl;
 			// std::this_thread::sleep_for(250ms);
 			
@@ -437,12 +438,12 @@ bool turntableControl () {
 			break;
 		else {
 			char *send = &degree_inc[0];
-			bool is_sent = Serial.WriteSerialPort(send);
+			bool is_sent = Serial->WriteSerialPort(send);
 			// TODO: Calculate wait time based on degrees entered and motor speed ||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
 			if (is_sent) {
 				int wait_time = std::ceil(((abs(stoi(degree_inc))*200)+500)/1000)+5;
 				cout << "Message sent, waiting up to " << wait_time << " seconds.\n";
-				std::string incoming = Serial.ReadSerialPort(wait_time, "json");
+				std::string incoming = Serial->ReadSerialPort(wait_time, "json");
 				cout << "Incoming: " << incoming;// << endl;
 				//Sleep(4000);
 			} 
@@ -451,12 +452,16 @@ bool turntableControl () {
 		degree_tracker += std::stoi(degree_inc);
 		degree_tracker = degree_tracker % 360;
 	}
+
+	return false;
 }
 
 // TODO: Check for unused variables
 bool turntablePosition() {
 	cout << "\n\nEnter Turntable Position: ";
 	std::cin >> degree_tracker;
+
+	return false;
 }
 
 // TODO: Check for unused variables
@@ -620,8 +625,8 @@ int main(int argc, char* argv[])
 	com_port[7] = config["serial_com_port"].at(0);
 	DWORD COM_BAUD_RATE = CBR_9600;
 
-	SimpleSerial Serial(com_port, COM_BAUD_RATE);
-	if(Serial.connected_) {
+	Serial = new SimpleSerial(com_port, COM_BAUD_RATE);
+	if(Serial->connected_) {
 		cout << "Serial connected to " << com_port << endl;
 	} else {
 		cout << "Error creating serial connection.\n";
@@ -903,12 +908,12 @@ int main(int argc, char* argv[])
 						
 	// 					// Issue command to move turntable.
 	// 					char *send = &degree_inc[0];
-	// 					bool is_sent = Serial.WriteSerialPort(send);
+	// 					bool is_sent = Serial->WriteSerialPort(send);
 
 	// 					if (is_sent) {
 	// 						int wait_time = std::ceil(((abs(stoi(degree_inc))*200)+500)/1000)+5;
 	// 						cout << "Message sent, waiting up to " << wait_time << " seconds.\n";
-	// 						std::string incoming = Serial.ReadSerialPort(wait_time, "json");
+	// 						std::string incoming = Serial->ReadSerialPort(wait_time, "json");
 	// 						cout << "Incoming: " << incoming;// << endl;
 	// 						// std::this_thread::sleep_for(250ms);
 							
@@ -985,12 +990,12 @@ int main(int argc, char* argv[])
 	// 						break;
 	// 					else {
 	// 						char *send = &degree_inc[0];
-	// 						bool is_sent = Serial.WriteSerialPort(send);
+	// 						bool is_sent = Serial->WriteSerialPort(send);
 	// 						// TODO: Calculate wait time based on degrees entered and motor speed ||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
 	// 						if (is_sent) {
 	// 							int wait_time = std::ceil(((abs(stoi(degree_inc))*200)+500)/1000)+5;
 	// 							cout << "Message sent, waiting up to " << wait_time << " seconds.\n";
-	// 							std::string incoming = Serial.ReadSerialPort(wait_time, "json");
+	// 							std::string incoming = Serial->ReadSerialPort(wait_time, "json");
 	// 							cout << "Incoming: " << incoming;// << endl;
 	// 							//Sleep(4000);
 	// 						} 
