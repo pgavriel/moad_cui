@@ -271,7 +271,13 @@ bool collectSampleData() {
 		canonhandle.turntable_position = degree_tracker;
 		err = TakePicture(canonhandle.cameraArray, canonhandle.bodyID);
 		cout << err << endl;
-		EdsGetEvent();
+		// EdsGetEvent();
+		int c = 0;
+		while (canonhandle.images_downloaded < canonhandle.cameras_found && c < dslr_timeout) {
+			EdsGetEvent();
+			std::this_thread::sleep_for(50ms);
+			c++;
+		}
 	}
 	if (bool(stoi(config["collect_rs"]))) {
 		rshandle.turntable_position = degree_tracker;
@@ -546,6 +552,14 @@ bool TurntableSubMenu(){
 	return true;
 }
 
+bool downloadImages(){
+	DownloadImageAll(canonhandle.cameraArray, canonhandle.bodyID);
+	pause_return();
+	clr_screen();
+
+	return false;
+}
+
 bool option8(){
 	std::cout << "Change config options" << std::endl;
 	return false;
@@ -572,7 +586,7 @@ int main(int argc, char* argv[])
 		{"5", CameraSubmenu},
 		{"6", TurntableSubMenu},
 		{"7", getLiveView},
-		{"8", option8}
+		{"8", downloadImages}
 	});
 	
 	menu_handler.setTitle("MOAD - CLI Menu");
