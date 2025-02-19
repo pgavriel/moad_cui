@@ -491,33 +491,21 @@ bool generateTransform() {
 	return false;
 }
 
-bool option1(){
-	std::cout << "Option 1" << std::endl;
-	return false;
-}
-bool option2(){
-	std::cout << "Option 2" << std::endl;
-	return false;
-}
-bool option3(){
-	std::cout << "Option 3" << std::endl;
-	return false;
-}
-bool option4(){
+bool CalibrationSubMenu(){
 	MenuHandler calibration_menu_handler({
 		{"1", "Press Halfway"},
 		{"2", "Press Completely"},
 		{"3", "Press Off"}
 	},{
-		{"1", option1},
-		{"2", option1},
-		{"3", option1},
+		{"1", pressHalfway},
+		{"2", pressCompletely},
+		{"3", pressOff},
 	});
 	calibration_menu_handler.setTitle("Calibration Menu");
 	calibration_menu_handler.initialize();
 	return true;
 }
-bool option5(){
+bool CameraSubmenu(){
 	MenuHandler camera_menu_handler({
 		{"1", "TV"},
 		{"2", "AV"},
@@ -526,35 +514,32 @@ bool option5(){
 		{"5", "Drive Mode"},
 		{"6", "AE Mode"},
 	},{
-		{"1", option1},
-		{"2", option1},
-		{"3", option1},
-		{"4", option1},
-		{"5", option1},
-		{"6", option1},
+		{"1", setTV},
+		{"2", setAV},
+		{"3", setISO},
+		{"4", setWhiteBalance},
+		{"5", setDriveMode},
+		{"6", setAEMode},
 	});
 	camera_menu_handler.setTitle("Camera Options");
 	camera_menu_handler.initialize();
 	return true;
 }
-bool option6(){
+bool TurntableSubMenu(){
 	MenuHandler turntable_handler({
 		{"1", "Turntable Control"},
 		{"2", "Turntable Position"},
 	},{
-		{"1", option1},
-		{"2", option1},
+		{"1", turntableControl},
+		{"2", turntablePosition},
 	});
 	turntable_handler.setTitle("Turntable Options");
 	turntable_handler.initialize();
 	return true;
 }
-bool option7(){
-	std::cout << "Option 7" << std::endl;
-	return false;
-}
+
 bool option8(){
-	std::cout << "Option 8" << std::endl;
+	std::cout << "Change config options" << std::endl;
 	return false;
 }
 
@@ -572,13 +557,13 @@ int main(int argc, char* argv[])
 		{"8", "Configuration"},
 	},
 	{
-		{"1", option1},
-		{"2", option2},
-		{"3", option3},
-		{"4", option4},
-		{"5", option5},
-		{"6", option6},
-		{"7", option7},
+		{"1", fullScan},
+		{"2", collectSampleData},
+		{"3", setObjectName},
+		{"4", CalibrationSubMenu},
+		{"5", CameraSubmenu},
+		{"6", TurntableSubMenu},
+		{"7", getLiveView},
 		{"8", option8}
 	});
 	menu_handler.setTitle("MOAD - CLI Menu");
