@@ -560,6 +560,16 @@ bool downloadImages(){
 	return false;
 }
 
+bool liveView() {
+	StartEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
+	DownloadEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
+	EndEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
+	pause_return();
+	clr_screen();
+
+	return false;
+}
+
 bool option8(){
 	std::cout << "Change config options" << std::endl;
 	return false;
@@ -586,7 +596,7 @@ int main(int argc, char* argv[])
 		{"5", CameraSubmenu},
 		{"6", TurntableSubMenu},
 		{"7", getLiveView},
-		{"8", downloadImages}
+		{"8", liveView}
 	});
 	
 	menu_handler.setTitle("MOAD - CLI Menu");
