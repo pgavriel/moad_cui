@@ -5,9 +5,9 @@
 # Default values
 base_dir="/workspace"
 object_default="None"
-crop_sz_default="0.80" # was 0.42
+crop_sz_default="0.80" # was 0.4
 crop_z_default="-0.6" # was -0.6
-points_default="1000000" # 1000000
+points_default="5000000" # 1000000
 normal_method="model_output" # {open3d,model_output} (model_output can only be used if nerf was trained with computing normals on)
 
 # Get arguments or use default values

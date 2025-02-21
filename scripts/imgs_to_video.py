@@ -3,6 +3,14 @@ from os.path import join
 import cv2
 from pathlib import Path
 
+def ensure_directory_exists(directory):
+    path = Path(directory)
+    if path.exists():
+        print(f"Directory already exists: {directory}")
+    else:
+        path.mkdir(parents=True, exist_ok=True)
+        print(f"Created directory: {directory}")
+
 def create_video_from_images(search_dir, recursive, output_dir, output_file, downscale_factor=1,fps=30,exclude_strings=None):
     # Validate inputs
     search_dir = Path(search_dir)
@@ -27,12 +35,13 @@ def create_video_from_images(search_dir, recursive, output_dir, output_file, dow
     else:
         print(f"Images Found: {len(images)}")
         if exclude_strings is not None:
-            print("fExcluding Strings: {exclude_strings}...")
+            print(f"Excluding Strings: {exclude_strings}...")
             images = [img for img in images if not any(excl in img.name for excl in exclude_strings)]
             print(f"Images After Exlcusion: {len(images)}")
 
     # Read images and process them
     frames = []
+    images = sorted(images)
     for img_path in images:
         img = cv2.imread(str(img_path))
         if img is None:
@@ -43,9 +52,11 @@ def create_video_from_images(search_dir, recursive, output_dir, output_file, dow
         if downscale_factor > 1:
             new_width = img.shape[1] // downscale_factor
             new_height = img.shape[0] // downscale_factor
-            img = cv2.resize(img, (new_width, new_height), interpolation=cv2.INTER_AREA)
+            img = cv2.resize(img, (int(new_width), int(new_height)), interpolation=cv2.INTER_AREA)
         
         frames.append(img)
+        if len(frames) % 10 == 0:
+            print(f"Loaded {len(frames)} frames.")
 
     if not frames:
         raise ValueError("No valid images were loaded. Ensure the files are accessible and valid image formats.")
@@ -72,12 +83,46 @@ def create_video_from_images(search_dir, recursive, output_dir, output_file, dow
 
 # Example usage
 if __name__ == "__main__":
+    # Define parameters
+    USING_MOAD_DATA = True
+
+    if USING_MOAD_DATA:
+        root_dir = "/home/csrobot/data-mount"
+        object_name = "a3_mustard"
+        subfolder = "pose-a/DSLR"
+        search_dir = join(root_dir,object_name,subfolder)
+
+        recursive_search = True
+        search_exclude_strings = ["cam1","cam2","cam4","cam5"]
+
+        output_file = f"{object_name}_DSLR_cam3.mp4"
+        output_dir = join(root_dir,object_name, "media")
+        ensure_directory_exists(output_dir)
+        output_fps = 24
+        downscale_factor = 4.0
+    else:
+        dataset = "solo_2"
+        search_dir = join("/home/csrobot/Unity/SynthData/Fetchit",dataset)
+        # search_dir = "/home/csrobot/synth_perception/testing"
+        # search_dir = "/home/csrobot/Unity/SynthData/EngineTest/engine_fruit"
+
+        recursive_search = True
+        search_exclude_strings = ["cam1","cam2","cam4","cam5"]
+
+        # output_dir = "/home/csrobot/synth_perception"
+        output_dir = search_dir
+        output_file = f"dataset_{dataset}.mp4"
+        output_fps = 24
+
+        downscale_factor = 1.0
+
+    # Create Video
     create_video_from_images(
-        search_dir = "/home/csrobot/Unity/Data/EngineTest/solo",
-        recursive = True,
-        output_dir = "/home/csrobot/Unity/Data/EngineTest/solo",
-        output_file = "output_video.mp4",
-        downscale_factor = 1.0,
-        fps = 2,
-        exclude_strings=["semantic"]
+        search_dir = search_dir,
+        recursive = recursive_search,
+        output_dir = output_dir,
+        output_file = output_file,
+        downscale_factor = downscale_factor,
+        fps = output_fps,
+        exclude_strings=search_exclude_strings
     )

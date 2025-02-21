@@ -16,7 +16,7 @@ echo "Checking in folder: $parent_dir"
 # Find the most recent folder
 most_recent_folder=$(ls -d $parent_dir/*/ | sort -r | head -n 1)
 
-# Export pointcloud from most recent config
+# Open viewer with most recent config
 if [ -n "$most_recent_folder" ]; then
     echo "Most recent folder: $most_recent_folder"
     model_path="$most_recent_folder/config.yml"

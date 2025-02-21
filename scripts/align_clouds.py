@@ -1,7 +1,21 @@
 import open3d as o3d
 import numpy as np
+import os
 from os.path import join
 import copy 
+import tkinter as tk
+from tkinter import filedialog
+
+def select_point_cloud_files(root_dir, select="Point Cloud File"):
+    root = tk.Tk()
+    root.withdraw()  # Hide the main window
+    files = filedialog.askopenfilename(
+        initialdir=root_dir,
+        title=f"Select {select}",
+        filetypes=[("Point Cloud Files", "*.ply *.pcd *.xyz *.las *.laz")]
+    )
+    print (f"{select}: {files}")
+    return files
 
 def euler_to_rotation_matrix(roll_deg, pitch_deg, yaw_deg):
     """
@@ -180,7 +194,9 @@ def colored_cloud_registration(source,target,vx_rad_list,max_iter_list,viz_downs
     https://www.open3d.org/docs/release/tutorial/pipelines/colored_pointcloud_registration.html     
     '''
     voxel_radius = vx_rad_list
+    print(f"Voxel Radii: {voxel_radius}")
     max_iter = max_iter_list
+    print(f"Max Iter: {max_iter}")
     assert len(voxel_radius) == len(max_iter)
 
     current_transformation = np.identity(4)
@@ -190,7 +206,7 @@ def colored_cloud_registration(source,target,vx_rad_list,max_iter_list,viz_downs
         radius = voxel_radius[scale]
         print([iter, radius, scale])
 
-        print("3-1. Downsample with a voxel size %.2f" % radius)
+        print("3-1. Downsample with a voxel size %.4f" % radius)
         source_down = source.voxel_down_sample(radius)
         target_down = target.voxel_down_sample(radius)
 
@@ -237,8 +253,8 @@ def visualize_with_keybindings(pcd_list,crop_bb=None):
     placeholder = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
     vis.add_geometry(placeholder)
 
-    if crop_bb is not None:
-        vis.add_geometry(crop_bb)
+    # if crop_bb is not None:
+    #     vis.add_geometry(crop_bb)
 
     # Store camera parameters to prevent view reset
     def capture_camera_params(vis):
@@ -283,6 +299,44 @@ def visualize_with_keybindings(pcd_list,crop_bb=None):
     for i in range(len(pcd_list)):
         vis.register_key_callback(ord(str(i + 1)), make_toggle_callback(i))  # Press "1", "2", etc.
 
+    if crop_bb is not None:
+        vis.add_geometry(crop_bb)
+        fixed_center = crop_bb.get_center()
+        def adjust_bbox_size(vis, axis, delta, crop_bb):
+            """Adjust the bounding box size along a specified axis."""
+            # nonlocal crop_bb, fixed_center
+            nonlocal camera_params
+            camera_params = capture_camera_params(vis)
+            bb_center = crop_bb.get_center()
+            bb_extent = crop_bb.get_extent()
+            print(f"Center: {bb_center}")
+            print(f"Extent: {bb_extent}")
+            min_bound = np.array(crop_bb.min_bound)
+            print(f"Min: {min_bound}")
+            # max_bound = np.array(bbox.max_bound)
+            if axis == 'z_height':
+                bb_extent[2] +=  delta
+                print(f"New Extent: {bb_extent}")
+            # elif axis == 'y':
+            #     max_bound[1] += delta
+            # elif axis == 'z':
+            #     max_bound[2] += delta
+            vis.remove_geometry(crop_bb)
+            crop_bb = generate_bounding_box(fixed_center,bb_extent[0],bb_extent[1],min_bound[2],bb_extent[2])
+            # bbox.min_bound = o3d.utility.Vector3dVector(min_bound)
+            # bbox.max_bound = o3d.utility.Vector3dVector(max_bound)
+            # vis.update_geometry(crop_bb)
+            vis.add_geometry(crop_bb)
+            vis.update_renderer()
+            set_camera_params(vis, camera_params)
+        delta = 0.1
+        vis.register_key_callback(ord("A"), lambda vis: adjust_bbox_size(vis, 'z_height', delta, crop_bb))  # Increase zbot
+        vis.register_key_callback(ord("Z"), lambda vis: adjust_bbox_size(vis, 'z_height', -delta, crop_bb)) # Decrease zbot
+        # vis.register_key_callback(ord("Y"), lambda vis: adjust_bbox_size(vis, 'y', delta))  # Increase Y
+        # vis.register_key_callback(ord("H"), lambda vis: adjust_bbox_size(vis, 'y', -delta)) # Decrease Y
+        # vis.register_key_callback(ord("U"), lambda vis: adjust_bbox_size(vis, 'z', delta))  # Increase Z
+        # vis.register_key_callback(ord("J"), lambda vis: adjust_bbox_size(vis, 'z', -delta)) # Decrease Z
+
 
     print("Controls:")
     for i in range(len(pcd_list)):
@@ -292,126 +346,140 @@ def visualize_with_keybindings(pcd_list,crop_bb=None):
     vis.run()
     vis.destroy_window()
 
-# Load the point clouds
-root_dir = "/home/csrobot/Documents/pointclouds"
-root_dir = "/home/csrobot/data-mount/pointclouds/engine"
-top_pc = "a2-engine-cloud-2-normals.ply"
-bot_pc = "a2-engine-bot-cloud-1-normals.ply"
-output_file = 'pc_aligned.ply'
-origin_mode = "centermass" # [floor, bbcenter, centermass]
-pcd1 = o3d.io.read_point_cloud(join(root_dir,top_pc))
-pcd2 = o3d.io.read_point_cloud(join(root_dir,bot_pc))
-metrics1 = analyze_pointcloud(pcd1,top_pc)
-metrics2 = analyze_pointcloud(pcd2,bot_pc)
+if __name__ == '__main__':
+    # Load the point clouds
+    root_dir = "/home/csrobot/data-mount/a3_windex_pose-c/exports"
+    bot_pc = "a3_windex_pose-c-cloud-1-normals.ply"
+    pcd2 = o3d.io.read_point_cloud(join(root_dir,bot_pc))
 
-# Stage 1
-# Crop Bounding Box
-bounds = {
-    'x': 0.25,
-    'y': 0.3,
-    'z_bot': -0.035,
-    'height': 0.25
-}
-bb = generate_bounding_box(metrics1['bounding_box_center'],bounds['x'],bounds['y'],bounds['z_bot'],bounds['height'])
-
-#Stage 2
-#Filter Settings
-filter_neighbors = 30
-filter_ratio = 1.5
-
-# Stage 3
-# Initial rotation matrix for roughly aligning PCD2
-rotation_matrix = euler_to_rotation_matrix(0, 180, 0)
-# Parameters for ICP Registration
-voxel_radius = [0.01, 0.002, 0.001]
-max_iter = [500, 100, 100]
-
-stage = 4#4
-
-
-viz_all = True
-
-# # Visualize aligned point clouds
-# o3d.visualization.draw_geometries([pcd1, pcd2])
-#STAGE 1: Determine Appropriate Crop Bounding Box
-if stage >= 1:
-    pass
-    if viz_all: visualize_with_keybindings([pcd1, pcd2],crop_bb=bb)
-# exit()
-#STAGE 2: Apply Crop & Filtering
-if stage >= 2:
-    pcd1 = crop_cloud(pcd1, bb)
-    pcd2 = crop_cloud(pcd2, bb)
+    root_dir = "/home/csrobot/data-mount/a3_windex_pose-a/exports"
+    # root_dir = "/home/csrobot/data-mount/fused_data/engine/dense2"
+    # pc1_file = filedialog.askopenfilename(title="Select PC1", initialdir=root_dir,filetypes=accepted_filetypes)
+    # pc1_file = select_point_cloud_files(root_dir, "Point Cloud 1")
+    # pc2_file = select_point_cloud_files(root_dir, "Point Cloud 2 (Align to PC1)")
+    top_pc = "a3_windex_pose-a-cloud-1-normals.ply"
+    pcd1 = o3d.io.read_point_cloud(join(root_dir,top_pc))
     
-    if viz_all: visualize_with_keybindings([pcd1, pcd2])
-
-#STAGE 3: Automatic Alignment
-if stage >= 3: 
-    print("Stage 3")
-    # Apply filtering
-    pcd1_filtered, outliers1 = filter_statistical_outliers(pcd1, nb_neighbors=filter_neighbors, std_ratio=filter_ratio)
-    pcd2_filtered, outliers2 = filter_statistical_outliers(pcd2, nb_neighbors=filter_neighbors, std_ratio=filter_ratio)
-    if viz_all: visualize_with_keybindings([pcd1_filtered, pcd2_filtered])
-    # Initial 180 degree rotation
-    pcd2.rotate(rotation_matrix, center=metrics2['bounding_box_center'])
-    pcd2_filtered.rotate(rotation_matrix, center=metrics2['bounding_box_center'])
-     # Align Bounding Boxes
-    aabb = pcd1_filtered.get_axis_aligned_bounding_box()
-    pcd1_center = aabb.get_center()
-    aabb = pcd2_filtered.get_axis_aligned_bounding_box()
-    pcd2_center = aabb.get_center()
-    bb_translate = pcd1_center - pcd2_center
-    print(f"PCD1 Center: {pcd1_center}")
-    print(f"PCD2 Center: {pcd2_center}")
-    print(f"Align Translate: {bb_translate}")
-    pcd2.translate(bb_translate)
-    pcd2_filtered.translate(bb_translate)
-    if viz_all: visualize_with_keybindings([pcd1_filtered, pcd2_filtered])
+    output_file = 'conn-wp_aligned.ply'
+    origin_mode = "centermass" # [floor, bbcenter, centermass]
     # exit()
-    # Calculate Alignment transform using filtered clouds
-    transformation = colored_cloud_registration(pcd2_filtered, pcd1_filtered, voxel_radius, max_iter)
-    # Apply transformation to the original point cloud
-    pcd2.transform(transformation)
-    pcd2_filtered.transform(transformation)
+    # pcd1 = o3d.io.read_point_cloud(pc1_file)
+    # pcd2 = o3d.io.read_point_cloud(pc2_file)
+    metrics1 = analyze_pointcloud(pcd1,"PC1")
+    metrics2 = analyze_pointcloud(pcd2,"PC2")
 
-#STAGE 4: Fusion, Global Alignment, and export
-if stage == 4:
-    # Fuse the point clouds
-    fused_pcd = pcd1 + pcd2
-    
-    fused_filtered, outliers2 = filter_statistical_outliers(fused_pcd, nb_neighbors=filter_neighbors, std_ratio=filter_ratio)
-    # Get the bounding box of the filtered fused cloud
-    bbox = fused_filtered.get_axis_aligned_bounding_box()
-    bbox_min = bbox.get_min_bound()  # [x_min, y_min, z_min]
-    bb_center = bbox.get_center() # bounding box center
-    cloud_center = fused_filtered.get_center() # center of mass
+    # Stage 1
+    # Crop Bounding Box
+    bounds = {
+        'x': 0.23,
+        'y': 0.36,
+        'z_bot': -0.16,
+        'height': 0.4
+    }
+    bb = generate_bounding_box(metrics1['bounding_box_center'],bounds['x'],bounds['y'],bounds['z_bot'],bounds['height'])
 
-    print(f"Origin Mode: {origin_mode}")
-    if origin_mode == "floor:":
-        origin = cloud_center
-        origin[2] = bbox_min[2]
-    elif origin_mode == "bbcenter":
-        origin = bb_center
-    elif origin_mode == "centermass":
-        origin = cloud_center
-    else:
-        print("WARNING: origin mode not recognized, set to [0,0,0]")
-        origin = [0,0,0]
-    
-    # Apply origin translation
-    translation_vector = np.array(-origin)
-    print(f"Translating Fused Cloud: {translation_vector}")
-    fused_pcd.translate(translation_vector)
+    #Stage 2
+    #Filter Settings
+    filter_neighbors = 30
+    filter_ratio = 1.5
 
-    visualize_with_keybindings([fused_pcd],crop_bb=None)
+    # Stage 3
+    # Initial rotation matrix for roughly aligning PCD2
+    rotation_matrix = euler_to_rotation_matrix(-90, 180, 0)
+    # Parameters for ICP Registration
+    voxel_radius = [0.005, 0.002, 0.001]
+    max_iter = [500, 100, 100]
+    # voxel_radius = [0.001]
+    # max_iter = [1000]
 
-    # Save the fused and recentered point cloud to the specified file
-    output_path = join(root_dir,output_file)
-    o3d.io.write_point_cloud(output_path, fused_pcd)
-    print(f"Fused point cloud saved to {output_path}")
 
-# if stage > 1: bb = None
-# if stage <= 3:
-#     visualize_with_keybindings([pcd1, pcd2],crop_bb=bb)
-# else:
-#     visualize_with_keybindings([pcd1_filtered, pcd2_filtered],crop_bb=bb)
+    stage = 4#4
+
+
+    viz_all = True
+
+    # # Visualize aligned point clouds
+    # o3d.visualization.draw_geometries([pcd1, pcd2])
+    #STAGE 1: Determine Appropriate Crop Bounding Box
+    if stage >= 1:
+        pass
+        # if viz_all: visualize_with_keybindings([pcd1, pcd2],crop_bb=bb)
+        if viz_all: visualize_with_keybindings([pcd1],crop_bb=bb)
+    # exit()
+    #STAGE 2: Apply Crop & Filtering
+    if stage >= 2:
+        pcd1 = crop_cloud(pcd1, bb)
+        pcd2 = crop_cloud(pcd2, bb)
+        
+        if viz_all: visualize_with_keybindings([pcd1, pcd2])
+
+    #STAGE 3: Automatic Alignment
+    if stage >= 3: 
+        print("Stage 3")
+        # Apply filtering
+        pcd1_filtered, outliers1 = filter_statistical_outliers(pcd1, nb_neighbors=filter_neighbors, std_ratio=filter_ratio)
+        pcd2_filtered, outliers2 = filter_statistical_outliers(pcd2, nb_neighbors=filter_neighbors, std_ratio=filter_ratio)
+        if viz_all: visualize_with_keybindings([pcd1_filtered, pcd2_filtered])
+        # Initial 180 degree rotation
+        pcd2.rotate(rotation_matrix, center=metrics2['bounding_box_center'])
+        pcd2_filtered.rotate(rotation_matrix, center=metrics2['bounding_box_center'])
+        # Align Bounding Boxes
+        aabb = pcd1_filtered.get_axis_aligned_bounding_box()
+        pcd1_center = aabb.get_center()
+        aabb = pcd2_filtered.get_axis_aligned_bounding_box()
+        pcd2_center = aabb.get_center()
+        bb_translate = pcd1_center - pcd2_center
+        print(f"PCD1 Center: {pcd1_center}")
+        print(f"PCD2 Center: {pcd2_center}")
+        print(f"Align Translate: {bb_translate}")
+        pcd2.translate(bb_translate)
+        pcd2_filtered.translate(bb_translate)
+        if viz_all: visualize_with_keybindings([pcd1_filtered, pcd2_filtered])
+        # exit()
+        # Calculate Alignment transform using filtered clouds
+        transformation = colored_cloud_registration(pcd2_filtered, pcd1_filtered, voxel_radius, max_iter)
+        # Apply transformation to the original point cloud
+        pcd2.transform(transformation)
+        pcd2_filtered.transform(transformation)
+
+    #STAGE 4: Fusion, Global Alignment, and export
+    if stage == 4:
+        # Fuse the point clouds
+        fused_pcd = pcd1 + pcd2
+        
+        fused_filtered, outliers2 = filter_statistical_outliers(fused_pcd, nb_neighbors=filter_neighbors, std_ratio=filter_ratio)
+        # Get the bounding box of the filtered fused cloud
+        bbox = fused_filtered.get_axis_aligned_bounding_box()
+        bbox_min = bbox.get_min_bound()  # [x_min, y_min, z_min]
+        bb_center = bbox.get_center() # bounding box center
+        cloud_center = fused_filtered.get_center() # center of mass
+
+        print(f"Origin Mode: {origin_mode}")
+        if origin_mode == "floor:":
+            origin = cloud_center
+            origin[2] = bbox_min[2]
+        elif origin_mode == "bbcenter":
+            origin = bb_center
+        elif origin_mode == "centermass":
+            origin = cloud_center
+        else:
+            print("WARNING: origin mode not recognized, set to [0,0,0]")
+            origin = [0,0,0]
+        
+        # Apply origin translation
+        translation_vector = np.array(-origin)
+        print(f"Translating Fused Cloud: {translation_vector}")
+        fused_pcd.translate(translation_vector)
+
+        visualize_with_keybindings([fused_pcd],crop_bb=None)
+
+        # Save the fused and recentered point cloud to the specified file
+        output_path = join(root_dir,output_file)
+        o3d.io.write_point_cloud(output_path, fused_pcd)
+        print(f"Fused point cloud saved to {output_path}")
+
+    # if stage > 1: bb = None
+    # if stage <= 3:
+    #     visualize_with_keybindings([pcd1, pcd2],crop_bb=bb)
+    # else:
+    #     visualize_with_keybindings([pcd1_filtered, pcd2_filtered],crop_bb=bb)
