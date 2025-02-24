@@ -1,6 +1,9 @@
 #include <iostream>
 #include <string>
 #include <map>
+#include <mutex>
+#include <thread>
+#include <chrono>
 
 #include "tabulate.hpp"
 
@@ -10,6 +13,7 @@ private:
     std::map<std::string, bool (*)()> menu_action;
     std::string title;
     std::string help_title;
+    std::mutex print_mtx;
 public:
     MenuHandler(
         std::map<std::string, std::string>, 
