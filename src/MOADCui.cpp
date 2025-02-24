@@ -132,6 +132,26 @@ int create_folder(std::string path, bool quiet = false) {
 	return 0;
 }
 
+void create_obj_info_json(std::string path) {
+	std::string filename = "object_info";
+	if (fs::exists(path)){
+		std::stringstream command_stream;
+		command_stream 
+			<< "python3 " 
+			<< "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/scripts/create_object_info.py "
+			<< filename << " "
+			<< "-p " << path << " ";
+
+		// Execute command
+		std::string command = command_stream.str(); 
+		const char* c_command = command.c_str();
+		std::cout << "\nExecuting Command: " << command; 
+		system(c_command);
+	}
+	else {
+		std::cout << "WARNING: folder " << path << " does not exist." << std::endl;
+	}
+}
 void validate_input(std::string text, std::string& input, std::regex validation) {
 	bool validated = false;
 	do {
@@ -620,6 +640,8 @@ int main(int argc, char* argv[])
 	// Create object folder 
 	scan_folder = config["output_dir"]+"/"+config["object_name"];
     create_folder(scan_folder);
+	// Create object info template
+	create_obj_info_json(scan_folder);
 	// Set initial Object name
 	obj_name = config["object_name"];
 	int turntable_delay_ms = stoi(config["turntable_delay_ms"]);

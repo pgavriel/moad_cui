@@ -1,7 +1,17 @@
 import os
+import argparse
+import platform
 from os.path import join
 import json
 from datetime import datetime
+
+def check_os():
+    if os.name == "nt":
+        return "Windows"
+    elif os.name == "posix":
+        return platform.system()
+    else:
+        return "Unknown"
 
 def create_template_json(directory,object_name=""):
     # Check if the directory exists
@@ -50,10 +60,18 @@ def create_template_json(directory,object_name=""):
 
 # Example usage:
 if __name__ == "__main__":
-    root_dir = "/home/csrobot/data-mount"
-    target_object = "a3_mustard"  # Replace with the desired directory
-    target_path = join(root_dir,target_object)
+    is_linux = check_os() == "Linux"
 
+    # Check arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument('object_name', help="Name of the scanned object")
+    parser.add_argument('-p', '--path', type=str, default="/home/csrobot/data-mount" if is_linux else "G:/", help="Directory where the object is located")
+
+    args = parser.parse_args()
+
+    root_dir = args.path
+    target_object = args.object_name  # Replace with the desired directory
+    target_path = join(root_dir,target_object)
 
     if os.path.exists(target_path):
         if not os.path.isfile(join(target_path,"object_info.json")):
