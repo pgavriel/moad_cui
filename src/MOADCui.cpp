@@ -89,7 +89,7 @@ void clr_screen()
 {
 	// cout << "\033[2J"; // screen clr
 	// cout << "\033[0;0H"; // move low=0, column=0
-	cout << "\n\n\n\n\n";
+	// cout << "\n\n\n\n\n";
 }
 
 EdsInt32 getvalue()
@@ -677,6 +677,8 @@ int main(int argc, char* argv[])
 	}
 
 	// RUNNING MENU LOOP -----------------------------------------------------------------------------
+	menu_handler.ClearScreen();
+	std::this_thread::sleep_for(100ms);
 	menu_handler.initialize();
 	// while (true)
 	// {

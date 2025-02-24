@@ -1,5 +1,7 @@
 #include "MenuHandler.h"
 
+using namespace std::chrono_literals;
+
 MenuHandler::MenuHandler(
     std::map<std::string, std::string> menu,
     std::map<std::string, bool (*)()> actions)
@@ -16,7 +18,7 @@ void MenuHandler::initialize() {
         // Show Menu
         this->ShowMenu();
         // Get input
-        std::cout << ">";
+        std::cout << "> ";
         std::cin >> input;
         // Execute function
         if (input != "r" && input != "R") {
@@ -27,6 +29,7 @@ void MenuHandler::initialize() {
         }
         // Clean Screen
         this->ClearScreen();
+        std::this_thread::sleep_for(100ms);
     }
     while (input != "r" && input != "R");
 }
@@ -67,7 +70,7 @@ void MenuHandler::SelectMenu(std::string item){
 }
 
 void MenuHandler::ClearScreen() {
-    std::cout << "\x1B[2J\x1B[H";
+    std::cout << "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n" << std::endl;
 }
 
 void MenuHandler::WaitUntilKeypress() {
