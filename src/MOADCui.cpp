@@ -360,6 +360,9 @@ bool setObjectName() {
 	curr_pose = get_last_pose() + 1;
 	object_info["Pose"] = curr_pose;
 
+	// Create the .json file
+	create_obj_info_json(config["output_dir"]);
+
 	// Do handler objects need a config still?
 	rshandle.update_config(config);
 	rshandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\realsense";
