@@ -676,8 +676,8 @@ int main(int argc, char* argv[])
 	obj_name = config["object_name"];
 	int turntable_delay_ms = stoi(config["turntable_delay_ms"]);
 
-	// Change pose
-	curr_pose = get_last_pose() + 1;
+	// Get last pose
+	curr_pose = get_last_pose();
 
 	// Setup Realsense Cameras
 	rs_timeout = stoi(config["rs_timeout_sec"]) * 1000;
@@ -728,6 +728,10 @@ int main(int argc, char* argv[])
 	} else {
 		cout << "\nSkipping DSLR setup, 'collect_dslr=0'.\n";
 	}
+	
+	// Change pose
+	curr_pose = get_last_pose() + 1;
+
 	object_info["Object Name"] = obj_name;
 	object_info["Turntable Pos"] = std::to_string(degree_tracker);
 	object_info["Pose"] = curr_pose;
