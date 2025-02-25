@@ -172,11 +172,11 @@ void validate_input(std::string text, std::string& input, std::regex validation)
 }
 
 char get_last_pose() {
-	std::string path = config['output_dir'] + "/" + obj_name;
-	char last_pose = 'a';
+	std::string path = config["output_dir"] + "/" + obj_name;
+	char last_pose = 'a' - 1;
 	// Check if the directory exists
 	if (!fs::exists(path) || !fs::is_directory(path)) {
-		return 'a';
+		return 'a' - 1;
 	}
 	
 	// Check for files that start with 'pose-'
@@ -184,8 +184,9 @@ char get_last_pose() {
 		if (fs::is_directory(entry)) {
 			std::string name = entry.path().filename().string();
 			if (name.find("pose-") != std::string::npos) {
-				if (last_pose < name[name.length - 1]) {
-					last_pose = name[name.length - 1];
+				int length = name.length();
+				if (last_pose < name[length - 1]) {
+					last_pose = name[length - 1];
 				}
 			}
 		}
