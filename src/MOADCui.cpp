@@ -35,6 +35,7 @@ using std::cout;
 using std::endl;
 
 std::string control_number = "";
+char curr_pose = 'a';
 bool keyflag;
 int degree_tracker = 0;
 std::string obj_name;
@@ -315,6 +316,7 @@ bool setObjectName() {
 	std::cin >> obj_name; 
 	scan_folder = config["output_dir"]+"/"+obj_name;
 	create_folder(scan_folder);
+	create_obj_info_json(scan_folder);
 	config["object_name"] = obj_name;
 	// Do handler objects need a config still?
 	rshandle.update_config(config);
@@ -685,7 +687,7 @@ int main(int argc, char* argv[])
 		cout << "\nEntering DSLR Setup...\n";
 		// CanonHandler canonhandle;
 		canonhandle.initialize();
-		canonhandle.save_dir = scan_folder + "\\DSLR";
+		canonhandle.save_dir = scan_folder + "\\pose-a\\DSLR";
 		create_folder(canonhandle.save_dir,true);
 		PreSetting(canonhandle.cameraArray, canonhandle.bodyID);
 		canonhandle.rename_cameras = bool(stoi(config["dslr_name_override"]));
