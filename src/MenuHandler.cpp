@@ -49,6 +49,12 @@ void MenuHandler::ShowMenu() {
 
     table.format().border("").border_top("").corner("");
     table.column(0).format().width(3);
+
+    info.row(0).cell(0).format().border_bottom("").corner_bottom_left("").corner_bottom_right("").border_right(":");
+    info.row(0).cell(1).format().border_bottom("").corner_bottom_left("").corner_bottom_right("").border_left(":");
+    info.row(1).cell(0).format().border_top("").corner_top_left("").corner_top_right("").border_right(":");
+    info.row(1).cell(1).format().border_top("").corner_top_left("").corner_top_right("").border_left(":");
+
     if (this->title != "") {
         std::cout << this->title << std::endl;
     }

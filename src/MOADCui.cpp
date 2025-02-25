@@ -538,7 +538,7 @@ bool CalibrationSubMenu(){
 		{"1", pressHalfway},
 		{"2", pressCompletely},
 		{"3", pressOff},
-	}, {});
+	}, object_info);
 	calibration_menu_handler.setTitle("Calibration Menu");
 	calibration_menu_handler.initialize();
 	return true;
@@ -558,7 +558,7 @@ bool CameraSubmenu(){
 		{"4", setWhiteBalance},
 		{"5", setDriveMode},
 		{"6", setAEMode},
-	}, {});
+	}, object_info);
 	camera_menu_handler.setTitle("Camera Options");
 	camera_menu_handler.initialize();
 	return true;
@@ -570,7 +570,7 @@ bool TurntableSubMenu(){
 	},{
 		{"1", turntableControl},
 		{"2", turntablePosition},
-	},{});
+	}, object_info);
 	turntable_handler.setTitle("Turntable Options");
 	turntable_handler.initialize();
 	return true;
@@ -681,7 +681,7 @@ int main(int argc, char* argv[])
 		cout << "\nSkipping DSLR setup, 'collect_dslr=0'.\n";
 	}
 	object_info["Object Name"] = obj_name;
-	object_info["Turntable Pos"] = degree_tracker;
+	object_info["Turntable Pos"] = std::to_string(degree_tracker);
 	// RUNNING MENU LOOP -----------------------------------------------------------------------------
 	MenuHandler menu_handler({
 		{"1", "Full Scan"},
