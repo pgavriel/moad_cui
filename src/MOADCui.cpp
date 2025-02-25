@@ -320,6 +320,7 @@ bool setObjectName() {
 	create_folder(scan_folder);
 	create_obj_info_json(scan_folder);
 	config["object_name"] = obj_name;
+	object_info["Object Name"] = obj_name;
 	// Do handler objects need a config still?
 	rshandle.update_config(config);
 	rshandle.save_dir = scan_folder + "\\realsense";
@@ -483,6 +484,8 @@ bool turntableControl () {
 		degree_tracker = degree_tracker % 360;
 	}
 
+	object_info["Turntable Pos"] = degree_tracker;
+
 	return false;
 }
 
@@ -491,6 +494,8 @@ bool turntablePosition() {
 	cout << "\n\nEnter Turntable Position: ";
 	std::cin >> degree_tracker;
 
+	object_info["Turntable Pos"] = degree_tracker;
+	
 	return false;
 }
 
