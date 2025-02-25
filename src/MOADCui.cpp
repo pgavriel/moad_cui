@@ -484,7 +484,7 @@ bool turntableControl () {
 		degree_tracker = degree_tracker % 360;
 	}
 
-	object_info["Turntable Pos"] = degree_tracker;
+	object_info["Turntable Pos"] = std::to_string(degree_tracker);
 
 	return false;
 }
@@ -494,7 +494,7 @@ bool turntablePosition() {
 	cout << "\n\nEnter Turntable Position: ";
 	std::cin >> degree_tracker;
 
-	object_info["Turntable Pos"] = degree_tracker;
+	object_info["Turntable Pos"] = std::to_string(degree_tracker);
 	
 	return false;
 }
