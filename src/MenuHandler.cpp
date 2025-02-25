@@ -30,7 +30,6 @@ void MenuHandler::initialize() {
         }
         // Clean Screen
         this->ClearScreen();
-        std::this_thread::sleep_for(100ms);
     }
     while (input != "r" && input != "R");
 }

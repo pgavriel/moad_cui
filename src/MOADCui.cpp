@@ -155,6 +155,7 @@ void create_obj_info_json(std::string path) {
 		std::cout << "WARNING: folder " << path << " does not exist." << std::endl;
 	}
 }
+
 void validate_input(std::string text, std::string& input, std::regex validation) {
 	bool validated = false;
 	do {
@@ -168,6 +169,28 @@ void validate_input(std::string text, std::string& input, std::regex validation)
 		}
 	}
 	while (!validated);
+}
+
+char get_last_pose() {
+	std::string path = config['output_dir'] + "/" + obj_name;
+	char last_pose = 'a';
+	// Check if the directory exists
+	if (!fs::exists(path) || !fs::is_directory(path)) {
+		return 'a';
+	}
+	
+	// Check for files that start with 'pose-'
+	for (const auto& entry : fs::directory_iterator(path)) {
+		if (fs::is_directory(entry)) {
+			std::string name = entry.path().filename().string();
+			if (name.find("pose-") != std::string::npos) {
+				if (last_pose < name[name.length - 1]) {
+					last_pose = name[name.length - 1];
+				}
+			}
+		}
+	}
+	return last_pose;
 }
 
 // TODO: Check Degree Tracker
@@ -188,6 +211,11 @@ bool fullScan() {
 		// Collect DSLR Data
 		if(bool(stoi(config["collect_dslr"]))) {
 			canonhandle.images_downloaded = 0;
+			// Change Pose
+			scan_folder = config["output_dir"]+"/"+obj_name;
+			canonhandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\DSLR";
+			create_folder(canonhandle.save_dir,true);
+			
 			int c = 0;
 			// int timeout = stoi(config["dslr_timeout_sec"]) * 20; // 20 = 1s
 			EdsError err;
@@ -279,6 +307,9 @@ bool fullScan() {
 
 	// Recalculate angle
 	degree_tracker = degree_tracker % 360;
+	// Change Pose
+	curr_pose++;
+	object_info["Pose"] = curr_pose;
 
 	pause_return();
 	clr_screen();
@@ -317,15 +348,22 @@ bool setObjectName() {
 	cout << "\n\nEnter Object Name: ";
 	std::cin >> obj_name; 
 	scan_folder = config["output_dir"]+"/"+obj_name;
+	// Create Main Folder
 	create_folder(scan_folder);
-	create_obj_info_json(scan_folder);
+	// Create object info.json (template)
+	create_obj_info_json(config["output_dir"]);
 	config["object_name"] = obj_name;
 	object_info["Object Name"] = obj_name;
+
+	// Change pose
+	curr_pose = get_last_pose() + 1;
+	object_info["Pose"] = curr_pose;
+
 	// Do handler objects need a config still?
 	rshandle.update_config(config);
-	rshandle.save_dir = scan_folder + "\\realsense";
+	rshandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\realsense";
 	create_folder(rshandle.save_dir,true);
-	canonhandle.save_dir = scan_folder + "\\DSLR";
+	canonhandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\DSLR";
 	create_folder(canonhandle.save_dir,true);
 
 	return false;
@@ -629,20 +667,21 @@ int main(int argc, char* argv[])
 	scan_folder = config["output_dir"]+"/"+config["object_name"];
     create_folder(scan_folder);
 	// Create object info template
-	create_obj_info_json(scan_folder);
+	create_obj_info_json(config["output_dir"]);
 	// Set initial Object name
 	obj_name = config["object_name"];
 	int turntable_delay_ms = stoi(config["turntable_delay_ms"]);
 
+	// Change pose
+	curr_pose = get_last_pose() + 1;
 
 	// Setup Realsense Cameras
-	
 	rs_timeout = stoi(config["rs_timeout_sec"]) * 1000;
 	if (bool(stoi(config["collect_rs"]))) {
 		cout << "\nAttempting Realsense setup...\n";
 		// Create RealSense Handler
 		rshandle.initialize();
-		rshandle.save_dir = scan_folder + "\\realsense";
+		rshandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\realsense";
 		create_folder(rshandle.save_dir,true);
 		rshandle.update_config(config);
 		// Get some frames to settle autoexposure.
@@ -673,7 +712,7 @@ int main(int argc, char* argv[])
 		cout << "\nEntering DSLR Setup...\n";
 		// CanonHandler canonhandle;
 		canonhandle.initialize();
-		canonhandle.save_dir = scan_folder + "\\pose-a\\DSLR";
+		canonhandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\DSLR";
 		create_folder(canonhandle.save_dir,true);
 		PreSetting(canonhandle.cameraArray, canonhandle.bodyID);
 		canonhandle.rename_cameras = bool(stoi(config["dslr_name_override"]));
@@ -687,6 +726,7 @@ int main(int argc, char* argv[])
 	}
 	object_info["Object Name"] = obj_name;
 	object_info["Turntable Pos"] = std::to_string(degree_tracker);
+	object_info["Pose"] = curr_pose;
 	// RUNNING MENU LOOP -----------------------------------------------------------------------------
 	MenuHandler menu_handler({
 		{"1", "Full Scan"},
