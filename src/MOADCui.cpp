@@ -136,7 +136,7 @@ int create_folder(std::string path, bool quiet = false) {
 }
 
 void create_obj_info_json(std::string path) {
-	std::string filename = "object_info";
+	std::string filename = object_info["Object Name"];
 	if (fs::exists(path)){
 		std::stringstream command_stream;
 		command_stream 
@@ -173,10 +173,10 @@ void validate_input(std::string text, std::string& input, std::regex validation)
 
 char get_last_pose() {
 	std::string path = config["output_dir"] + "/" + obj_name;
-	char last_pose = 'a' - 1;
+	char last_pose = 'a'; // First Pose
 	// Check if the directory exists
-	if (!fs::exists(path) || !fs::is_directory(path)) {
-		return 'a' - 1;
+	if (!fs::exists(path) || !fs::is_directory(path) || fs::is_empty(path)) {
+		return 'a';
 	}
 	
 	// Check for files that start with 'pose-'
@@ -186,8 +186,8 @@ char get_last_pose() {
 			if (name.find("pose-") != std::string::npos) {
 				int length = name.length();
 				char letter = name[length - 1];
-				if (fs::is_empty(path + "/pose-" + letter)) {
-					return letter - 1;
+				if (fs::is_empty(path + "/pose-" + letter + "/DSLR")) {
+					return letter; // Current pose
 				}
 				if (last_pose < letter) {
 					last_pose = name[length - 1];
@@ -195,7 +195,8 @@ char get_last_pose() {
 			}
 		}
 	}
-	return last_pose;
+	// If all the folder are not empty, then go the next letter
+	return last_pose + 1; 
 }
 
 // TODO: Check Degree Tracker
@@ -294,7 +295,8 @@ bool fullScan() {
 		<< "-r " << range << " "
 		<< "-c " << calibration << " "
 		<< "--calibration_dir " << calibration_dir << " "
-		<< "-p " << output_dir;
+		<< "-p " << output_dir << " "
+		<< "--pose " << "pose-" << curr_pose;
 
 	if (visualize) {
 		command_stream << " -v";
@@ -312,6 +314,8 @@ bool fullScan() {
 
 	// Recalculate angle
 	degree_tracker = degree_tracker % 360;
+	object_info["Turntable Pos"] = std::to_string(degree_tracker);
+
 	// Change Pose
 	curr_pose++;
 	object_info["Pose"] = curr_pose;
@@ -361,7 +365,7 @@ bool setObjectName() {
 	object_info["Object Name"] = obj_name;
 
 	// Change pose
-	curr_pose = get_last_pose() + 1;
+	curr_pose = get_last_pose();
 	object_info["Pose"] = curr_pose;
 
 	// Create the .json file
@@ -734,7 +738,7 @@ int main(int argc, char* argv[])
 	}
 
 	// Change pose
-	curr_pose = get_last_pose() + 1;
+	curr_pose = get_last_pose();
 
 	object_info["Object Name"] = obj_name;
 	object_info["Turntable Pos"] = std::to_string(degree_tracker);

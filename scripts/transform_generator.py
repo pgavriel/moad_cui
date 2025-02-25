@@ -100,6 +100,7 @@ class MoadTransformGenerator:
     def __init__(self,object_name="Test"):
         self.output_dir = "E:/MOAD"
         self.object_name = object_name
+        self.pose = "pose-a"
 
         self.calibration_dir = "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/calibration"
         self.modes = ['18mm','55mm'] #TODO: Add 24mm and 35mm?
@@ -270,7 +271,7 @@ class MoadTransformGenerator:
 
     def save_json(self,out_dir=None,out_file="transforms.json"):
         if out_dir is None:
-            out_dir = join(self.output_dir,self.object_name)
+            out_dir = join(self.output_dir,self.object_name, self.pose)
         
         print(f"Writing {out_file} to {out_dir}...")
         with open(join(out_dir,out_file), "w") as f:
@@ -284,6 +285,7 @@ is_linux = check_os() == "Linux"
 parser = argparse.ArgumentParser()
 parser.add_argument('object_name', help="Name of the scanned object")
 parser.add_argument('-p', '--path', type=str, default="/home/csrobot/ns-data" if is_linux else "G:/", help="Directory where the object is located")
+parser.add_argument('--pose', type=str, default="pose-a", help="The current pose of the scan")
 parser.add_argument('-d', '--degree', type=int, default=5, help="Degree difference between each image (Default: 5)")
 parser.add_argument('-r', '--range', type=int, default=360, help="Max angle of rotation (Default: 360)")
 parser.add_argument('-c', '--calibration', type=str, default="55mm", choices=["55mm", "18mm"], help="Type of calibration that the camera is configured")
@@ -300,6 +302,7 @@ tf_gen.mode = args.calibration
 # Set the directory containing object data and the object (subfoler) to write to.
 tf_gen.output_dir = args.path
 tf_gen.object_name = args.object_name #"t1_zoomcan"
+tf_gen.pose = args.pose
 # Set the angle increment of the collected image data.
 tf_gen.scan_range = args.range
 tf_gen.scan_angle_inc = args.degree
