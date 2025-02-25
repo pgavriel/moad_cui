@@ -185,7 +185,11 @@ char get_last_pose() {
 			std::string name = entry.path().filename().string();
 			if (name.find("pose-") != std::string::npos) {
 				int length = name.length();
-				if (last_pose < name[length - 1]) {
+				char letter = name[length - 1];
+				if (fs::is_empty(path + "/pose-" + letter)) {
+					return letter - 1;
+				}
+				if (last_pose < letter) {
 					last_pose = name[length - 1];
 				}
 			}
@@ -728,7 +732,7 @@ int main(int argc, char* argv[])
 	} else {
 		cout << "\nSkipping DSLR setup, 'collect_dslr=0'.\n";
 	}
-	
+
 	// Change pose
 	curr_pose = get_last_pose() + 1;
 
