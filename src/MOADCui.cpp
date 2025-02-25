@@ -45,6 +45,8 @@ int rs_timeout;
 int dslr_timeout;
 int turntable_delay_ms;
 
+std::map<std::string, std::string> object_info;
+
 RealSenseHandler rshandle;
 SimpleSerial* Serial;
 
@@ -536,7 +538,7 @@ bool CalibrationSubMenu(){
 		{"1", pressHalfway},
 		{"2", pressCompletely},
 		{"3", pressOff},
-	});
+	}, {});
 	calibration_menu_handler.setTitle("Calibration Menu");
 	calibration_menu_handler.initialize();
 	return true;
@@ -556,7 +558,7 @@ bool CameraSubmenu(){
 		{"4", setWhiteBalance},
 		{"5", setDriveMode},
 		{"6", setAEMode},
-	});
+	}, {});
 	camera_menu_handler.setTitle("Camera Options");
 	camera_menu_handler.initialize();
 	return true;
@@ -568,7 +570,7 @@ bool TurntableSubMenu(){
 	},{
 		{"1", turntableControl},
 		{"2", turntablePosition},
-	});
+	},{});
 	turntable_handler.setTitle("Turntable Options");
 	turntable_handler.initialize();
 	return true;
@@ -600,28 +602,7 @@ bool option8(){
 int main(int argc, char* argv[])
 {	
 	// SETUP ----------------------------------------------------------------------------------------------
-	MenuHandler menu_handler({
-		{"1", "Full Scan"},
-		{"2", "Collect Single Data"},
-		{"3", "Set Object Name"},
-		{"4", "Camera Calibration"},
-		{"5", "Camera Options"},
-		{"6", "Turntable Options"},
-		{"7", "Live View"},
-		{"8", "Configuration"},
-	},
-	{
-		{"1", fullScan},
-		{"2", collectSampleData},
-		{"3", setObjectName},
-		{"4", CalibrationSubMenu},
-		{"5", CameraSubmenu},
-		{"6", TurntableSubMenu},
-		{"7", getLiveView},
-		{"8", liveView}
-	});
 	
-	menu_handler.setTitle("MOAD - CLI Menu");
 
 	degree_tracker = 0;
 	std::smatch match_results;
@@ -699,8 +680,32 @@ int main(int argc, char* argv[])
 	} else {
 		cout << "\nSkipping DSLR setup, 'collect_dslr=0'.\n";
 	}
-
+	object_info["Object Name"] = obj_name;
+	object_info["Turntable Pos"] = degree_tracker;
 	// RUNNING MENU LOOP -----------------------------------------------------------------------------
+	MenuHandler menu_handler({
+		{"1", "Full Scan"},
+		{"2", "Collect Single Data"},
+		{"3", "Set Object Name"},
+		{"4", "Camera Calibration"},
+		{"5", "Camera Options"},
+		{"6", "Turntable Options"},
+		{"7", "Live View"},
+		{"8", "Configuration"},
+	},
+	{
+		{"1", fullScan},
+		{"2", collectSampleData},
+		{"3", setObjectName},
+		{"4", CalibrationSubMenu},
+		{"5", CameraSubmenu},
+		{"6", TurntableSubMenu},
+		{"7", getLiveView},
+		{"8", liveView}
+	}, object_info);
+	
+	menu_handler.setTitle("MOAD - CLI Menu");
+
 	menu_handler.ClearScreen();
 	std::this_thread::sleep_for(100ms);
 	menu_handler.initialize();

@@ -4,9 +4,10 @@ using namespace std::chrono_literals;
 
 MenuHandler::MenuHandler(
     std::map<std::string, std::string> menu,
-    std::map<std::string, bool (*)()> actions)
+    std::map<std::string, bool (*)()> actions,
+    std::map<std::string, std::string>& info)
     : 
-    menu_list(menu), menu_action(actions)
+    menu_list(menu), menu_action(actions), info_list(info)
 {
     this->title = "";
     this->help_title = "('r' to return)";
@@ -36,8 +37,14 @@ void MenuHandler::initialize() {
 
 void MenuHandler::ShowMenu() {
     tabulate::Table table;
+    tabulate::Table info;
+
     for (const auto& pair: menu_list) {
         table.add_row({pair.first, pair.second});
+    }
+
+    for (const auto& pair: info_list) {
+        info.add_row({pair.first, pair.second});
     }
 
     table.format().border("").border_top("").corner("");
@@ -48,6 +55,7 @@ void MenuHandler::ShowMenu() {
     if (this->help_title != "") {
         std::cout << this->help_title << std::endl;
     }
+    std::cout << "\n" << info << "\n" << std::endl;
     std::cout << table << std::endl;
 }
 
