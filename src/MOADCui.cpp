@@ -199,7 +199,6 @@ char get_last_pose() {
 	return last_pose + 1; 
 }
 
-// TODO: Check Degree Tracker
 bool fullScan() {
 	std::string degree_inc;
 	int num_moves = 0;
@@ -351,7 +350,6 @@ bool collectSampleData() {
 	return false;
 }
 
-// TODO: Deal with local variables
 bool setObjectName() {
 	// std::string obj_name;
 	cout << "\n\nEnter Object Name: ";
@@ -378,6 +376,13 @@ bool setObjectName() {
 	canonhandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\DSLR";
 	create_folder(canonhandle.save_dir,true);
 
+	return false;
+}
+
+bool setPose() {
+	char last_pose = get_last_pose();
+	std::cout << "Enter Pose (Last pose: '" << last_pose << "'): ";
+	std::cin >> curr_pose;
 	return false;
 }
 
@@ -508,7 +513,6 @@ bool getLiveView() {
 	return false;
 }
 
-// TODO: Check for unused variables
 bool turntableControl () {
 	cout << "\n\n\nTURNTABLE CONTROL\n\n";
 	std::string degree_inc;
@@ -539,7 +543,6 @@ bool turntableControl () {
 	return false;
 }
 
-// TODO: Check for unused variables
 bool turntablePosition() {
 	cout << "\n\nEnter Turntable Position: ";
 	std::cin >> degree_tracker;
@@ -748,16 +751,18 @@ int main(int argc, char* argv[])
 		{"1", "Full Scan"},
 		{"2", "Collect Single Data"},
 		{"3", "Set Object Name"},
-		{"4", "Camera Calibration"},
-		{"5", "Camera Options"},
-		{"6", "Turntable Options"},
-		{"7", "Live View"},
-		{"8", "Configuration"},
+		{"4", "Set Pose"},
+		{"5", "Camera Calibration..."},
+		{"6", "Camera Options..."},
+		{"7", "Turntable Options..."},
+		{"8", "Live View"},
+		{"9", "Configuration..."},
 	},
 	{
 		{"1", fullScan},
 		{"2", collectSampleData},
 		{"3", setObjectName},
+		{"4", setPose},
 		{"4", CalibrationSubMenu},
 		{"5", CameraSubmenu},
 		{"6", TurntableSubMenu},
