@@ -1,5 +1,7 @@
 output_dir=G:/
 object_name=test_1
+degree_inc=5
+num_moves=5
 # Serial port Configuration (COM[x]) (Double digit ports will need to modify source code)
 serial_com_port=5
 # Delay before collecting data after movement (was 250)
@@ -49,5 +51,5 @@ tg_calibration_dir_windows=C:/Users/csrobot/Documents/Version13.16.01/moad_cui/c
 tg_calibration_mode=55mm
 tg_degree_angle=5
 tg_scan_range=360
-tg_visualize=True
-tg_force=False
+tg_visualize=False
+tg_force=True

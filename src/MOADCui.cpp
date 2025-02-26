@@ -199,83 +199,65 @@ char get_last_pose() {
 	return last_pose + 1; 
 }
 
-bool fullScan() {
-	std::string degree_inc;
-	int num_moves = 0;
-	// 
-	cout << "Enter degrees per move: ";
-	std::cin >> degree_inc;
-	cout << "Enter number of moves: ";
-	std::cin >> num_moves;
-	// PressShutter(canonhandle.cameraArray, canonhandle.bodyID, kEdsCameraCommand_ShutterButton_Halfway);
-	Sleep(200);
-	// Start the loop timer
-	auto start = std::chrono::high_resolution_clock::now();
-	for (int rots = 0; rots < num_moves; rots++)
-	{
-		// Collect DSLR Data
-		if(bool(stoi(config["collect_dslr"]))) {
-			canonhandle.images_downloaded = 0;
-			// Change Pose
-			scan_folder = config["output_dir"]+"/"+obj_name;
-			canonhandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\DSLR";
-			create_folder(canonhandle.save_dir,true);
-			
-			int c = 0;
-			// int timeout = stoi(config["dslr_timeout_sec"]) * 20; // 20 = 1s
-			EdsError err;
-			cout << "Getting DSLR Data...\n";
-			canonhandle.turntable_position = degree_tracker;
-			err = TakePicture(canonhandle.cameraArray, canonhandle.bodyID);
-			// cout << "Result: " << err << endl;
-			while (canonhandle.images_downloaded < canonhandle.cameras_found && c < dslr_timeout) {
-				EdsGetEvent();
-				std::this_thread::sleep_for(50ms);
-				c++;
-			}
-			cout << "DSLR Timeout Count: " << c << "/" << dslr_timeout << endl;
-		}
-
-		// Collect RealSense Data
-		if(bool(stoi(config["collect_rs"]))) {
-			rshandle.turntable_position = degree_tracker;
-			rshandle.get_current_frame(rs_timeout);
-			if (rshandle.fail_count > 0) {
-				cout << "RS Failure - " << rshandle.fail_count << endl;
-				break;
-			}
-		}
+void scan() {
+	// Collect DSLR Data
+	if(bool(stoi(config["collect_dslr"]))) {
+		canonhandle.images_downloaded = 0;
+		// Change Pose
+		scan_folder = config["output_dir"]+"/"+obj_name;
+		canonhandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\DSLR";
+		create_folder(canonhandle.save_dir,true);
 		
-		// Issue command to move turntable.
-		char *send = &degree_inc[0];
-		bool is_sent = Serial->WriteSerialPort(send);
-
-		if (is_sent) {
-			int wait_time = std::ceil(((abs(stoi(degree_inc))*200)+500)/1000)+5;
-			cout << "Message sent, waiting up to " << wait_time << " seconds.\n";
-			std::string incoming = Serial->ReadSerialPort(wait_time, "json");
-			cout << "Incoming: " << incoming;// << endl;
-			// std::this_thread::sleep_for(250ms);
-			
-			std::this_thread::sleep_for(std::chrono::milliseconds(turntable_delay_ms));
-		} else {
-			cout << "WARNING: Serial command not sent, something went wrong.\n";
+		int c = 0;
+		// int timeout = stoi(config["dslr_timeout_sec"]) * 20; // 20 = 1s
+		EdsError err;
+		cout << "Getting DSLR Data...\n";
+		canonhandle.turntable_position = degree_tracker;
+		err = TakePicture(canonhandle.cameraArray, canonhandle.bodyID);
+		// cout << "Result: " << err << endl;
+		while (canonhandle.images_downloaded < canonhandle.cameras_found && c < dslr_timeout) {
+			EdsGetEvent();
+			std::this_thread::sleep_for(50ms);
+			c++;
 		}
-
-		degree_tracker += stoi(degree_inc);
-		cout << "Image " << rots+1 << "/" << num_moves << " taken. " << endl;
+		cout << "DSLR Timeout Count: " << c << "/" << dslr_timeout << endl;
 	}
-	// Stop the loop timer
-	auto end = std::chrono::high_resolution_clock::now();
-	// Calculate the elapsed time
-	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-	// Convert the duration to minutes, seconds, and milliseconds
-	int minutes = duration.count() / 60000;
-	int seconds = (duration.count() % 60000) / 1000;
-	cout << "Scan Time: " << std::setfill('0') << std::setw(2) << minutes << ":" 
-		<< std::setfill('0') << std::setw(2) << seconds << endl;
-	cout << "RS Fail Count: " << rshandle.fail_count << endl;
-	std::this_thread::sleep_for(3000ms);
+
+	// Collect RealSense Data
+	if(bool(stoi(config["collect_rs"]))) {
+		rshandle.turntable_position = degree_tracker;
+		rshandle.get_current_frame(rs_timeout);
+		if (rshandle.fail_count > 0) {
+			cout << "RS Failure - " << rshandle.fail_count << endl;
+		}
+	}
+}
+
+void rotate_turntable(std::string degree_inc) {
+	// Issue command to move turntable.
+	char *send = &degree_inc[0];
+	bool is_sent = Serial->WriteSerialPort(send);
+
+	if (is_sent) {
+		int wait_time = std::ceil(((abs(stoi(degree_inc))*200)+500)/1000)+5;
+		cout << "Message sent, waiting up to " << wait_time << " seconds.\n";
+		std::string incoming = Serial->ReadSerialPort(wait_time, "json");
+		cout << "Incoming: " << incoming;// << endl;
+		// std::this_thread::sleep_for(250ms);
+		
+		std::this_thread::sleep_for(std::chrono::milliseconds(turntable_delay_ms));
+	} else {
+		cout << "WARNING: Serial command not sent, something went wrong.\n";
+	}
+}
+
+bool generateTransform(std::string degree_inc, int num_moves) {
+	// std::string degree_inc;
+	// std::regex number_only("^([0-9]+|r)$");
+	// validate_input("\n\nEnter Degree Interval (integer): ", degree_inc, number_only);
+	// std::string visualize;
+	// std::regex confirmation_only("^(y|n|r)$");
+	// validate_input("\n\nVisualize after finishing the transform? (y/n): ", visualize, confirmation_only);
 
 	// Generate transform
 	bool force = config["tg_force"] == "True";
@@ -311,6 +293,44 @@ bool fullScan() {
 	std::cout << "\nExecuting Command: " << command; 
 	system(c_command);
 
+	return false;
+}
+
+bool customScan() {
+	std::string degree_inc;
+	int num_moves = 0;
+	// 
+	cout << "Enter degrees per move: ";
+	std::cin >> degree_inc;
+	cout << "Enter number of moves: ";
+	std::cin >> num_moves;
+	// PressShutter(canonhandle.cameraArray, canonhandle.bodyID, kEdsCameraCommand_ShutterButton_Halfway);
+	Sleep(200);
+	// Start the loop timer
+	auto start = std::chrono::high_resolution_clock::now();
+	for (int rots = 0; rots < num_moves; rots++)
+	{
+		scan();
+		rotate_turntable(degree_inc);
+		
+		degree_tracker += stoi(degree_inc);
+		cout << "Image " << rots+1 << "/" << num_moves << " taken. " << endl;
+	}
+	// Stop the loop timer
+	auto end = std::chrono::high_resolution_clock::now();
+	// Calculate the elapsed time
+	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+	// Convert the duration to minutes, seconds, and milliseconds
+	int minutes = duration.count() / 60000;
+	int seconds = (duration.count() % 60000) / 1000;
+	cout << "Scan Time: " << std::setfill('0') << std::setw(2) << minutes << ":" 
+		<< std::setfill('0') << std::setw(2) << seconds << endl;
+	cout << "RS Fail Count: " << rshandle.fail_count << endl;
+	std::this_thread::sleep_for(3000ms);
+
+	// Generate transform
+	generateTransform(degree_inc, num_moves);
+
 	// Recalculate angle
 	degree_tracker = degree_tracker % 360;
 	object_info["Turntable Pos"] = std::to_string(degree_tracker);
@@ -322,7 +342,52 @@ bool fullScan() {
 	pause_return();
 	clr_screen();
 
-	return false;
+	return true;
+}
+
+bool fullScan() {
+	std::string degree_inc = config["degree_inc"];
+	int num_moves = stoi(config["num_moves"]);
+
+	// PressShutter(canonhandle.cameraArray, canonhandle.bodyID, kEdsCameraCommand_ShutterButton_Halfway);
+	Sleep(200);
+	// Start the loop timer
+	auto start = std::chrono::high_resolution_clock::now();
+	for (int rots = 0; rots < num_moves; rots++)
+	{
+		scan();
+		rotate_turntable(degree_inc);
+		
+		degree_tracker += stoi(degree_inc);
+		cout << "Image " << rots+1 << "/" << num_moves << " taken. " << endl;
+	}
+	// Stop the loop timer
+	auto end = std::chrono::high_resolution_clock::now();
+	// Calculate the elapsed time
+	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+	// Convert the duration to minutes, seconds, and milliseconds
+	int minutes = duration.count() / 60000;
+	int seconds = (duration.count() % 60000) / 1000;
+	cout << "Scan Time: " << std::setfill('0') << std::setw(2) << minutes << ":" 
+		<< std::setfill('0') << std::setw(2) << seconds << endl;
+	cout << "RS Fail Count: " << rshandle.fail_count << endl;
+	std::this_thread::sleep_for(3000ms);
+
+	// Generate transform
+	generateTransform(degree_inc, num_moves);
+
+	// Recalculate angle
+	degree_tracker = degree_tracker % 360;
+	object_info["Turntable Pos"] = std::to_string(degree_tracker);
+
+	// Change Pose
+	curr_pose++;
+	object_info["Pose"] = curr_pose;
+
+	pause_return();
+	clr_screen();
+
+	return true;
 }
 
 // TODO: Check Degree Tracker
@@ -333,7 +398,7 @@ bool collectSampleData() {
 		// Change Pose
 		scan_folder = config["output_dir"]+"/"+obj_name;
 		canonhandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\DSLR";
-		
+
 		EdsError err;
 		cout << "Collecting DSLR images...\n";
 		canonhandle.turntable_position = degree_tracker;
@@ -557,41 +622,6 @@ bool turntablePosition() {
 
 	object_info["Turntable Pos"] = std::to_string(degree_tracker);
 	
-	return false;
-}
-
-// TODO: Check for unused variables
-bool generateTransform() {
-	std::string degree_inc;
-	std::regex number_only("^([0-9]+|r)$");
-	validate_input("\n\nEnter Degree Interval (integer): ", degree_inc, number_only);
-	std::string visualize;
-	std::regex confirmation_only("^(y|n|r)$");
-	validate_input("\n\nVisualize after finishing the transform? (y/n): ", visualize, confirmation_only);
-
-	if (degree_inc != "r" && visualize != "r") {
-		std::stringstream command_stream;
-		command_stream 
-			<< "python3 " 
-			<< "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/scripts/transform_generator.py "
-			<< obj_name << " "
-			<< "-d " << degree_inc << " ";
-
-		if (visualize == "y") {
-			command_stream << "-v";
-		}
-
-		// Execute command
-		std::string command = command_stream.str(); 
-		const char* c_command = command.c_str();
-		std::cout << "\nExecuting Command: " << command; 
-		system(c_command);
-	}
-
-	
-	// Clean screen
-	clr_screen();
-
 	return false;
 }
 
