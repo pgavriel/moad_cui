@@ -328,6 +328,12 @@ bool fullScan() {
 // TODO: Check Degree Tracker
 bool collectSampleData() {
 	if (bool(stoi(config["collect_dslr"]))) {
+		// Reset download counter to 0
+		canonhandle.images_downloaded = 0;
+		// Change Pose
+		scan_folder = config["output_dir"]+"/"+obj_name;
+		canonhandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\DSLR";
+		
 		EdsError err;
 		cout << "Collecting DSLR images...\n";
 		canonhandle.turntable_position = degree_tracker;
@@ -340,6 +346,7 @@ bool collectSampleData() {
 			std::this_thread::sleep_for(50ms);
 			c++;
 		}
+		cout << "DSLR Timeout Count: " << c << "/" << dslr_timeout << endl;
 	}
 	if (bool(stoi(config["collect_rs"]))) {
 		rshandle.turntable_position = degree_tracker;
@@ -383,6 +390,7 @@ bool setPose() {
 	char last_pose = get_last_pose();
 	std::cout << "Enter Pose (Last pose: '" << last_pose << "'): ";
 	std::cin >> curr_pose;
+	object_info["Pose"] = curr_pose;
 	return false;
 }
 
@@ -763,11 +771,11 @@ int main(int argc, char* argv[])
 		{"2", collectSampleData},
 		{"3", setObjectName},
 		{"4", setPose},
-		{"4", CalibrationSubMenu},
-		{"5", CameraSubmenu},
-		{"6", TurntableSubMenu},
-		{"7", getLiveView},
-		{"8", liveView}
+		{"5", CalibrationSubMenu},
+		{"6", CameraSubmenu},
+		{"7", TurntableSubMenu},
+		{"8", getLiveView},
+		{"9", liveView}
 	}, object_info);
 	
 	menu_handler.setTitle("MOAD - CLI Menu");
