@@ -680,16 +680,6 @@ bool downloadImages(){
 	return false;
 }
 
-bool liveView() {
-	StartEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
-	DownloadEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
-	EndEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
-	pause_return();
-	clr_screen();
-
-	return false;
-}
-
 bool option8(){
 	std::cout << "Change config options" << std::endl;
 	return false;
@@ -787,25 +777,25 @@ int main(int argc, char* argv[])
 	// RUNNING MENU LOOP -----------------------------------------------------------------------------
 	MenuHandler menu_handler({
 		{"1", "Full Scan"},
-		{"2", "Collect Single Data"},
-		{"3", "Set Object Name"},
-		{"4", "Set Pose"},
-		{"5", "Camera Calibration..."},
-		{"6", "Camera Options..."},
-		{"7", "Turntable Options..."},
-		{"8", "Live View"},
-		{"9", "Configuration..."},
+		{"2", "Custom Scan"}
+		{"3", "Collect Single Data"},
+		{"4", "Set Object Name"},
+		{"5", "Set Pose"},
+		{"6", "Camera Calibration..."},
+		{"7", "Camera Options..."},
+		{"8", "Turntable Options..."},
+		{"9", "Live View"},
 	},
 	{
 		{"1", fullScan},
-		{"2", collectSampleData},
-		{"3", setObjectName},
-		{"4", setPose},
-		{"5", CalibrationSubMenu},
-		{"6", CameraSubmenu},
-		{"7", TurntableSubMenu},
-		{"8", getLiveView},
-		{"9", liveView}
+		{"2", customScan},
+		{"3", collectSampleData},
+		{"4", setObjectName},
+		{"5", setPose},
+		{"6", CalibrationSubMenu},
+		{"7", CameraSubmenu},
+		{"8", TurntableSubMenu},
+		{"9", getLiveView},
 	}, object_info);
 	
 	menu_handler.setTitle("MOAD - CLI Menu");
