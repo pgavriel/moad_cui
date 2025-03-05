@@ -11,6 +11,7 @@
 #include <thread>
 #include <memory>
 #include <chrono>
+#include <opencv2/opencv.hpp>
 
 #include "MenuHandler.h"
 
@@ -28,7 +29,6 @@
 #include "SimpleSerial.h"
 #include "RealSenseHandler.h"
 
-
 using namespace std::chrono_literals;
 namespace fs = std::filesystem;
 using std::cout;
@@ -44,6 +44,8 @@ std::string scan_folder;
 int rs_timeout;
 int dslr_timeout;
 int turntable_delay_ms;
+
+std::thread* liveview_th;
 
 std::map<std::string, std::string> object_info;
 
@@ -576,14 +578,40 @@ bool setAEMode() {
 	return false;
 }
 
-bool getLiveView() {
+void _liveView() {
+	// Start Live View configuration
 	StartEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
+	// Download and display Image from camera
 	DownloadEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
+	// End Live View Configuration
 	EndEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
-	pause_return();
-	clr_screen();
+}
+
+bool getLiveView() {
+	liveview_th = new std::thread(_liveView);
+
+	return true;
+}
+
+bool endLiveView() {
+	if(liveview_th->joinable()) {
+		liveview_th->join();
+	}
 
 	return false;
+}
+
+bool liveViewMenu() {
+	MenuHandler live_view_menu({
+		{"1", "Start Live View"},
+		{"2", "End Live View"},
+	},{
+		{"1", getLiveView},
+		{"2", endLiveView},
+	}, object_info);
+	live_view_menu.setTitle("Live View Menu");
+	live_view_menu.initialize();
+	return true;
 }
 
 bool turntableControl () {
@@ -777,14 +805,15 @@ int main(int argc, char* argv[])
 	// RUNNING MENU LOOP -----------------------------------------------------------------------------
 	MenuHandler menu_handler({
 		{"1", "Full Scan"},
-		{"2", "Custom Scan"}
+		{"2", "Custom Scan"},
 		{"3", "Collect Single Data"},
 		{"4", "Set Object Name"},
 		{"5", "Set Pose"},
 		{"6", "Camera Calibration..."},
 		{"7", "Camera Options..."},
 		{"8", "Turntable Options..."},
-		{"9", "Live View"},
+		{"9", "Live View..."},
+		// {"10", "End Live View"}
 	},
 	{
 		{"1", fullScan},
@@ -795,13 +824,13 @@ int main(int argc, char* argv[])
 		{"6", CalibrationSubMenu},
 		{"7", CameraSubmenu},
 		{"8", TurntableSubMenu},
-		{"9", getLiveView},
+		{"9", liveViewMenu},
+		// {"10", endLiveView}
 	}, object_info);
 	
 	menu_handler.setTitle("MOAD - CLI Menu");
 
 	menu_handler.ClearScreen();
-	std::this_thread::sleep_for(100ms);
 	menu_handler.initialize();
 	// while (true)
 	// {
