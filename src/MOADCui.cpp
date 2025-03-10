@@ -29,6 +29,12 @@
 #include "SimpleSerial.h"
 #include "RealSenseHandler.h"
 
+#define CAMERA_1 "352074022019"
+#define CAMERA_2 "352074022024"
+#define CAMERA_3 "352074022025"
+#define CAMERA_4 "352074022005"
+#define CAMERA_5 "352074022021"
+
 using namespace std::chrono_literals;
 namespace fs = std::filesystem;
 using std::cout;
@@ -51,7 +57,6 @@ std::map<std::string, std::string> object_info;
 
 RealSenseHandler rshandle;
 SimpleSerial* Serial;
-
 
 std::map<std::string, std::string> loadParameters(const std::string& filename) {
     std::map<std::string, std::string> parameters;
@@ -674,14 +679,14 @@ bool CameraSubmenu(){
 		{"3", "ISO"},
 		{"4", "White Balance"},
 		{"5", "Drive Mode"},
-		{"6", "AE Mode"},
+		{"6", "AE Mode"}
 	},{
 		{"1", setTV},
 		{"2", setAV},
 		{"3", setISO},
 		{"4", setWhiteBalance},
 		{"5", setDriveMode},
-		{"6", setAEMode},
+		{"6", setAEMode}
 	}, object_info);
 	camera_menu_handler.setTitle("Camera Options");
 	camera_menu_handler.initialize();
@@ -776,7 +781,6 @@ int main(int argc, char* argv[])
 		cout << "Error creating serial connection.\n";
 	}
 
-
 	// Initialization of Canon SDK
 	dslr_timeout = stoi(config["dslr_timeout_sec"]) * 20;
 	if (bool(stoi(config["collect_dslr"]))) {
@@ -786,12 +790,43 @@ int main(int argc, char* argv[])
 		canonhandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\DSLR";
 		create_folder(canonhandle.save_dir,true);
 		PreSetting(canonhandle.cameraArray, canonhandle.bodyID);
+		// Naming of the camera
 		canonhandle.rename_cameras = bool(stoi(config["dslr_name_override"]));
-		canonhandle.camera_names["1"] = config["cam1_rename"];
-		canonhandle.camera_names["2"] = config["cam2_rename"];
-		canonhandle.camera_names["3"] = config["cam3_rename"];
-		canonhandle.camera_names["4"] = config["cam4_rename"];
-		canonhandle.camera_names["5"] = config["cam5_rename"];
+		EdsChar serial[13];
+		EdsError err;
+		int index = 1;
+		for (const auto& camera: canonhandle.cameraArray) {
+			// Fetch the serial number
+			err = EdsGetPropertyData(camera, kEdsPropID_BodyIDEx, 0, sizeof(serial), &serial);
+			// Convert it into string
+			std::string serial_str = "";
+			for (size_t i = 0; i < sizeof(serial) - 1; i++){
+				serial_str += serial[i];
+			}
+			std::cout <<  "Renaming Camera " << index << " (Serial Number: " << serial_str <<")"; 
+			if (serial_str == CAMERA_1) {
+				std::cout << " to 1" << std::endl;
+				canonhandle.camera_names[std::to_string(index)] = "1";
+			}
+			if (serial_str == CAMERA_2) {
+				std::cout << " to 2" << std::endl;
+				canonhandle.camera_names[std::to_string(index)] = "2";
+			}
+			if (serial_str == CAMERA_3) {
+				std::cout << " to 3" << std::endl;
+				canonhandle.camera_names[std::to_string(index)] = "3";
+			}
+			if (serial_str == CAMERA_4) {
+				std::cout << " to 4" << std::endl;
+				canonhandle.camera_names[std::to_string(index)] = "4";
+			}
+			if (serial_str == CAMERA_5) {
+				std::cout << " to 5" << std::endl;
+				canonhandle.camera_names[std::to_string(index)] = "5";
+			}
+
+			index++;
+		}
 	} else {
 		cout << "\nSkipping DSLR setup, 'collect_dslr=0'.\n";
 	}
