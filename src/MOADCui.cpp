@@ -52,6 +52,15 @@ int dslr_timeout;
 int turntable_delay_ms;
 
 std::thread* liveview_th;
+bool liveview_active = false;
+
+// Camera
+std::map<EdsCameraRef, std::string> camera_name;
+bool all_cameras = true;
+EdsCameraRef activeCamera;
+
+// Menu
+std::string curr_message;
 
 std::map<std::string, std::string> object_info;
 
@@ -106,15 +115,13 @@ EdsInt32 getvalue()
 {
 	std::string input;
 	std::smatch  match_results;
-	std::getline(std::cin, input); // Pass if only return key is input.
-	if (input != "\n")
-	{
-		if (std::regex_search(input, match_results, std::regex("[0-9]")))
-		{
-			return( stoi(input) );
-		}
+
+	std::cin >> input;
+	if (std::regex_search(input, match_results, std::regex("[0-9]"))) {
+		return stoi(input);
 	}
-	return(-1);
+
+	return -1;
 }
 
 void pause_return()
@@ -487,99 +494,273 @@ bool pressOff() {
 	return false;
 }
 
-bool setTV() {
-	GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Tv, tv_table);
-	GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Tv, tv_table);
-
-	cout << "input no. (ex. 54 = 1/250)" << endl;
-	cout << ">";
-
-	canonhandle.data = getvalue();
-	if (canonhandle.data != -1)
-	{
-		SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Tv, canonhandle.data, tv_table);
-		pause_return();
+void _getCurrCameraValue(const std::vector<std::string>& value_arr) {
+	tabulate::Table table;
+	table.add_row({"Current Value:"});
+	tabulate::Table cam_val_table;
+	tabulate::Table::Row_t values;
+	for (const auto& name: canonhandle.camera_names) {
+		values.push_back(name.first);
 	}
-	clr_screen();
+	cam_val_table.add_row(values);
+	
+	values.clear();
+	for (const auto& value: value_arr) {
+		values.push_back(value);
+	}
+	cam_val_table.add_row(values);
+	table.add_row({cam_val_table});
+
+	std::cout << table << std::endl; 
+}
+
+bool setTV() {
+	if (all_cameras) {
+		std::vector<std::string> value_arr;
+		GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Tv, tv_table, value_arr);
+		GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Tv, tv_table);
+		
+		_getCurrCameraValue(value_arr);
+		
+		std::cout << "WARNING: The modification will be applied to all cameras" << std::endl;
+		cout << "input no. (ex. 54 = 1/250)" << endl;
+		cout << ">";
+		
+		canonhandle.data = getvalue();
+		if (canonhandle.data != -1)
+		{
+			SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Tv, canonhandle.data, tv_table);
+		}
+	}
+	else {
+		std::string value;
+		GetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_Tv, tv_table, value);
+		GetPropertyDesc(activeCamera, canonhandle.bodyID[0], kEdsPropID_Tv, tv_table);
+		
+		// _getCurrCameraValue(value);
+		std::cout << "Modifing " << camera_name[activeCamera] << std::endl;
+		std::cout << "Current Value: " << value << std::endl;
+		cout << "input no. (ex. 54 = 1/250)" << endl;
+		cout << ">";
+		
+		canonhandle.data = getvalue();
+		if (canonhandle.data != -1)
+		{
+			SetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_Tv, canonhandle.data, tv_table);
+		}
+		
+	}
 
 	return false;
 }
 
 bool setAV() {
-	GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Av, av_table);
-	GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Av, av_table);
-	cout << "input Av (ex. 21 = 5.6)" << endl;
-	cout << ">";
-
-	canonhandle.data = getvalue();
-	if (canonhandle.data != -1)
-	{
-		SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Av, canonhandle.data, av_table);
-		pause_return();
+	if(all_cameras) {
+		std::vector<std::string> value_arr;
+		GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Av, av_table, value_arr);
+		GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Av, av_table);
+		
+		_getCurrCameraValue(value_arr);
+		
+		std::cout << "WARNING: The modification will be applied to all cameras" << std::endl;
+		cout << "input Av (ex. 21 = 5.6)" << endl;
+		cout << ">";
+		
+		canonhandle.data = getvalue();
+		if (canonhandle.data != -1)
+		{
+			SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Av, canonhandle.data, av_table);
+		}
+	
+		return false;
 	}
-	clr_screen();
-
-	return false;
+	else {
+		std::string value;
+		GetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_Av, av_table, value);
+		GetPropertyDesc(activeCamera, canonhandle.bodyID[0], kEdsPropID_Av, av_table);
+		
+		// _getCurrCameraValue(value_arr);
+		std::cout << "Modifing " << camera_name[activeCamera] << std::endl;
+		std::cout << "Current Value: " << value << std::endl;
+		cout << "input Av (ex. 21 = 5.6)" << endl;
+		cout << ">";
+		
+		canonhandle.data = getvalue();
+		if (canonhandle.data != -1)
+		{
+			SetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_Av, canonhandle.data, av_table);
+		}
+	
+		return false;
+	}
 }
 
 bool setISO() {
-	GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_ISOSpeed, iso_table);
-	GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_ISOSpeed, iso_table);
-	cout << "input ISOSpeed (ex. 8 = ISO 200)" << endl;
-	cout << ">";
+	if (all_cameras) {
+		std::vector<std::string> value_arr;
+		GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_ISOSpeed, iso_table, value_arr);
+		GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_ISOSpeed, iso_table);
+		
+		_getCurrCameraValue(value_arr);
 
-	canonhandle.data = getvalue();
-	if (canonhandle.data != -1)
-	{
-		SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_ISOSpeed, canonhandle.data, iso_table);
-		pause_return();
+		std::cout << "WARNING: The modification will be applied to all cameras" << std::endl;
+		cout << "input ISOSpeed (ex. 8 = ISO 200)" << endl;
+		cout << ">";
+		canonhandle.data = getvalue();
+		if (canonhandle.data != -1)
+		{
+			SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_ISOSpeed, canonhandle.data, iso_table);
+		}
+		
+		return false;
 	}
-	clr_screen();
-
-	return false;
+	else {
+		std::string value;
+		GetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_ISOSpeed, iso_table, value);
+		GetPropertyDesc(activeCamera, canonhandle.bodyID[0], kEdsPropID_ISOSpeed, iso_table);
+		
+		// _getCurrCameraValue(value);
+		std::cout << "Modifing " << camera_name[activeCamera] << std::endl;
+		std::cout << "Current Value: " << value << std::endl;
+		cout << "input ISOSpeed (ex. 8 = ISO 200)" << endl;
+		cout << ">";
+		canonhandle.data = getvalue();
+		if (canonhandle.data != -1)
+		{
+			SetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_ISOSpeed, canonhandle.data, iso_table);
+		}
+		
+		return false;
+	}
 }
 
 bool setWhiteBalance() {
-	GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_WhiteBalance, whitebalance_table);
-	GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_WhiteBalance, whitebalance_table);
-	cout << "input WhiteBalance (ex. 0 = Auto)" << endl;
-	cout << ">";
-
-	canonhandle.data = getvalue();
-	if (canonhandle.data != -1)
-	{
-		SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_WhiteBalance, canonhandle.data, whitebalance_table);
-		pause_return();
+	if (all_cameras) {
+		std::vector<std::string> value_arr;
+		GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_WhiteBalance, whitebalance_table, value_arr);
+		GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_WhiteBalance, whitebalance_table);
+		
+		_getCurrCameraValue(value_arr);
+		std::cout << "WARNING: The modification will be applied to all cameras" << std::endl;
+		cout << "input WhiteBalance (ex. 0 = Auto)" << endl;
+		cout << ">";
+		
+		canonhandle.data = getvalue();
+		if (canonhandle.data != -1)
+		{
+			SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_WhiteBalance, canonhandle.data, whitebalance_table);
+		}
+		
+		return false;
 	}
-	clr_screen();
-
-	return false;
+	else {
+		std::string value;
+		GetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_WhiteBalance, whitebalance_table, value);
+		GetPropertyDesc(activeCamera, canonhandle.bodyID[0], kEdsPropID_WhiteBalance, whitebalance_table);
+		
+		// _getCurrCameraValue(value);
+		std::cout << "Modifing " << camera_name[activeCamera] << std::endl;
+		std::cout << "Current Value: " << value << std::endl;
+		cout << "input WhiteBalance (ex. 0 = Auto)" << endl;
+		cout << ">";
+		
+		canonhandle.data = getvalue();
+		if (canonhandle.data != -1)
+		{
+			SetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_WhiteBalance, canonhandle.data, whitebalance_table);
+		}
+		
+		return false;
+	}
 }
 
 bool setDriveMode() {
-	GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_DriveMode, drivemode_table);
-	GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_DriveMode, drivemode_table);
-	cout << "input Drive Mode (ex. 0 = Single shooting)" << endl;
-	cout << ">";
-
-	canonhandle.data = getvalue();
-	if (canonhandle.data != -1)
-	{
-		SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_DriveMode, canonhandle.data, drivemode_table);
-		pause_return();
+	if (all_cameras) {
+		std::vector<std::string> value_arr;
+		GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_DriveMode, drivemode_table, value_arr);
+		GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_DriveMode, drivemode_table);
+		
+		_getCurrCameraValue(value_arr);
+		std::cout << "WARNING: The modification will be applied to all cameras" << std::endl;
+		cout << "input Drive Mode (ex. 0 = Single shooting)" << endl;
+		cout << ">";
+		
+		canonhandle.data = getvalue();
+		if (canonhandle.data != -1)
+		{
+			SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_DriveMode, canonhandle.data, drivemode_table);
+		}
+		
+		return false;
 	}
-	clr_screen();
+	else {
+		std::string value;
+		GetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_DriveMode, drivemode_table, value);
+		GetPropertyDesc(activeCamera, canonhandle.bodyID[0], kEdsPropID_DriveMode, drivemode_table);
+		
+		// _getCurrCameraValue(value);
+		std::cout << "Modifing " << camera_name[activeCamera] << std::endl;
+		std::cout << "Current Value: " << value << std::endl;
+		cout << "input Drive Mode (ex. 0 = Single shooting)" << endl;
+		cout << ">";
+		
+		canonhandle.data = getvalue();
+		if (canonhandle.data != -1)
+		{
+			SetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_DriveMode, canonhandle.data, drivemode_table);
+		}
+		
+		return false;
+	}
+}
+
+bool setAEMode() {
+	// That does nothing at the moment
+	std::vector<std::string> value_arr;
+	GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_AEMode, AEmode_table, value_arr);
+	GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_AEMode, AEmode_table);
+
+	_getCurrCameraValue(value_arr);
 
 	return false;
 }
 
+bool changeCamera() {
+	int option = -1;
+	std::cout << "Change Camera. Select which camera to use (0 = all camera):" << std::endl;
+	int i = 1;
+	std::cout << "0. All cameras" << std::endl;
+	for (const auto& camera : canonhandle.cameraArray) {
+		std::cout << i << ". " << camera_name[camera] << std::endl;
+		i++; 
+	}
+	option = getvalue();
 
-bool setAEMode() {
-	GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_AEMode, AEmode_table);
-	GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_AEMode, AEmode_table);
-	pause_return();
-	clr_screen();
+	all_cameras = false;
+	switch (option){
+		case 0:
+			all_cameras = true;
+			break;
+		case 1: 
+			activeCamera = canonhandle.cameraArray[0];
+			break;
+		case 2: 
+			activeCamera = canonhandle.cameraArray[1];
+			break;
 
+		case 3: 
+			activeCamera = canonhandle.cameraArray[2];
+			break;
+		case 4: 
+			activeCamera = canonhandle.cameraArray[3];
+			break;
+		case 5: 
+			activeCamera = canonhandle.cameraArray[4];
+			break;
+		default:
+			std::cout << "Invalid value" << std::endl;
+			break;
+	}
 	return false;
 }
 
@@ -590,10 +771,17 @@ void _liveView() {
 	DownloadEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
 	// End Live View Configuration
 	EndEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
+	liveview_active = false;
 }
 
 bool getLiveView() {
-	liveview_th = new std::thread(_liveView);
+	if (!liveview_active) {
+		liveview_active = true;
+		liveview_th = new std::thread(_liveView);
+	}
+	else {
+		std::cout << "The liveview is active" << std::endl;
+	}
 
 	return true;
 }
@@ -601,6 +789,9 @@ bool getLiveView() {
 bool endLiveView() {
 	if(liveview_th->joinable()) {
 		liveview_th->join();
+	}
+	else {
+		std::cout << "There is no liveview active" << std::endl;
 	}
 
 	return false;
@@ -619,7 +810,7 @@ bool liveViewMenu() {
 	return true;
 }
 
-bool turntableControl () {
+bool turntableControl() {
 	cout << "\n\n\nTURNTABLE CONTROL\n\n";
 	std::string degree_inc;
 	while(degree_inc != "r"){
@@ -679,14 +870,16 @@ bool CameraSubmenu(){
 		{"3", "ISO"},
 		{"4", "White Balance"},
 		{"5", "Drive Mode"},
-		{"6", "AE Mode"}
+		{"6", "AE Mode"},
+		{"7", "Change Camera"},
 	},{
 		{"1", setTV},
 		{"2", setAV},
 		{"3", setISO},
 		{"4", setWhiteBalance},
 		{"5", setDriveMode},
-		{"6", setAEMode}
+		{"6", setAEMode},
+		{"7", changeCamera},
 	}, object_info);
 	camera_menu_handler.setTitle("Camera Options");
 	camera_menu_handler.initialize();
@@ -807,22 +1000,27 @@ int main(int argc, char* argv[])
 			if (serial_str == CAMERA_1) {
 				std::cout << " to 1" << std::endl;
 				canonhandle.camera_names[std::to_string(index)] = "1";
+				camera_name[camera] = "Camera 1";
 			}
 			if (serial_str == CAMERA_2) {
 				std::cout << " to 2" << std::endl;
 				canonhandle.camera_names[std::to_string(index)] = "2";
+				camera_name[camera] = "Camera 2";
 			}
 			if (serial_str == CAMERA_3) {
 				std::cout << " to 3" << std::endl;
 				canonhandle.camera_names[std::to_string(index)] = "3";
+				camera_name[camera] = "Camera 3";
 			}
 			if (serial_str == CAMERA_4) {
 				std::cout << " to 4" << std::endl;
 				canonhandle.camera_names[std::to_string(index)] = "4";
+				camera_name[camera] = "Camera 4";
 			}
 			if (serial_str == CAMERA_5) {
 				std::cout << " to 5" << std::endl;
 				canonhandle.camera_names[std::to_string(index)] = "5";
+				camera_name[camera] = "Camera 5";
 			}
 
 			index++;
@@ -847,8 +1045,7 @@ int main(int argc, char* argv[])
 		{"6", "Camera Calibration..."},
 		{"7", "Camera Options..."},
 		{"8", "Turntable Options..."},
-		{"9", "Live View..."},
-		// {"10", "End Live View"}
+		{"9", "Live View..."}
 	},
 	{
 		{"1", fullScan},
@@ -859,8 +1056,7 @@ int main(int argc, char* argv[])
 		{"6", CalibrationSubMenu},
 		{"7", CameraSubmenu},
 		{"8", TurntableSubMenu},
-		{"9", liveViewMenu},
-		// {"10", endLiveView}
+		{"9", liveViewMenu}
 	}, object_info);
 	
 	menu_handler.setTitle("MOAD - CLI Menu");

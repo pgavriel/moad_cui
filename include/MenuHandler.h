@@ -14,6 +14,7 @@ private:
     std::map<std::string, std::string>& info_list;
     std::string title;
     std::string help_title;
+    std::string message;
     std::mutex print_mtx;
 public:
     MenuHandler(
@@ -28,4 +29,5 @@ public:
     void WaitUntilKeypress();
     void setTitle(std::string);
     void setHelpTitle(std::string);
+    void addMessage(std::string);
 };

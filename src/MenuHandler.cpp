@@ -65,6 +65,7 @@ void MenuHandler::ShowMenu() {
         std::cout << this->help_title << std::endl;
     }
     std::cout << "\n" << info << "\n" << std::endl;
+    std::cout << this->message << std::endl;
     std::cout << table << std::endl;
 }
 
@@ -101,4 +102,7 @@ void MenuHandler::setTitle(std::string title) {
 }
 void MenuHandler::setHelpTitle(std::string help_title) {
     this->help_title = help_title;
+}
+void MenuHandler::addMessage(std::string message) {
+    this->message = message;
 }
