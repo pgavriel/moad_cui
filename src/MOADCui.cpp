@@ -28,6 +28,7 @@
 #include "TakePicture.h"
 #include "SimpleSerial.h"
 #include "RealSenseHandler.h"
+#include "CameraException.h"
 
 #define CAMERA_1 "352074022019"
 #define CAMERA_2 "352074022024"
@@ -764,20 +765,37 @@ bool changeCamera() {
 	return false;
 }
 
-void _liveView() {
+void _liveView(int retry = 0) {
 	// Start Live View configuration
-	StartEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
 	// Download and display Image from camera
-	DownloadEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
+	if (retry >= 3) {
+		std::cout << "Maximum tries reached!" << std::endl;
+		return;
+	}
+
+	try {
+		std::cout << "Starting Liveview: Try #" << retry + 1 << std::endl;
+		StartEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
+		std::this_thread::sleep_for(.2s);
+		DownloadEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
+		EndEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
+		std::cout << "Liveview sucessfully closed" << std::endl;
+	}
+	catch (const CameraObjectNotReadyException& err) {
+		std::cout << "Error trying to open liveview: \n" << err.what() << std::endl;
+		_liveView(++retry);
+	}
+	catch (const CameraException& err) {
+		std::cout << "Error trying to open liveview: \n" << err.what() << std::endl;
+	}
 	// End Live View Configuration
-	EndEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
 	liveview_active = false;
 }
 
 bool getLiveView() {
 	if (!liveview_active) {
 		liveview_active = true;
-		liveview_th = new std::thread(_liveView);
+		liveview_th = new std::thread(_liveView, 0);
 	}
 	else {
 		std::cout << "The liveview is active" << std::endl;
@@ -1028,6 +1046,9 @@ int main(int argc, char* argv[])
 	} else {
 		cout << "\nSkipping DSLR setup, 'collect_dslr=0'.\n";
 	}
+
+	// Retrieve possible configuration (Probably gotta do that once, then save it in a file or something)
+
 
 	// Change pose
 	curr_pose = get_last_pose();
