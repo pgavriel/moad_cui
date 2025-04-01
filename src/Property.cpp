@@ -1,5 +1,6 @@
 #include <map>
 #include <vector>
+#include <tuple>
 #include <string>
 #include <sstream>
 #include <iostream>
@@ -9,6 +10,46 @@
 #include "tabulate.hpp"
 #include "EDSDK.h"
 #include "EDSDKTypes.h"
+
+std::tuple<std::string, std::string> getPropertyString(EdsPropertyID propertyID) {
+	switch (propertyID) {
+		case kEdsPropID_AEMode:
+			return std::tuple<std::string, std::string>(
+				"AE Mode", 
+				"Some Description"
+			);
+		case kEdsPropID_DriveMode:
+			return std::tuple<std::string, std::string>(
+				"Drive Mode", 
+				"Affects the shooting buttom, can modify the shotting mode to be either one or multiple picture when holding the shooting buttom. "
+			);
+		case kEdsPropID_ISOSpeed:
+			return std::tuple<std::string, std::string>(
+				"ISO", 
+				"Affects the Brightness of the picture by changing the sensibility of the light sensor of the camera."
+			);
+		case kEdsPropID_Av:
+			return std::tuple<std::string, std::string>(
+				"AV", 
+				"Affects the amount of light that goes into the lense, increasing the blur of the image."
+			);
+		case kEdsPropID_Tv:
+			return std::tuple<std::string, std::string>(
+				"TV", 
+				"Affects how sharp a object is when is moving. When the value is lower, the picture is sharper"
+			);
+		case kEdsPropID_WhiteBalance:
+			return std::tuple<std::string, std::string>(
+				"White Balance", 
+				"Post-Processing configuration, Create a light filter based on the ambient setting taken by the picture."
+			); 
+		default:
+			return std::tuple<std::string, std::string>(
+				"", 
+				""
+			);
+	}
+}
 
 EdsError GetProperty(EdsCameraRef const& camera, EdsUInt64 const& bodyID, EdsPropertyID propertyID, std::map<EdsUInt32, const char*> iso_table, std::string& output){
 	EdsError	 err = EDS_ERR_OK;
@@ -40,15 +81,7 @@ EdsError GetProperty(EdsCameraRef const& camera, EdsUInt64 const& bodyID, EdsPro
 				std::stringstream ss;
 				ss << "(" << std::distance(iso_table.begin(), itr) << "): " << itr->second;
 				output = ss.str();
-				// std::cout << "camera" << bodyID << " : current setting is ";
-				// std::cout << itr->second << "\n" << std::endl;
 			}
-
-			/* hex display
-			std::stringstream ss;
-			ss << std::showbase << std::hex << data;
-			std::cout << "camera" << bodyID[i] << " : current setting is " << ss.str() << "\n" << std::endl;
-			*/
 		}
 
 		if (dataType == EdsDataType::kEdsDataType_String)
@@ -65,12 +98,6 @@ EdsError GetProperty(EdsCameraRef const& camera, EdsUInt64 const& bodyID, EdsPro
 			std::stringstream ss;
 			ss << str;
 			output = ss.str();
-			// output = ss.str();
-			//Acquired property value is set
-			// if (err == EDS_ERR_OK)
-			// {
-			// 	std::cout << "camera" << bodyID << " : current setting is " << str << "\n" << std::endl;
-			// }
 		}
 	}
 	
@@ -87,7 +114,6 @@ EdsError GetProperty(std::vector<EdsCameraRef> const& cameraArray, std::vector<E
 	for (int i = 0; i < cameraArray.size(); i++) {
 		std::string output_data;
 		err = GetProperty(cameraArray[i], bodyID[i], propertyID, iso_table, output_data);
-		std::cout << output_data << std::endl;
 		output_arr.push_back(output_data);
 	}
 
@@ -96,23 +122,21 @@ EdsError GetProperty(std::vector<EdsCameraRef> const& cameraArray, std::vector<E
 	return err;
 }
 
-EdsError GetPropertyDesc(EdsCameraRef const& camera, EdsUInt64 const& bodyID, EdsPropertyID propertyID, std::map<EdsUInt32, const char*> prop_table)
+EdsError GetPropertyDesc(EdsCameraRef const& camera, EdsUInt64 const& bodyID, EdsPropertyID propertyID, std::map<EdsUInt32, const char*> prop_table, std::map<EdsUInt32, const char*>& out_table)
 {
 	EdsError	 err = EDS_ERR_OK;
 	EdsPropertyDesc	 propertyDesc = { 0 };
-
+	std::tuple<std::string, std::string> propertyType = getPropertyString(propertyID);
 	//Get property
-	if (err == EDS_ERR_OK)
-	{
-		err = EdsGetPropertyDesc(camera,
-			propertyID,
-			&propertyDesc);
-	}
-	if (err == EDS_ERR_OK)
-	{
-		// ## Unnecesary printing
+	err = EdsGetPropertyDesc(camera,
+		propertyID,
+		&propertyDesc);
+
+	if (err == EDS_ERR_OK) {
+		// Creation of table
 		tabulate::Table table;
-		table.add_row({"[Type] Possible Values: "});
+		table.add_row({std::get<0>(propertyType) + " Possible Values: "});
+		table.add_row({std::get<1>(propertyType)});
 
 		int k = 12;
 		switch (propertyID)
@@ -132,6 +156,13 @@ EdsError GetPropertyDesc(EdsCameraRef const& camera, EdsUInt64 const& bodyID, Ed
 		tabulate::Table optionRow;
 		tabulate::Table::Row_t options;
 		for (const auto& pair : prop_table) {
+			// Filtering
+			bool found = std::find(propertyDesc.propDesc, propertyDesc.propDesc + propertyDesc.numElements, pair.first) != propertyDesc.propDesc + propertyDesc.numElements;
+			if (!found) {
+				continue;
+			}
+			out_table.insert(pair);
+			// Adding data to the table
 			if (i % k == 0 && i >= k) {
 				optionRow.add_row(options);
 				// Create a new row
@@ -147,87 +178,28 @@ EdsError GetPropertyDesc(EdsCameraRef const& camera, EdsUInt64 const& bodyID, Ed
 			i++;
 		}
 
+		if (options.size() < k) {
+			while (options.size() < k) {
+				options.push_back(" ***** ");
+			}
+		}
+
+		optionRow.add_row(options);
 		table.add_row({optionRow});
 
 		std::cout << table << std::endl;
-		// Use Tabulate to print values (Dont need to print it 5 times)
-		// std::cout << "camera" << bodyID << "'s \t available values are...";
-		// for (int propDescNum = 0; propDescNum < propertyDesc.numElements; propDescNum++)
-		// {
-		// 	if ((propDescNum % 4) == 0)
-		// 	{
-		// 		std::cout << std::endl;
-		// 	}
-		// 	std::map<EdsUInt32, const char*>::iterator itr = prop_table.find(propertyDesc.propDesc[propDescNum]);
-		// 	if (itr != prop_table.end())
-		// 	{
-		// 		std::cout << std::setw(4) << std::right << std::distance(prop_table.begin(), itr) << ":";
-		// 		std::cout << std::setw(7) << std::right << itr->second << "      ";
-		// 		std::cout << std::left;
-		// 	}
-
-		// 	/* hex display
-		// 	std::stringstream ss;
-		// 	ss << std::showbase << std::hex << propertyDesc.propDesc[propDescNum] << "\t";
-		// 	std::cout << ss.str();
-		// 	*/
-		// }
-		// std::cout << "\n" << std::endl;
 	}
 	return err;
 }
 
-EdsError GetPropertyDesc(std::vector<EdsCameraRef> const& cameraArray, std::vector<EdsUInt64> const& bodyID, EdsPropertyID propertyID, std::map<EdsUInt32, const char*> prop_table)
+EdsError GetPropertyDesc(std::vector<EdsCameraRef> const& cameraArray, std::vector<EdsUInt64> const& bodyID, EdsPropertyID propertyID, std::map<EdsUInt32, const char*> prop_table, std::map<EdsUInt32, const char*>& out_table)
 {
 	EdsError	 err = EDS_ERR_OK;
 	EdsPropertyDesc	 propertyDesc = { 0 };
 	int i = 0;
-	err = GetPropertyDesc(cameraArray[i], bodyID[i], propertyID, prop_table);
-	// for (i = 0; i < cameraArray.size(); i++)
-	// {
-	// 	err = GetPropertyDesc(cameraArray[i], bodyID[i], propertyID, prop_table);
-	// }
+	err = GetPropertyDesc(cameraArray[i], bodyID[i], propertyID, prop_table, out_table);
 	return err;
 }
-
-/*
-EdsError SetProperty(std::vector<EdsCameraRef> const& cameraArray, std::vector<EdsUInt32> const& bodyID, EdsPropertyID propertyID, EdsVoid* data)
-{
-	EdsError	 err = EDS_ERR_OK;
-	EdsDataType	dataType = EdsDataType::kEdsDataType_Unknown;
-	EdsUInt32   dataSize = 0;	// Set property
-	int i;
-	for (i = 0; i < cameraArray.size(); i++)
-	{
-		err = EdsGetPropertySize(cameraArray[i],
-			kEdsPropID_Tv,
-			0,
-			&dataType,
-			&dataSize);
-
-		err = EdsSetPropertyData(cameraArray[i],
-			propertyID,
-			0,
-			dataSize,
-			(EdsVoid*)data);
-
-		//Notification of error
-		if (err != EDS_ERR_OK)
-		{
-			// It retries it at device busy
-			if (err == EDS_ERR_DEVICE_BUSY)
-			{
-				std::cout << "DeviceBusy";
-			}
-			return err;
-		}
-
-		std::cout << "camera" << bodyID[i] << " : property changed." << std::endl;
-
-	}
-	return err;
-}
-*/
 
 EdsError SetProperty(EdsCameraRef const& camera, EdsUInt64 const& bodyID, EdsPropertyID propertyID, EdsInt32 data, std::map<EdsUInt32, const char*> prop_table) {
 	EdsError	 err = EDS_ERR_OK;
@@ -244,8 +216,10 @@ EdsError SetProperty(EdsCameraRef const& camera, EdsUInt64 const& bodyID, EdsPro
 		EdsInt32 input_prop;
 		if (err == EDS_ERR_OK)
 		{
+			// Look for the table to find the given property
 			auto iter = prop_table.begin();
 			std::advance(iter, (EdsInt32)data); // Advance the iterator to the datath map
+			// Use the Hex value to see if the data exists
 			input_prop = iter->first;
 			bool exists = std::find(propertyDesc.propDesc, propertyDesc.propDesc + propertyDesc.numElements, input_prop) != propertyDesc.propDesc + propertyDesc.numElements;
 			if (exists)
@@ -290,8 +264,7 @@ EdsError SetProperty(std::vector<EdsCameraRef> const& cameraArray, std::vector<E
 	EdsUInt32   dataSize = 0;	// Set property
 	EdsPropertyDesc	 propertyDesc = { 0 };
 	int i;
-	for (i = 0; i < cameraArray.size(); i++)
-	{
+	for (i = 0; i < cameraArray.size(); i++) {
 		err = SetProperty(cameraArray[i], bodyID[i], propertyID, data, prop_table);
 	}
 	return err;

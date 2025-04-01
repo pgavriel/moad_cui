@@ -78,7 +78,7 @@ void MenuHandler::SelectMenu(std::string item){
         // Clear Screenvoid
         this->ClearScreen();
         // Display Menu Title
-        std::cout << menu_list[item] << std::endl;
+        // std::cout << menu_list[item] << std::endl;
         // Execute Menu Action
         bool is_submenu = menu_action[item]();
         // Wait until Key Press
