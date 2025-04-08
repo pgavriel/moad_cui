@@ -1,3 +1,5 @@
+#include <limits>
+
 #include "MenuHandler.h"
 
 using namespace std::chrono_literals;
@@ -93,17 +95,20 @@ void MenuHandler::ClearScreen() {
 }
 
 void MenuHandler::WaitUntilKeypress() {
-    std::string dummy_input;
-    std::cout << "Press any key + Enter to continue ..." << std::endl;
-    std::cin >> dummy_input; 
+    std::cout << "Press Enter to continue ..." << std::flush;
+    std::cin.ignore( std::numeric_limits<std::streamsize>::max(), '\n' );
+    std::cin.ignore( std::numeric_limits<std::streamsize>::max(), '\n' );
+    std::cout << std::flush;
 }
 
 void MenuHandler::setTitle(std::string title) {
     this->title = title;
 }
+
 void MenuHandler::setHelpTitle(std::string help_title) {
     this->help_title = help_title;
 }
+
 void MenuHandler::addMessage(MenuMessageStatus status, std::string message) {
     tabulate::Table message_table;
     message_table.add_row({message});
