@@ -13,10 +13,11 @@ MenuHandler::MenuHandler(
     this->help_title = "('r' to return)";
 }
 
-void MenuHandler::initialize() {
+void MenuHandler::initialize(MenuHandler*& active_menu) {
     std::string input;
     do {
         // Show Menu
+        active_menu = this;
         this->ShowMenu();
         // Get input
         std::cout << "> ";
@@ -65,7 +66,7 @@ void MenuHandler::ShowMenu() {
         std::cout << this->help_title << std::endl;
     }
     std::cout << "\n" << info << "\n" << std::endl;
-    std::cout << this->message << std::endl;
+    std::cout << this->message << "\n" << std::endl;
     std::cout << table << std::endl;
 }
 
@@ -103,6 +104,25 @@ void MenuHandler::setTitle(std::string title) {
 void MenuHandler::setHelpTitle(std::string help_title) {
     this->help_title = help_title;
 }
-void MenuHandler::addMessage(std::string message) {
-    this->message = message;
+void MenuHandler::addMessage(MenuMessageStatus status, std::string message) {
+    tabulate::Table message_table;
+    message_table.add_row({message});
+    switch (status){
+        case SUCCESS:
+            message_table.format().font_color(tabulate::Color::green);
+            break;
+
+        case WARNING:
+            message_table.format().font_color(tabulate::Color::yellow);
+            break;
+
+        case ERR:
+            message_table.format().font_color(tabulate::Color::red);
+            break;
+
+        default:
+            break;
+    }
+    
+    this->message = message_table;
 }

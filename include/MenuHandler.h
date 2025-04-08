@@ -7,6 +7,13 @@
 
 #include "tabulate.hpp"
 
+enum MenuMessageStatus {
+    SUCCESS,
+    WARNING,
+    ERR,
+    INFO
+};
+
 class MenuHandler {
 private:
     std::map<std::string, std::string> menu_list;
@@ -14,7 +21,7 @@ private:
     std::map<std::string, std::string>& info_list;
     std::string title;
     std::string help_title;
-    std::string message;
+    tabulate::Table message;
     std::mutex print_mtx;
 public:
     MenuHandler(
@@ -22,12 +29,12 @@ public:
         std::map<std::string, bool (*)()>,
         std::map<std::string, std::string>&
     ); 
-    void initialize();
+    void initialize(MenuHandler*&);
     void ShowMenu();
     void SelectMenu(std::string key);
     void ClearScreen();
     void WaitUntilKeypress();
     void setTitle(std::string);
     void setHelpTitle(std::string);
-    void addMessage(std::string);
+    void addMessage(MenuMessageStatus, std::string);
 };

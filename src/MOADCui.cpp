@@ -60,13 +60,14 @@ std::map<EdsCameraRef, std::string> camera_name;
 bool all_cameras = true;
 EdsCameraRef activeCamera;
 
-// Menu
-std::string curr_message;
-
-std::map<std::string, std::string> object_info;
-
 RealSenseHandler rshandle;
 SimpleSerial* Serial;
+
+// Menu
+MenuHandler* curr_menu;
+
+// TXT Config 
+std::map<std::string, std::string> object_info;
 
 std::map<std::string, std::string> loadParameters(const std::string& filename) {
     std::map<std::string, std::string> parameters;
@@ -762,7 +763,6 @@ bool changeCamera() {
 		case 2: 
 			activeCamera = canonhandle.cameraArray[1];
 			break;
-
 		case 3: 
 			activeCamera = canonhandle.cameraArray[2];
 			break;
@@ -800,6 +800,7 @@ void _liveView(int retry = 0) {
 		_liveView(++retry);
 	}
 	catch (const CameraException& err) {
+		// curr_menu->addMessage("Cannot open the liveview");
 		std::cout << "Error trying to open liveview: \n" << err.what() << std::endl;
 	}
 	// End Live View Configuration
@@ -838,7 +839,7 @@ bool liveViewMenu() {
 		{"2", endLiveView},
 	}, object_info);
 	live_view_menu.setTitle("Live View Menu");
-	live_view_menu.initialize();
+	live_view_menu.initialize(curr_menu);
 	return true;
 }
 
@@ -877,6 +878,8 @@ bool turntablePosition() {
 	std::cin >> degree_tracker;
 
 	object_info["Turntable Pos"] = std::to_string(degree_tracker);
+
+	curr_menu->addMessage(MenuMessageStatus::SUCCESS, "Turntable Position updated sucessfully");
 	
 	return false;
 }
@@ -892,7 +895,7 @@ bool CalibrationSubMenu(){
 		{"3", pressOff},
 	}, object_info);
 	calibration_menu_handler.setTitle("Calibration Menu");
-	calibration_menu_handler.initialize();
+	calibration_menu_handler.initialize(curr_menu);
 	return true;
 }
 bool CameraSubmenu(){
@@ -914,7 +917,7 @@ bool CameraSubmenu(){
 		{"7", changeCamera},
 	}, object_info);
 	camera_menu_handler.setTitle("Camera Options");
-	camera_menu_handler.initialize();
+	camera_menu_handler.initialize(curr_menu);
 	return true;
 }
 bool TurntableSubMenu(){
@@ -926,7 +929,7 @@ bool TurntableSubMenu(){
 		{"2", turntablePosition},
 	}, object_info);
 	turntable_handler.setTitle("Turntable Options");
-	turntable_handler.initialize();
+	turntable_handler.initialize(curr_menu);
 	return true;
 }
 
@@ -1093,11 +1096,9 @@ int main(int argc, char* argv[])
 		{"8", TurntableSubMenu},
 		{"9", liveViewMenu}
 	}, object_info);
-	
 	menu_handler.setTitle("MOAD - CLI Menu");
-
 	menu_handler.ClearScreen();
-	menu_handler.initialize();
+	menu_handler.initialize(curr_menu);
 	// while (true)
 	// {
 	// 	//control menu
