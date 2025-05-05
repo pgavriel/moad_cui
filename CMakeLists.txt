@@ -25,8 +25,14 @@ set(OpenCV_DIR "C:/opencv/build")
 find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})
 
+include(FetchContent)
+FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz)
+FetchContent_MakeAvailable(json)
+
+
 # set(PCL_DIR "C:\\src\\vcpkg\\installed\\x64-windows\\share\\pcl")
 find_package(PCL 1.3 REQUIRED COMPONENTS)
+
 
 if(MSVC)
     string(REPLACE "/W3" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
@@ -92,6 +98,7 @@ if(MSVC)
         PRIVATE
             ${EDSDK_LDIR}/Library/EDSDK.lib
             ${PCL_LIBRARIES}
+            nlohmann_json::nlohmann_json
         PUBLIC
             ${REALSENSE2_FOUND}
             ${OpenCV_LIBS}

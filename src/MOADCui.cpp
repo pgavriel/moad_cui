@@ -12,6 +12,7 @@
 #include <memory>
 #include <chrono>
 #include <opencv2/opencv.hpp>
+#include <nlohmann/json.hpp>
 
 #include "MenuHandler.h"
 
@@ -99,18 +100,84 @@ std::map<std::string, std::string> loadParameters(const std::string& filename) {
     return parameters;
 }
 
+void saveCameraConfig(std::string path) {
+	std::vector<std::tuple<EdsPropertyID, std::map<EdsUInt32, const char*>>> propertyIDs = {
+		std::tuple<EdsPropertyID, std::map<EdsUInt32, const char*>> (kEdsPropID_ISOSpeed, iso_table),
+		std::tuple<EdsPropertyID, std::map<EdsUInt32, const char*>> (kEdsPropID_Tv, tv_table),
+		std::tuple<EdsPropertyID, std::map<EdsUInt32, const char*>> (kEdsPropID_Av, av_table),
+		std::tuple<EdsPropertyID, std::map<EdsUInt32, const char*>> (kEdsPropID_WhiteBalance, whitebalance_table),
+	};
+
+	nlohmann::json json_data;
+	for (auto& camera : canonhandle.cameraArray) {
+		std::string cam = camera_name[camera];
+		EdsDeviceInfo deviceInfo;
+		EdsGetDeviceInfo(camera, &deviceInfo);
+		json_data[cam]["Model"] = deviceInfo.szDeviceDescription; 
+		json_data[cam]["Focal Length"] = config["tg_calibration_mode"];
+	}
+
+	for (auto propertyID : propertyIDs) {
+		std::string name = std::get<0>(getPropertyString(std::get<0>(propertyID)));
+		std::map<EdsUInt32, const char*> out_table;
+		GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, std::get<0>(propertyID), std::get<1>(propertyID), out_table);
+		std::vector<std::string> value_arr;
+		GetProperty(canonhandle.cameraArray, canonhandle.bodyID, std::get<0>(propertyID), out_table, value_arr);
+		
+		for (auto& camera : canonhandle.cameraArray) {
+			std::string cam = camera_name[camera];
+			json_data[cam][name] = value_arr[0];
+		}
+	}
+
+	std::string output_file = "/camera_config.json";
+    std::ofstream file(path + output_file);
+    if (file.is_open()) {
+        file << json_data.dump(4); // Pretty print with 4 spaces indentation
+        file.close();
+        std::cout << "Camera configuration saved to " << output_file << std::endl;
+    } else {
+        std::cerr << "Failed to open file for writing: " << output_file << std::endl;
+	}
+}
+
+void saveScanTime(std::chrono::milliseconds duration, std::string path) {
+	// Get the current time
+	std::string minutes = std::to_string(duration.count() / 60000);
+	std::string seconds = std::to_string((duration.count() % 60000) / 1000);
+
+	// Open the JSON file for writing
+	std::ifstream file(path + "/camera_config.json");
+	if (!file.is_open()) {
+		std::cerr << "Failed to open file for writing: " << path + "/camera_config.json" << std::endl;
+		return;
+	}
+	nlohmann::json json_data;
+	file >> json_data;
+
+	// Add the scan time to the JSON data
+	json_data["Scan Time"] = minutes + ":" + seconds;
+
+	// Save the updated JSON data back to the file
+	std::ofstream output_file(path + "/camera_config.json");
+	if (output_file.is_open()) {
+		output_file << json_data.dump(4); // Pretty print with 4 spaces indentation
+		output_file.close();
+		std::cout << "Scan time saved to camera_config.json" << std::endl;
+	} else {
+		std::cerr << "Failed to open file for writing: " << path + "/camera_config.json" << std::endl;
+	}
+
+	// Close the file
+	file.close();
+}
+
+
 void CheckKey()// After key is entered, _ endthread is automatically called.
 {
 	std::cin >> control_number;
 	std::cin.ignore();// ignore "\n"
 	keyflag = true;
-}
-
-void clr_screen()
-{
-	// cout << "\033[2J"; // screen clr
-	// cout << "\033[0;0H"; // move low=0, column=0
-	// cout << "\n\n\n\n\n";
 }
 
 EdsInt32 getvalue()
@@ -124,13 +191,6 @@ EdsInt32 getvalue()
 	}
 
 	return -1;
-}
-
-void pause_return()
-{
-	//	system("pause");
-	cout << "\n" << "Press the RETURN key." << endl;
-	getvalue();
 }
 
 int create_folder(std::string path, bool quiet = false) {
@@ -315,7 +375,7 @@ bool generateTransform(std::string degree_inc, int num_moves) {
 bool customScan() {
 	std::string degree_inc;
 	int num_moves = 0;
-	// 
+
 	cout << "Enter degrees per move: ";
 	std::cin >> degree_inc;
 	cout << "Enter number of moves: ";
@@ -344,6 +404,10 @@ bool customScan() {
 	cout << "RS Fail Count: " << rshandle.fail_count << endl;
 	std::this_thread::sleep_for(3000ms);
 
+	// Save camera configurations in a json file
+	saveCameraConfig(scan_folder + "\\pose-" + curr_pose);
+	saveScanTime(duration, scan_folder + "\\pose-" + curr_pose);
+
 	// Generate transform
 	generateTransform(degree_inc, num_moves);
 
@@ -355,8 +419,7 @@ bool customScan() {
 	curr_pose++;
 	object_info["Pose"] = curr_pose;
 
-	pause_return();
-	clr_screen();
+	MenuHandler::WaitUntilKeypress();
 
 	return true;
 }
@@ -364,7 +427,7 @@ bool customScan() {
 bool fullScan() {
 	std::string degree_inc = config["degree_inc"];
 	int num_moves = stoi(config["num_moves"]);
-
+	
 	// PressShutter(canonhandle.cameraArray, canonhandle.bodyID, kEdsCameraCommand_ShutterButton_Halfway);
 	Sleep(200);
 	// Start the loop timer
@@ -385,9 +448,13 @@ bool fullScan() {
 	int minutes = duration.count() / 60000;
 	int seconds = (duration.count() % 60000) / 1000;
 	cout << "Scan Time: " << std::setfill('0') << std::setw(2) << minutes << ":" 
-		<< std::setfill('0') << std::setw(2) << seconds << endl;
+	<< std::setfill('0') << std::setw(2) << seconds << endl;
 	cout << "RS Fail Count: " << rshandle.fail_count << endl;
 	std::this_thread::sleep_for(3000ms);
+	
+	// Save camera configurations in a json file
+	saveCameraConfig(scan_folder + "\\pose-" + curr_pose);
+	saveScanTime(duration, scan_folder + "\\pose-" + curr_pose);
 
 	// Generate transform
 	generateTransform(degree_inc, num_moves);
@@ -400,8 +467,7 @@ bool fullScan() {
 	curr_pose++;
 	object_info["Pose"] = curr_pose;
 
-	pause_return();
-	clr_screen();
+	MenuHandler::WaitUntilKeypress();
 
 	return true;
 }
@@ -411,6 +477,7 @@ bool collectSampleData() {
 	if (bool(stoi(config["collect_dslr"]))) {
 		// Reset download counter to 0
 		canonhandle.images_downloaded = 0;
+		
 		// Change Pose
 		scan_folder = config["output_dir"]+"/"+obj_name;
 		canonhandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\DSLR";
@@ -433,10 +500,57 @@ bool collectSampleData() {
 		rshandle.turntable_position = degree_tracker;
 		rshandle.get_current_frame(rs_timeout);
 	}
-	clr_screen();
 
 	return false;
 }
+
+bool calibrateCamera() {
+	// Get the image stream from the file
+	canonhandle.images_downloaded = 0;
+	scan_folder = config["output_dir"]+"/"+obj_name;
+	canonhandle.save_dir = scan_folder + "\\calibration";
+
+	EdsError err;
+	cout << "Collecting DSLR images...\n";
+	canonhandle.turntable_position = degree_tracker;
+	err = TakePicture(canonhandle.cameraArray, canonhandle.bodyID);
+	// EdsGetEvent();
+	int c = 0;
+	while (canonhandle.images_downloaded < canonhandle.cameras_found && c < dslr_timeout) {
+		EdsGetEvent();
+		std::this_thread::sleep_for(50ms);
+		c++;
+	}
+	// Convert the image from the camera to an opencv2::Mat object
+	cv::Mat img1 = cv::imread(canonhandle.save_dir + "/cam1_000_img.jpg");
+	cv::Mat img2 = cv::imread(canonhandle.save_dir + "/cam2_000_img.jpg");
+	cv::Mat img3 = cv::imread(canonhandle.save_dir + "/cam3_000_img.jpg");
+	cv::Mat img4 = cv::imread(canonhandle.save_dir + "/cam4_000_img.jpg");
+	cv::Mat img5 = cv::imread(canonhandle.save_dir + "/cam5_000_img.jpg");
+
+	cv::Point2i center = cv::Point2i(img1.rows / 2, (img1.cols / 2) + 200); 
+	cv::Vec3b color1 = img1.at<cv::Vec3b>(center);
+	cv::Vec3b color2 = img2.at<cv::Vec3b>(center);
+	cv::Vec3b color3 = img3.at<cv::Vec3b>(center);
+	cv::Vec3b color4 = img4.at<cv::Vec3b>(center);
+	cv::Vec3b color5 = img5.at<cv::Vec3b>(center);
+
+	std::cout << "Color 1: B = " << (int)color1[0] << " G = " << (int)color1[1] << " R = " << (int)color1[2] << std::endl;
+	std::cout << "Color 2: B = " << (int)color2[0] << " G = " << (int)color2[1] << " R = " << (int)color2[2] << std::endl;
+	std::cout << "Color 3: B = " << (int)color3[0] << " G = " << (int)color3[1] << " R = " << (int)color3[2] << std::endl;
+	std::cout << "Color 4: B = " << (int)color4[0] << " G = " << (int)color4[1] << " R = " << (int)color4[2] << std::endl;
+	std::cout << "Color 5: B = " << (int)color5[0] << " G = " << (int)color5[1] << " R = " << (int)color5[2] << std::endl;
+
+	// Compare the image
+		//  - IF the color of the image it is within the margin of error
+			// Do nothing
+		//  - Otherwise
+			// Save the difference
+			// Change the configuration of one of the camera
+			// Repeat
+	return true;
+}
+
 
 bool setObjectName() {
 	// std::string obj_name;
@@ -477,21 +591,18 @@ bool setPose() {
 
 bool pressHalfway() {
 	PressShutter(canonhandle.cameraArray, canonhandle.bodyID, kEdsCameraCommand_ShutterButton_Halfway);
-	clr_screen();
 
 	return false;
 }
 
 bool pressCompletely() {
 	PressShutter(canonhandle.cameraArray, canonhandle.bodyID, kEdsCameraCommand_ShutterButton_Completely);
-	clr_screen();
 	
 	return false;
 }
 
 bool pressOff() {
 	PressShutter(canonhandle.cameraArray, canonhandle.bodyID, kEdsCameraCommand_ShutterButton_OFF);
-	clr_screen();
 
 	return false;
 }
@@ -888,11 +999,13 @@ bool CalibrationSubMenu(){
 	MenuHandler calibration_menu_handler({
 		{"1", "Press Halfway"},
 		{"2", "Press Completely"},
-		{"3", "Press Off"}
+		{"3", "Press Off"},
+		{"4", "Calibrate Camera"},
 	},{
 		{"1", pressHalfway},
 		{"2", pressCompletely},
 		{"3", pressOff},
+		{"4", calibrateCamera},
 	}, object_info);
 	calibration_menu_handler.setTitle("Calibration Menu");
 	calibration_menu_handler.initialize(curr_menu);
@@ -935,8 +1048,7 @@ bool TurntableSubMenu(){
 
 bool downloadImages(){
 	DownloadImageAll(canonhandle.cameraArray, canonhandle.bodyID);
-	pause_return();
-	clr_screen();
+	MenuHandler::WaitUntilKeypress();
 
 	return false;
 }

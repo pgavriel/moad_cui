@@ -33,7 +33,7 @@ public:
     void ShowMenu();
     void SelectMenu(std::string key);
     void ClearScreen();
-    void WaitUntilKeypress();
+    static void WaitUntilKeypress();
     void setTitle(std::string);
     void setHelpTitle(std::string);
     void addMessage(MenuMessageStatus, std::string);
