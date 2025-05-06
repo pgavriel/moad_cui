@@ -13,6 +13,7 @@
 namespace fs = std::filesystem;
 using namespace std::chrono_literals;
 
+extern bool liveview_active;
 
 typedef struct _EVF_DATASET
 {
@@ -90,7 +91,7 @@ EdsError StartEvfCommand(EdsCameraRef const& camera, EdsUInt64 const& bodyID) {
 	return true;
 }
 
-EdsError DownloadEvfCommand(EdsCameraRef const& camera, EdsUInt64 const& _bodyID)
+EdsError DownloadEvfCommand(EdsCameraRef const& camera, std::string const& cameraName, std::thread::id const& parentThreadID)
 {
 	EdsError err = EDS_ERR_OK;
 
@@ -108,9 +109,7 @@ EdsError DownloadEvfCommand(EdsCameraRef const& camera, EdsUInt64 const& _bodyID
 
 	// create folder  ex) cam1
 	// TODO: This part should be deleted 
-	EdsUInt32 camid;
-	camid = (EdsUInt32)_bodyID;
-	std::string directory_tree = "cam" + std::to_string(camid);
+	std::string directory_tree = cameraName;
 	if (fs::exists(directory_tree) == FALSE) {
 		std::filesystem::create_directories(directory_tree);
 	}
@@ -142,10 +141,7 @@ EdsError DownloadEvfCommand(EdsCameraRef const& camera, EdsUInt64 const& _bodyID
 	std::this_thread::sleep_for(100ms);
 
 	// Show Liveview Image
-	while (cv::waitKey(1) != 'r') {
-		EdsUInt32 camid;
-		camid = (EdsUInt32)_bodyID;
-		std::string directory_tree = "cam" + std::to_string(camid);
+	while (liveview_active) {
 		// Download live view image data.
 		// TODO: This should be converted into cv::Mat instead
 		if (err == EDS_ERR_OK)
@@ -195,11 +191,12 @@ EdsError DownloadEvfCommand(EdsCameraRef const& camera, EdsUInt64 const& _bodyID
 		cv::setWindowProperty(directory_tree, cv::WND_PROP_TOPMOST, 1);
 		cv::resizeWindow(directory_tree, 600, 400);
 		cv::imshow(directory_tree, frame);
-		// cv::moveWindow(directory_tree, 600 * (i % 3), 430 * (i / 3));
+
+		int i = cameraName[cameraName.size() - 1] - '0' - 1;
+		cv::moveWindow(directory_tree, 600 * (i % 3), 430 * (i / 3));
 	}
 
-	cv::waitKey(0);
-	cv::destroyAllWindows();
+	cv::destroyWindow(cameraName);
 
 	// Close the Liveview Stream
 	ReleaseStream(stream, evfImage);
@@ -285,6 +282,7 @@ EdsError StartEvfCommand(std::vector<EdsCameraRef> const& cameraArray, std::vect
 	return true;
 }
 
+// Depricated function. Use the one with EdsCameraRef instead.
 EdsError DownloadEvfCommand(std::vector<EdsCameraRef> const& cameraArray, std::vector<EdsUInt64> const& _bodyID)
 {
 

@@ -53,8 +53,10 @@ int rs_timeout;
 int dslr_timeout;
 int turntable_delay_ms;
 
-std::thread* liveview_th;
+// Liveview Threads
+std::vector<std::thread> liveview_th;
 bool liveview_active = false;
+std::thread::id liveview_thread_id;
 
 // Camera
 std::map<EdsCameraRef, std::string> camera_name;
@@ -373,6 +375,11 @@ bool generateTransform(std::string degree_inc, int num_moves) {
 }
 
 bool customScan() {
+	if (liveview_active){
+		std::cout << "Liveview is active, please stop it before scanning." << std::endl;
+		return false;
+	}
+
 	std::string degree_inc;
 	int num_moves = 0;
 
@@ -425,6 +432,11 @@ bool customScan() {
 }
 
 bool fullScan() {
+	if (liveview_active){
+		std::cout << "Liveview is active, please stop it before scanning." << std::endl;
+		return false;
+	}
+
 	std::string degree_inc = config["degree_inc"];
 	int num_moves = stoi(config["num_moves"]);
 	
@@ -902,6 +914,11 @@ void _liveView(int retry = 0) {
 		std::cout << "Starting Liveview: Try #" << retry + 1 << std::endl;
 		StartEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
 		std::this_thread::sleep_for(.5s);
+		for (auto& camera : canonhandle.cameraArray) {
+			// Download the image from the camera
+			// liveview_th =
+			DownloadEvfCommand(camera, camera_name[camera], liveview_thread_id);
+		}
 		DownloadEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
 		EndEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
 		std::cout << "Liveview sucessfully closed" << std::endl;
@@ -920,8 +937,24 @@ void _liveView(int retry = 0) {
 
 bool getLiveView() {
 	if (!liveview_active) {
+		// Start Live View configuration
 		liveview_active = true;
-		liveview_th = new std::thread(_liveView, 0);
+		liveview_thread_id = std::this_thread::get_id();
+
+		// Change camera configuration to liveview
+		StartEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
+		std::this_thread::sleep_for(.5s);
+		
+		// Download and display Image from camera 
+		int i = 0;
+		for (auto& camera : canonhandle.cameraArray) {
+			// Download the image from the camera
+			liveview_th.push_back(std::thread([&]() {
+				DownloadEvfCommand(camera, camera_name[camera], liveview_thread_id);
+			}));
+			std::this_thread::sleep_for(.5s);
+			i++;
+		}
 	}
 	else {
 		std::cout << "The liveview is active" << std::endl;
@@ -931,13 +964,16 @@ bool getLiveView() {
 }
 
 bool endLiveView() {
-	if(liveview_th->joinable()) {
-		liveview_th->join();
+	std::cout << "Ending Liveview..." << std::endl;
+	liveview_active = false;
+	for (auto& th : liveview_th) {
+		if (th.joinable()) {
+			std::cout << "Joining thread..." << std::endl;
+			th.join();
+		}
 	}
-	else {
-		std::cout << "There is no liveview active" << std::endl;
-	}
-
+	EndEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
+	std::cout << "Liveview sucessfully closed" << std::endl;
 	return false;
 }
 
