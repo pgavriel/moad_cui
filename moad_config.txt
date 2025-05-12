@@ -1,5 +1,5 @@
 output_dir=G:/
-object_name=demo1
+object_name=demo3
 degree_inc=5
 num_moves=72
 # Serial port Configuration (COM[x]) (Double digit ports will need to modify source code)
@@ -23,21 +23,21 @@ collect_rs=1
 rs_color=1
 rs_depth=1
 rs_pointcloud=1
-rs_compute_normals=0
+rs_compute_normals=1
 rs_raw_pointcloud=0
 rs_timeout_sec=9
 
 # RealSense Pointcloud Filters
 rs_xpass=1
-rs_xpass_min=-1
-rs_xpass_max=1
+rs_xpass_min=-0.3
+rs_xpass_max=0.3
 rs_ypass=1
-rs_ypass_min=-1
-rs_ypass_max=1
+rs_ypass_min=-0.3
+rs_ypass_max=0.3
 rs_zpass=1
-rs_zpass_min=-1
-rs_zpass_max=1
-rs_sor=0
+rs_zpass_min=0.0
+rs_zpass_max=0.5
+rs_sor=1
 rs_sor_meank=6
 rs_sor_stddev=1.0
 rs_voxel=0

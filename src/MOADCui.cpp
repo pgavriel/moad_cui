@@ -214,13 +214,14 @@ int create_folder(std::string path, bool quiet = false) {
 }
 
 void create_obj_info_json(std::string path) {
-	std::string filename = object_info["Object Name"];
+	std::string object_name = object_info["Object Name"];
+	std::cout << "Creating object info JSON file: " << object_name << std::endl;
 	if (fs::exists(path)){
 		std::stringstream command_stream;
 		command_stream 
 			<< "python3 " 
 			<< "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/scripts/create_object_info.py "
-			<< filename << " "
+			<< object_name << " "
 			<< "-p " << path << " ";
 
 		// Execute command
@@ -264,9 +265,19 @@ char get_last_pose() {
 			if (name.find("pose-") != std::string::npos) {
 				int length = name.length();
 				char letter = name[length - 1];
-				if (fs::is_empty(path + "/pose-" + letter + "/DSLR")) {
+				// Check if the folder is empty
+				if (fs::is_empty(path + "/pose-" + letter + "/")) {
 					return letter; // Current pose
 				}
+				else {
+					// If is not empty, check if the subfolder is empty
+					for (const auto& sub_entry : fs::directory_iterator(path + "/pose-" + letter)) {
+						if (fs::is_directory(entry) && fs::is_empty(sub_entry)) {
+							return letter; // Current pose
+						}
+					}
+				}
+
 				if (last_pose < letter) {
 					last_pose = name[length - 1];
 				}
@@ -1069,6 +1080,7 @@ bool CameraSubmenu(){
 	camera_menu_handler.initialize(curr_menu);
 	return true;
 }
+
 bool TurntableSubMenu(){
 	MenuHandler turntable_handler({
 		{"1", "Turntable Control"},
@@ -1089,16 +1101,9 @@ bool downloadImages(){
 	return false;
 }
 
-bool option8(){
-	std::cout << "Change config options" << std::endl;
-	return false;
-}
-
 int main(int argc, char* argv[])
 {	
 	// SETUP ----------------------------------------------------------------------------------------------
-	
-
 	degree_tracker = 0;
 	std::smatch match_results;
     std::shared_ptr<std::thread> th = std::shared_ptr<std::thread>();
@@ -1110,22 +1115,31 @@ int main(int argc, char* argv[])
 	std::string config_file = projectDir.string() + "\\moad_config.txt";
 	cout << "Loading Config File: " << config_file << endl;
 	config = loadParameters(config_file);
+	
 	// Print the config map
 	cout << "Initial Settings Loaded:\n";
     for (auto it = config.begin(); it != config.end(); ++it) {
         cout << it->first << " = " << it->second << endl;
     }
+
 	// Create object folder 
 	scan_folder = config["output_dir"]+"/"+config["object_name"];
+	obj_name = config["object_name"];
+	object_info["Object Name"] = obj_name;
+
     create_folder(scan_folder);
+
 	// Create object info template
 	create_obj_info_json(config["output_dir"]);
+	
 	// Set initial Object name
-	obj_name = config["object_name"];
 	int turntable_delay_ms = stoi(config["turntable_delay_ms"]);
 
 	// Get last pose
+	std::cout << "Checking Last Pose..." << std::endl;
 	curr_pose = get_last_pose();
+	std::cout << "Last Pose Checked." << std::endl;
+
 
 	// Setup Realsense Cameras
 	rs_timeout = stoi(config["rs_timeout_sec"]) * 1000;
@@ -1212,9 +1226,6 @@ int main(int argc, char* argv[])
 		cout << "\nSkipping DSLR setup, 'collect_dslr=0'.\n";
 	}
 
-	// Retrieve possible configuration (Probably gotta do that once, then save it in a file or something)
-
-
 	// Change pose
 	curr_pose = get_last_pose();
 
@@ -1247,475 +1258,6 @@ int main(int argc, char* argv[])
 	menu_handler.setTitle("MOAD - CLI Menu");
 	menu_handler.ClearScreen();
 	menu_handler.initialize(curr_menu);
-	// while (true)
-	// {
-	// 	//control menu
-	// 	if (loop)
-	// 	{
-	// 		keyflag = false; // initialize keyflag
-	// 		//_beginthread(CheckKey, 0, NULL); // Start waiting for keystrokes
-	// 		th = std::make_shared<std::thread>(CheckKey);
-
-	// 		cout << "--------------------------------" << endl;
-	// 		cout
-	// 			<< "[ 1] Collect & Download Data \n"
-	// 			<< "[ 2] Press Halfway \n"
-	// 			<< "[ 3] Press Completely \n"
-	// 			<< "[ 4] Press Off \n"
-	// 			<< "[ 5] TV \n"
-	// 			<< "[ 6] AV \n"
-	// 			<< "[ 7] ISO \n"
-	// 			<< "[ 8] White Balance \n"
-	// 			<< "[ 9] Drive Mode \n"
-	// 			<< "[10] AE Mode (read only) \n"
-	// 			<< "[11] Get Live View \n"
-	// 			<< "[12] File Download \n"
-	// 			<< "[13] Run Object Scan \n" 
-	// 			<< "[14] Turntable Control \n"
-	// 			<< "[15] Set Object Name \n"
-	// 			<< "[16] Set Turntable Position \n"
-	// 			<< "[17] Run Transform Generator \n";
-	// 		cout << "--------------------------------" << endl;
-	// 		cout << "Object:\t\t" << obj_name << "\nPosition:\t" << degree_tracker << endl;
-	// 		cout << "--------------------------------" << endl;
-	// 		cout << "Enter the number of the control.\n"
-	// 			<< "\tor 'r' (=Return)" << endl;
-	// 		cout << "> ";
-	// 		loop = false;
-	// 	}
-
-	// 	if (keyflag == true) // Within this scope, the CheckKey thread is terminated
-	// 	{
-
-	// 		th->join();
-			
-	// 		if (std::regex_search(control_number, match_results, std::regex("[0-9]")))
-	// 		{
-	// 			// Take Picture
-	// 			if (control_number == "1")
-	// 			{	
-	// 				if (bool(stoi(config["collect_dslr"]))) {
-	// 					EdsError err;
-	// 					cout << "Collecting DSLR images...\n";
-	// 					canonhandle.turntable_position = degree_tracker;
-	// 					err = TakePicture(canonhandle.cameraArray, canonhandle.bodyID);
-	// 					cout << err << endl;
-	// 					EdsGetEvent();
-	// 				}
-	// 				if (bool(stoi(config["collect_rs"]))) {
-	// 					rshandle.turntable_position = degree_tracker;
-	// 					rshandle.get_current_frame(rs_timeout);
-	// 				}
-	// 				clr_screen();
-	// 				loop = true;
-	// 				continue;
-	// 			}
-	// 			// Press halfway
-	// 			else if (control_number == "2")
-	// 			{
-	// 				PressShutter(canonhandle.cameraArray, canonhandle.bodyID, kEdsCameraCommand_ShutterButton_Halfway);
-	// 				clr_screen();
-	// 				loop = true;
-	// 				continue;
-	// 			}
-	// 			// Press Completely
-	// 			else if (control_number == "3")
-	// 			{
-	// 				PressShutter(canonhandle.cameraArray, canonhandle.bodyID, kEdsCameraCommand_ShutterButton_Completely);
-	// 				clr_screen();
-	// 				loop = true;
-	// 				continue;
-	// 			}
-	// 			// Press Completely
-	// 			else if (control_number == "4")
-	// 			{
-	// 				PressShutter(canonhandle.cameraArray, canonhandle.bodyID, kEdsCameraCommand_ShutterButton_OFF);
-	// 				clr_screen();
-	// 				loop = true;
-	// 				continue;
-	// 			}
-	// 			// TV
-	// 			else if (control_number == "5")
-	// 			{
-	// 				GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Tv, tv_table);
-	// 				GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Tv, tv_table);
-
-	// 				cout << "input no. (ex. 54 = 1/250)" << endl;
-	// 				cout << ">";
-
-	// 				canonhandle.data = getvalue();
-	// 				if (canonhandle.data != -1)
-	// 				{
-	// 					SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Tv, canonhandle.data, tv_table);
-	// 					pause_return();
-	// 				}
-	// 				clr_screen();
-	// 				loop = true;
-	// 				continue;
-	// 			}
-	// 			// Av
-	// 			else if (control_number == "6")
-	// 			{
-	// 				GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Av, av_table);
-	// 				GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Av, av_table);
-	// 				cout << "input Av (ex. 21 = 5.6)" << endl;
-	// 				cout << ">";
-
-	// 				canonhandle.data = getvalue();
-	// 				if (canonhandle.data != -1)
-	// 				{
-	// 					SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Av, canonhandle.data, av_table);
-	// 					pause_return();
-	// 				}
-	// 				clr_screen();
-	// 				loop = true;
-	// 				continue;
-	// 			}
-	// 			// ISO
-	// 			else if (control_number == "7")
-	// 			{
-	// 				GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_ISOSpeed, iso_table);
-	// 				GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_ISOSpeed, iso_table);
-	// 				cout << "input ISOSpeed (ex. 8 = ISO 200)" << endl;
-	// 				cout << ">";
-
-	// 				canonhandle.data = getvalue();
-	// 				if (canonhandle.data != -1)
-	// 				{
-	// 					SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_ISOSpeed, canonhandle.data, iso_table);
-	// 					pause_return();
-	// 				}
-	// 				clr_screen();
-	// 				loop = true;
-	// 				continue;
-	// 			}
-	// 			// White Balanse
-	// 			else if (control_number == "8")
-	// 			{
-	// 				GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_WhiteBalance, whitebalance_table);
-	// 				GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_WhiteBalance, whitebalance_table);
-	// 				cout << "input WhiteBalance (ex. 0 = Auto)" << endl;
-	// 				cout << ">";
-
-	// 				canonhandle.data = getvalue();
-	// 				if (canonhandle.data != -1)
-	// 				{
-	// 					SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_WhiteBalance, canonhandle.data, whitebalance_table);
-	// 					pause_return();
-	// 				}
-	// 				clr_screen();
-	// 				loop = true;
-	// 				continue;
-	// 			}
-	// 			// Drive Mode
-	// 			else if (control_number == "9")
-	// 			{
-	// 				GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_DriveMode, drivemode_table);
-	// 				GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_DriveMode, drivemode_table);
-	// 				cout << "input Drive Mode (ex. 0 = Single shooting)" << endl;
-	// 				cout << ">";
-
-	// 				canonhandle.data = getvalue();
-	// 				if (canonhandle.data != -1)
-	// 				{
-	// 					SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_DriveMode, canonhandle.data, drivemode_table);
-	// 					pause_return();
-	// 				}
-	// 				clr_screen();
-	// 				loop = true;
-	// 				continue;
-	// 			}
-	// 			// AE Mode
-	// 			else if (control_number == "10")
-	// 			{
-	// 				GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_AEMode, AEmode_table);
-	// 				GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_AEMode, AEmode_table);
-	// 				pause_return();
-	// 				clr_screen();
-	// 				loop = true;
-	// 				continue;
-	// 			}
-	// 			// Download EVF image
-	// 			else if (control_number == "11")
-	// 			{
-	// 				StartEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
-	// 				DownloadEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
-	// 				EndEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
-	// 				pause_return();
-	// 				clr_screen();
-	// 				loop = true;
-	// 				continue;
-	// 			}
-	// 			// Download All Image
-	// 			else if (control_number == "12")
-	// 			{
-	// 				DownloadImageAll(canonhandle.cameraArray, canonhandle.bodyID);
-	// 				pause_return();
-	// 				clr_screen();
-	// 				loop = true;
-	// 				continue;
-	// 			}
-	// 			//Run Object Scan
-	// 			else if (control_number == "13")
-	// 			{	
-	// 				std::string degree_inc;
-	// 				int num_moves = 0;
-	// 				// 
-	// 				cout << "Enter degrees per move: ";
-	// 				std::cin >> degree_inc;
-	// 				cout << "Enter number of moves: ";
-	// 				std::cin >> num_moves;
-	// 				// PressShutter(canonhandle.cameraArray, canonhandle.bodyID, kEdsCameraCommand_ShutterButton_Halfway);
-	// 				Sleep(200);
-	// 				// Start the loop timer
-    // 				auto start = std::chrono::high_resolution_clock::now();
-	// 				for (int rots = 0; rots < num_moves; rots++)
-	// 				{
-	// 					// Collect DSLR Data
-	// 					if(bool(stoi(config["collect_dslr"]))) {
-	// 						canonhandle.images_downloaded = 0;
-	// 						int c = 0;
-	// 						// int timeout = stoi(config["dslr_timeout_sec"]) * 20; // 20 = 1s
-	// 						EdsError err;
-	// 						cout << "Getting DSLR Data...\n";
-	// 						canonhandle.turntable_position = degree_tracker;
-	// 						err = TakePicture(canonhandle.cameraArray, canonhandle.bodyID);
-	// 						// cout << "Result: " << err << endl;
-	// 						while (canonhandle.images_downloaded < canonhandle.cameras_found && c < dslr_timeout) {
-	// 							EdsGetEvent();
-	// 							std::this_thread::sleep_for(50ms);
-	// 							c++;
-	// 						}
-	// 						cout << "DSLR Timeout Count: " << c << "/" << dslr_timeout << endl;
-	// 					}
-
-	// 					// Collect RealSense Data
-	// 					if(bool(stoi(config["collect_rs"]))) {
-	// 						rshandle.turntable_position = degree_tracker;
-	// 						rshandle.get_current_frame(rs_timeout);
-	// 						if (rshandle.fail_count > 0) {
-	// 							cout << "RS Failure - " << rshandle.fail_count << endl;
-	// 							break;
-	// 						}
-	// 					}
-						
-	// 					// Issue command to move turntable.
-	// 					char *send = &degree_inc[0];
-	// 					bool is_sent = Serial->WriteSerialPort(send);
-
-	// 					if (is_sent) {
-	// 						int wait_time = std::ceil(((abs(stoi(degree_inc))*200)+500)/1000)+5;
-	// 						cout << "Message sent, waiting up to " << wait_time << " seconds.\n";
-	// 						std::string incoming = Serial->ReadSerialPort(wait_time, "json");
-	// 						cout << "Incoming: " << incoming;// << endl;
-	// 						// std::this_thread::sleep_for(250ms);
-							
-	// 						std::this_thread::sleep_for(std::chrono::milliseconds(turntable_delay_ms));
-	// 					} else {
-	// 						cout << "WARNING: Serial command not sent, something went wrong.\n";
-	// 					}
-
-	// 					degree_tracker += stoi(degree_inc);
-	// 					cout << "Image " << rots+1 << "/" << num_moves << " taken. " << endl;
-	// 				}
-	// 				// Stop the loop timer
-    // 				auto end = std::chrono::high_resolution_clock::now();
-	// 				// Calculate the elapsed time
-	// 				auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-	// 				// Convert the duration to minutes, seconds, and milliseconds
-	// 				int minutes = duration.count() / 60000;
-	// 				int seconds = (duration.count() % 60000) / 1000;
-	// 				cout << "Scan Time: " << std::setfill('0') << std::setw(2) << minutes << ":" 
-	// 					<< std::setfill('0') << std::setw(2) << seconds << endl;
-	// 				cout << "RS Fail Count: " << rshandle.fail_count << endl;
-	// 				std::this_thread::sleep_for(3000ms);
-
-	// 				// Generate transform
-	// 				bool force = config["tg_force"] == "True";
-	// 				bool visualize = config["tg_visualize"] == "True";
-	// 				std::string calibration_dir = config["tg_calibration_dir_windows"];
-	// 				std::string calibration = config["tg_calibration_mode"];
-	// 				std::string output_dir = config["tg_output_dir_windows"];
-
-	// 				int range = std::stoi(degree_inc) * num_moves;
-	// 				std::stringstream command_stream;
-	// 				command_stream 
-	// 					<< "python3 " 
-	// 					<< "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/scripts/transform_generator.py "
-	// 					<< obj_name << " "
-	// 					<< "-d " << degree_inc << " "
-	// 					<< "-r " << range << " "
-	// 					<< "-c " << calibration << " "
-	// 					<< "--calibration_dir " << calibration_dir << " "
-	// 					<< "-p " << output_dir;
-
-	// 				if (visualize) {
-	// 					command_stream << " -v";
-	// 				}
-
-	// 				if (force) {
-	// 					command_stream << " -f";
-	// 				}
-
-	// 				// Execute command
-	// 				std::string command = command_stream.str(); 
-	// 				const char* c_command = command.c_str();
-	// 				std::cout << "\nExecuting Command: " << command; 
-	// 				system(c_command);
-
-	// 				// Recalculate angle
-	// 				degree_tracker = degree_tracker % 360;
-
-	// 				pause_return();
-	// 				clr_screen();
-	// 				loop = true;
-	// 				continue;
-	// 			}
-	// 			// Turntable control
-	// 			else if (control_number == "14")
-	// 			{	
-	// 				cout << "\n\n\nTURNTABLE CONTROL\n\n";
-	// 				std::string degree_inc;
-	// 				while(degree_inc != "r"){
-	// 					cout << "Enter degrees to move (r = Return): ";
-	// 					std::cin >> degree_inc;
-	// 					if (degree_inc == "r")
-	// 						break;
-	// 					else {
-	// 						char *send = &degree_inc[0];
-	// 						bool is_sent = Serial->WriteSerialPort(send);
-	// 						// TODO: Calculate wait time based on degrees entered and motor speed ||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
-	// 						if (is_sent) {
-	// 							int wait_time = std::ceil(((abs(stoi(degree_inc))*200)+500)/1000)+5;
-	// 							cout << "Message sent, waiting up to " << wait_time << " seconds.\n";
-	// 							std::string incoming = Serial->ReadSerialPort(wait_time, "json");
-	// 							cout << "Incoming: " << incoming;// << endl;
-	// 							//Sleep(4000);
-	// 						} 
-	// 					}
-	// 					// Update degree tracker
-	// 					degree_tracker += std::stoi(degree_inc);
-	// 					degree_tracker = degree_tracker % 360;
-	// 				}
-					
-
-	// 				// pause_return();
-	// 				clr_screen();
-	// 				loop = true;
-	// 			}
-	// 			// Set Object Name
-	// 			else if (control_number == "15")
-	// 			{	
-	// 				// std::string obj_name;
-	// 				cout << "\n\nEnter Object Name: ";
-	// 				std::cin >> obj_name; 
-	// 				scan_folder = config["output_dir"]+"/"+obj_name;
-	// 				create_folder(scan_folder);
-	// 				config["object_name"] = obj_name;
-	// 				// Do handler objects need a config still?
-	// 				rshandle.update_config(config);
-	// 				rshandle.save_dir = scan_folder + "\\realsense";
-	// 				create_folder(rshandle.save_dir,true);
-	// 				canonhandle.save_dir = scan_folder + "\\DSLR";
-	// 				create_folder(canonhandle.save_dir,true);
-
-	// 				loop = true;
-	// 			}
-	// 			// Set Turntable Position
-	// 			else if (control_number == "16")
-	// 			{	
-	// 				cout << "\n\nEnter Turntable Position: ";
-	// 				std::cin >> degree_tracker; 
-					
-	// 				loop = true;
-	// 			}
-	// 			// Call the transform generator
-	// 			else if (control_number == "17"){
-	// 				std::string degree_inc;
-	// 				std::regex number_only("^([0-9]+|r)$");
-	// 				validate_input("\n\nEnter Degree Interval (integer): ", degree_inc, number_only);
-	// 				std::string visualize;
-	// 				std::regex confirmation_only("^(y|n|r)$");
-	// 				validate_input("\n\nVisualize after finishing the transform? (y/n): ", visualize, confirmation_only);
-
-	// 				if (degree_inc != "r" && visualize != "r") {
-	// 					std::stringstream command_stream;
-	// 					command_stream 
-	// 						<< "python3 " 
-	// 						<< "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/scripts/transform_generator.py "
-	// 						<< obj_name << " "
-	// 						<< "-d " << degree_inc << " ";
-
-	// 					if (visualize == "y") {
-	// 						command_stream << "-v";
-	// 					}
-
-	// 					// Execute command
-	// 					std::string command = command_stream.str(); 
-	// 					const char* c_command = command.c_str();
-	// 					std::cout << "\nExecuting Command: " << command; 
-	// 					system(c_command);
-	// 				}
-
-					
-	// 				// Clean screen
-	// 				clr_screen();
-	// 				loop = true;
-	// 				continue; 
-	// 			}
-	// 			else
-	// 			{
-	// 				clr_screen();
-	// 				loop = true;
-	// 				continue;
-	// 			}
-	// 		}
-	// 		// Return
-	// 		else if (std::regex_search(control_number, match_results, std::regex("r", std::regex_constants::icase)))
-	// 		{
-	// 			// clr_screen();
-	// 			keyflag = false;
-	// 			loop = false;
-	// 			break;
-	// 		}
-	// 		else
-	// 		{
-	// 			clr_screen();
-	// 			loop = true;
-	// 			continue;
-	// 		}
-	// 	}
-	// 	// send getevent periodically
-	// 	// cout << "Event check.\n";
-	// 	EdsGetEvent();
-	// 	std::this_thread::sleep_for(200ms);
-	// }
-
-	//Release camera list
-	// if (canonhandle.cameraList != NULL)
-	// {
-	// 	EdsRelease(canonhandle.cameraList);
-	// }
-
-	// // Release Camera
-	// for (i = 0; i < canonhandle.cameraArray.size(); i++)
-	// {
-	// 	if (canonhandle.cameraArray[i] != NULL)
-	// 	{
-	// 		EdsRelease(canonhandle.cameraArray[i]);
-	// 		canonhandle.cameraArray[i] = NULL;
-	// 	}
-	// }
-	// //Remove elements before looping. Memory is automatically freed at the destructor of the vector when it leaves the scope.
-	// canonhandle.cameraArray.clear();
-	// canonhandle.bodyID.clear();
-	// clr_screen();
-
-	
-	// if (isSDKLoaded)
-	// {
-	// 	EdsTerminateSDK();
-	// }
 
 	return false;
 }
