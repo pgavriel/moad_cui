@@ -4,6 +4,12 @@
 #include <functional>
 #include <string>
 #include <sstream>
+#include <fstream>
+#include <typeinfo>
+
+#include <nlohmann/json.hpp>
+
+// PCL includes
 #include <pcl/io/ply_io.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -13,6 +19,8 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/features/normal_3d.h>
 #include <pcl/features/normal_3d_omp.h>
+
+#include "ConfigHandler.h"
 #include "RealSenseHandler.h"
 
 using std::string;
@@ -36,48 +44,9 @@ Eigen::Matrix4f createRotationMatrix(float angle_degrees)
 }
 
 RealSenseHandler::RealSenseHandler() {
-    // Assign camera names based on serial numbers
-    camera_names["215122257111"] = "rs1";
-    camera_names["239222302632"] = "rs2";
-    camera_names["213522251284"] = "rs3";
-    camera_names["213622251144"] = "rs4";
-    camera_names["215122254603"] = "rs5";
-    
-    // Assign camera transforms to corresponding serial number
-    Eigen::Matrix4f rs1_tx {
-        {0.998497, -0.035869, 0.041430, -0.086364},
-        {-0.044819, -0.099481, 0.994030, -0.763572},
-        {-0.031533, -0.994393, -0.100939, 0.067049},
-        {0.000000, 0.000000, 0.000000, 1.000000}  };
-    camera_transforms["215122257111"] = rs1_tx;
-    Eigen::Matrix4f rs2_tx {
-        {0.998533, -0.017785, 0.051146, -0.087263},
-        {-0.053342, -0.485674, 0.872511, -0.723468},
-        {0.009323, -0.873959, -0.485910, 0.365736},
-        {0.000000, 0.000000, 0.000000, 1.000000}  };
-    camera_transforms["239222302632"] = rs2_tx;
-    Eigen::Matrix4f rs3_tx {
-        {0.997154, -0.063032, 0.041368, -0.081403},
-        {-0.075028, -0.775611, 0.626736, -0.578059},
-        {-0.007418, -0.628056, -0.778133, 0.637925},
-        {0.000000, 0.000000, 0.000000, 1.000000}  };
-    camera_transforms["213522251284"] = rs3_tx;
-    Eigen::Matrix4f rs4_tx {
-        {0.997557, -0.059483, 0.036644, -0.076139},
-        {-0.068003, -0.946953, 0.314094, -0.327219},
-        {0.016017, -0.315818, -0.948685, 0.808094},
-        {0.000000, 0.000000, 0.000000, 1.000000}  };
-    camera_transforms["213622251144"] = rs4_tx;
-    Eigen::Matrix4f rs5_tx {
-        {0.999343, -0.016801, 0.032102, -0.075366},
-        {-0.016891, -0.999854, 0.002541, -0.055628},
-        {0.032054, -0.003082, -0.999481, 0.851603},
-        {0.000000, 0.000000, 0.000000, 1.000000}  };
-    camera_transforms["215122254603"] = rs5_tx;
-
     //Configure Depth Frame Filters (These are default in RSViewer)
     threshold_filter.set_option(RS2_OPTION_MIN_DISTANCE, 0.2f); // Minimum threshold distance in meters
-    threshold_filter.set_option(RS2_OPTION_MAX_DISTANCE, 1.0f); // Maximum threshold distance in meters
+    threshold_filter.set_option(RS2_OPTION_MAX_DISTANCE, 1.5f); // Maximum threshold distance in meters
     decimation_filter.set_option(RS2_OPTION_FILTER_MAGNITUDE, 2); // Decimation magnitude
     spatial_filter.set_option(RS2_OPTION_FILTER_SMOOTH_ALPHA, 0.5f); // Spatial filter smooth alpha
     spatial_filter.set_option(RS2_OPTION_FILTER_SMOOTH_DELTA, 20.0f); // Spatial filter smooth delta
@@ -101,6 +70,27 @@ RealSenseHandler::~RealSenseHandler() {
 }
 
 void RealSenseHandler::initialize() {
+    std::cout << "Initializing RealSense Handler...\n";
+    ConfigHandler& config = ConfigHandler::getInstance();
+    // Get Realsense camera transforms from JSON file
+    nlohmann::json realsense_json;
+    std::string transform_dir = config.getValue<std::string>("realsense.transform_path");
+    std::cout << "Loading Realsense camera transforms...\n";
+    std::string transform_file = config.getValue<std::string>("realsense.transform_file");
+    std::ifstream realsense_file(transform_dir + transform_file);
+    realsense_json = nlohmann::json::parse(realsense_file);
+    std::cout << "Realsense camera transforms loaded.\n";
+    for (auto& [key, value] : realsense_json.items()) {
+        Eigen::Matrix4f transform_matrix = Eigen::Matrix4f::Identity();
+        for (int i = 0; i < 4; ++i) {
+            for (int j = 0; j < 4; ++j) {
+                transform_matrix(i, j) = value["transform_matrix"][i][j].get<float>();
+            }
+        }
+        camera_names[key] = value["name"].get<std::string>();
+        camera_transforms[key] = transform_matrix;
+    }
+
     // Find all RS cameras and open streams
     try {
         device_check();
@@ -154,14 +144,6 @@ void RealSenseHandler::start_device(std::string serial_number) {
     // Separate thread method
     // std::thread frame_thread(&RealSenseHandler::frame_poll_thread, this,  pipe);
     // frame_thread_map[serial_number] = std::move(frame_thread);
-}
-
-void RealSenseHandler::update_config(std::map<std::string, std::string>& cfg) {
-    config = cfg;
-    save_depth_img = bool(stoi(config["rs_depth"]));
-    save_color_img = bool(stoi(config["rs_color"]));
-    save_pointcloud = bool(stoi(config["rs_pointcloud"]));
-    raw_pointclouds = bool(stoi(config["rs_raw_pointcloud"]));
 }
 
 void RealSenseHandler::frame_poll_thread(rs2::pipeline pipe) {
@@ -253,6 +235,7 @@ void RealSenseHandler::get_current_frame(int timeout_ms) {
 }
 
 void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
+    ConfigHandler& config = ConfigHandler::getInstance();
     std::stringstream out_file;
     // Get serial number for this camera
     std::string serial_number = pipe.get_active_profile().get_device().get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
@@ -327,7 +310,7 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
     // cout << "   Depth : " << depth.get_width() << "x" << depth.get_height() << endl;
 
     // SAVE POINTCLOUD
-    if (save_pointcloud) {
+    if (config.getValue<bool>("realsense.collect_pointcloud")) {
         // Create PCL point cloud
         pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
         pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr normal_cloud(new pcl::PointCloud<pcl::PointXYZRGBNormal>);
@@ -359,7 +342,7 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
         // cout << "[" << camera_names[serial_number] << ":C]";
 
         // Don't apply transforms and filters if raw_pointclouds is true
-        if (!raw_pointclouds) {
+        if (!config.getValue<bool>("realsense.raw_pointcloud")) {
             
             //Apply appropriate pointcloud transform
             pcl::transformPointCloud(*cloud, *cloud, camera_transforms[serial_number]);
@@ -375,9 +358,9 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
             pcl::PassThrough<pcl::PointXYZRGB> pass;
             float fmin, fmax;
             // If rs_xpass=1, apply x-pass filter
-            if (bool(stoi(config["rs_xpass"]))) {
-                fmin = stof(config["rs_xpass_min"]);
-                fmax = stof(config["rs_xpass_max"]);
+            if (config.getValue<bool>("realsense.filter.xpass.apply")) {
+                fmin = config.getValue<float>("realsense.filter.xpass.min");
+                fmax = config.getValue<float>("realsense.filter.xpass.max");
                 // cout << "[" << camera_names[serial_number] << ":X:" << fmin << "," << fmax << "]";
                 pass.setInputCloud(cloud);
                 pass.setFilterFieldName("x");
@@ -386,9 +369,9 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
             }
 
             // If rs_ypass=1, apply y-pass filter
-            if (bool(stoi(config["rs_ypass"]))) {
-                fmin = stof(config["rs_ypass_min"]);
-                fmax = stof(config["rs_ypass_max"]);
+            if (config.getValue<bool>("realsense.filter.ypass.apply")) {
+                fmin = config.getValue<float>("realsense.filter.ypass.min");
+                fmax = config.getValue<float>("realsense.filter.ypass.max");
                 // cout << "[" << camera_names[serial_number] << ":Y:" << fmin << "," << fmax << "]";
                 pass.setInputCloud(cloud);
                 pass.setFilterFieldName("y");
@@ -397,9 +380,9 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
             }
 
             // If rs_zpass=1, apply z-pass filter
-            if (bool(stoi(config["rs_zpass"]))) {
-                fmin = stof(config["rs_zpass_min"]);
-                fmax = stof(config["rs_zpass_max"]);
+            if (config.getValue<bool>("realsense.filter.zpass.apply")) {
+                fmin = config.getValue<float>("realsense.filter.zpass.min");
+                fmax = config.getValue<float>("realsense.filter.zpass.max");
                 // cout << "[" << camera_names[serial_number] << ":Z:" << fmin << "," << fmax << "]";
                 pass.setInputCloud(cloud);
                 pass.setFilterFieldName("z");
@@ -408,10 +391,10 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
             }
 
             // If rs_sor=1, apply Statistical outlier removal filter
-            if (bool(stoi(config["rs_sor"]))) {
+            if (config.getValue<bool>("realsense.filter.sor.apply")) {
                 pcl::StatisticalOutlierRemoval<pcl::PointXYZRGB> sor(true);
-                fmin = stof(config["rs_sor_stddev"]);
-                int k = stoi(config["rs_sor_meank"]);
+                fmin = config.getValue<float>("realsense.filter.sor.stddev");
+                int k = config.getValue<int>("realsense.filter.sor.k");
                 sor.setInputCloud(cloud);
                 sor.setMeanK(k);  // Number of neighbors to use for mean distance estimation
                 sor.setStddevMulThresh(fmin);  // Standard deviation threshold for outlier detection
@@ -421,9 +404,9 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
             }
 
             // If rs_voxel=1, apply Voxel Filter with rs_voxel_leafsize parameter
-            if (bool(stoi(config["rs_voxel"]))) {
+            if (config.getValue<bool>("realsense.filter.voxel.apply")) {
                 pcl::VoxelGrid<pcl::PointXYZRGB> voxel_grid_filter;
-                fmin = stof(config["rs_voxel_leafsize"]);
+                fmin = config.getValue<float>("realsense.filter.voxel.leaf_size");
                 voxel_grid_filter.setInputCloud(cloud);
                 voxel_grid_filter.setLeafSize(fmin, fmin, fmin); // Adjust the values as per your needs
                 voxel_grid_filter.filter(*cloud);
@@ -435,7 +418,7 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
         }
 
         // Compute Normals
-        if (bool(stoi(config["rs_compute_normals"]))) {
+        if (config.getValue<bool>("realsense.compute_normals")) {
             // Create a NormalEstimation object
             // pcl::NormalEstimation<pcl::PointXYZRGB, pcl::Normal> ne;
             // ne.setInputCloud(cloud);
@@ -465,14 +448,21 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
         // Save the point cloud to a PLY file
         // Output 'rsx:S' indicates the pointcloud is now being saved.
         // cout << "[" << camera_names[serial_number] << ":S]";
-        pcl::io::savePLYFile(out_file.str(), *normal_cloud);
+        std::cout.copyfmt(std::ios(nullptr));
+        std::locale::global(std::locale("C"));
+        if (!config.getValue<bool>("realsense.compute_normals")) {
+            pcl::io::savePLYFile(out_file.str(), *cloud, true);
+        } else {
+            pcl::io::savePLYFile(out_file.str(), *normal_cloud, true);
+        }
+        // pcl::io::savePLYFile(out_file.str(), *normal_cloud);
         cout << "[" << camera_names[serial_number] << ":SAVED]\n";
     }
     
     // SAVE COLOR IMAGE
-    if (save_color_img) {
+    if (config.getValue<bool>("realsense.collect_color")) {
         cv::Mat color_mat(color.get_height(), color.get_width(), CV_8UC3, (void*)color.get_data(), cv::Mat::AUTO_STEP);
-        // cv::cvtColor(color_mat, color_mat, cv::COLOR_RGB2BGR);
+        cv::cvtColor(color_mat, color_mat, cv::COLOR_RGB2BGR);
 
         // Generate image name and save depth_mat
         out_file.str("");
@@ -482,7 +472,7 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
     }
 
     // SAVE DEPTH IMAGE
-    if (save_depth_img) {
+    if (config.getValue<bool>("realsense.collect_depth")) {
         cv::Mat depth_mat(cv::Size(depth.get_width(), depth.get_height()), CV_16UC1, (void*)depth.get_data(), cv::Mat::AUTO_STEP);
         cv::normalize(depth_mat, depth_mat, 0, 255, cv::NORM_MINMAX, CV_8UC1);
         

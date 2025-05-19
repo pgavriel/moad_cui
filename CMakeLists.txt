@@ -64,6 +64,7 @@ add_executable (MultiCamCui
     ${SRC_DIR}/DownloadEvf.cpp
 
     ${SRC_DIR}/MenuHandler.cpp
+    ${SRC_DIR}/ConfigHandler.cpp
     
     
     #${SRC_DIR}/MultiCamCui.cpp

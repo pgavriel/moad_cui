@@ -1,5 +1,5 @@
 output_dir=G:/
-object_name=demo3
+object_name=rs_calibration_test
 degree_inc=5
 num_moves=72
 # Serial port Configuration (COM[x]) (Double digit ports will need to modify source code)
@@ -20,8 +20,10 @@ cam5_rename=2
 
 # RealSense Configuration
 collect_rs=1
-rs_color=1
-rs_depth=1
+rs_path=C:/Users/csrobot/Documents/Version13.16.01/moad_cui/calibration/realsense/
+rs_filename=transform.json
+rs_color=0
+rs_depth=0
 rs_pointcloud=1
 rs_compute_normals=1
 rs_raw_pointcloud=0
@@ -35,7 +37,7 @@ rs_ypass=1
 rs_ypass_min=-0.3
 rs_ypass_max=0.3
 rs_zpass=1
-rs_zpass_min=0.0
+rs_zpass_min=-0.1
 rs_zpass_max=0.5
 rs_sor=1
 rs_sor_meank=6

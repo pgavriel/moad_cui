@@ -1,0 +1,60 @@
+{
+    "output_dir": "G:/",
+    "object_name": "testing_config",
+    "degree_inc": 5,
+    "num_moves": 72,
+    "serial_com_port": "5",
+    "turntable_delay_ms": 1000,
+    "dslr": {
+        "collect_dslr": true,
+        "dslr_timeout_sec": 5
+    },
+    "realsense": {
+        "collect_realsense": false,
+        "realsense_timeout_sec": 9, 
+        "transform_path": "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/calibration/realsense/",
+        "transform_file": "transform.json",
+        "collect_color": false,
+        "collect_depth": false,
+        "collect_pointcloud": true,
+        "raw_pointcloud": false,
+        "compute_normals": true,
+        "filter": {
+            "xpass": {
+                "apply": true,
+                "min": -0.5,
+                "max": 0.5
+            },
+            "ypass": {
+                "apply": true,
+                "min": -0.5,
+                "max": 0.5
+            },
+            "zpass": {
+                "apply": true,
+                "min": -0.5,
+                "max": 0.5
+            },
+            "sor": {
+                "apply": true,
+                "k": 20,
+                "stddev": 0.1
+            },
+            "voxel": {
+                "apply": true,
+                "leaf_size": 0.01
+            }
+        }
+    },
+    "transform_generator": {
+        "dir_linux": "home/csrobot/ns-data",
+        "dir_windows": "G:/",
+        "calibration_dir_linux": "home/csrobot/moad_cui/calibration",
+        "calibration_dir_windows": "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/calibration",
+        "calibration_mode": "55mm",
+        "degree_angle": 5,
+        "scan_range": 360,
+        "visualize": false,
+        "force": true
+    }
+}

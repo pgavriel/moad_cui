@@ -19,6 +19,7 @@
 #include <windows.h>
 #include "tabulate.hpp"
 #include "CanonHandler.h"
+#include "ConfigHandler.h"
 #include "EDSDK.h"
 #include "EDSDKTypes.h"
 #include "Download.h"
@@ -47,7 +48,8 @@ char curr_pose = 'a';
 bool keyflag;
 int degree_tracker = 0;
 std::string obj_name;
-std::map<std::string, std::string> config;
+// std::map<std::string, std::string> config;
+nlohmann::json json_config;
 std::string scan_folder;
 int rs_timeout;
 int dslr_timeout;
@@ -72,35 +74,35 @@ MenuHandler* curr_menu;
 // TXT Config 
 std::map<std::string, std::string> object_info;
 
-std::map<std::string, std::string> loadParameters(const std::string& filename) {
-    std::map<std::string, std::string> parameters;
-    std::ifstream file(filename);
-    if (file.is_open()) {
-        std::string line;
-        while (std::getline(file, line)) {
-            // Skip empty lines or lines starting with #
-            if (line.empty() || line[0] == '#')
-                continue;
+// std::map<std::string, std::string> loadParameters(const std::string& filename) {
+//     std::map<std::string, std::string> parameters;
+//     std::ifstream file(filename);
+//     if (file.is_open()) {
+//         std::string line;
+//         while (std::getline(file, line)) {
+//             // Skip empty lines or lines starting with #
+//             if (line.empty() || line[0] == '#')
+//                 continue;
             
-            // Split the line into key and value
-            size_t delimiterPos = line.find('=');
-            if (delimiterPos != std::string::npos) {
-                std::string key = line.substr(0, delimiterPos);
-                std::string value = line.substr(delimiterPos + 1);
+//             // Split the line into key and value
+//             size_t delimiterPos = line.find('=');
+//             if (delimiterPos != std::string::npos) {
+//                 std::string key = line.substr(0, delimiterPos);
+//                 std::string value = line.substr(delimiterPos + 1);
                 
-                // Remove leading/trailing whitespaces from key and value
-                key.erase(0, key.find_first_not_of(" \t"));
-                key.erase(key.find_last_not_of(" \t") + 1);
-                value.erase(0, value.find_first_not_of(" \t"));
-                value.erase(value.find_last_not_of(" \t") + 1);
+//                 // Remove leading/trailing whitespaces from key and value
+//                 key.erase(0, key.find_first_not_of(" \t"));
+//                 key.erase(key.find_last_not_of(" \t") + 1);
+//                 value.erase(0, value.find_first_not_of(" \t"));
+//                 value.erase(value.find_last_not_of(" \t") + 1);
                 
-                parameters[key] = value;
-            }
-        }
-        file.close();
-    }
-    return parameters;
-}
+//                 parameters[key] = value;
+//             }
+//         }
+//         file.close();
+//     }
+//     return parameters;
+// }
 
 void saveCameraConfig(std::string path) {
 	std::vector<std::tuple<EdsPropertyID, std::map<EdsUInt32, const char*>>> propertyIDs = {
@@ -110,13 +112,15 @@ void saveCameraConfig(std::string path) {
 		std::tuple<EdsPropertyID, std::map<EdsUInt32, const char*>> (kEdsPropID_WhiteBalance, whitebalance_table),
 	};
 
+	ConfigHandler& config = ConfigHandler::getInstance();
 	nlohmann::json json_data;
+
 	for (auto& camera : canonhandle.cameraArray) {
 		std::string cam = camera_name[camera];
 		EdsDeviceInfo deviceInfo;
 		EdsGetDeviceInfo(camera, &deviceInfo);
 		json_data[cam]["Model"] = deviceInfo.szDeviceDescription; 
-		json_data[cam]["Focal Length"] = config["tg_calibration_mode"];
+		json_data[cam]["Focal Length"] = config.getValue<std::string>("transform_generator.calibration_mode");
 	}
 
 	for (auto propertyID : propertyIDs) {
@@ -251,7 +255,8 @@ void validate_input(std::string text, std::string& input, std::regex validation)
 }
 
 char get_last_pose() {
-	std::string path = config["output_dir"] + "/" + obj_name;
+	ConfigHandler& config = ConfigHandler::getInstance();
+	std::string path = config.getValue<std::string>("output_dir") + "/" + obj_name;
 	char last_pose = 'a'; // First Pose
 	// Check if the directory exists
 	if (!fs::exists(path) || !fs::is_directory(path) || fs::is_empty(path)) {
@@ -289,16 +294,18 @@ char get_last_pose() {
 }
 
 void scan() {
+	ConfigHandler& config = ConfigHandler::getInstance();
 	// Collect DSLR Data
-	if(bool(stoi(config["collect_dslr"]))) {
+	if(config.getValue<bool>("dslr.collect_dslr")) {
 		canonhandle.images_downloaded = 0;
 		// Change Pose
-		scan_folder = config["output_dir"]+"/"+obj_name;
+		scan_folder = config.getValue<std::string>("output_dir") + "/" + obj_name;
 		canonhandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\DSLR";
 		create_folder(canonhandle.save_dir,true);
 		
 		int c = 0;
 		// int timeout = stoi(config["dslr_timeout_sec"]) * 20; // 20 = 1s
+		
 		EdsError err;
 		cout << "Getting DSLR Data...\n";
 		canonhandle.turntable_position = degree_tracker;
@@ -313,7 +320,7 @@ void scan() {
 	}
 
 	// Collect RealSense Data
-	if(bool(stoi(config["collect_rs"]))) {
+	if(config.getValue<bool>("realsense.collect_realsense")) {
 		rshandle.turntable_position = degree_tracker;
 		rshandle.get_current_frame(rs_timeout);
 		if (rshandle.fail_count > 0) {
@@ -322,14 +329,15 @@ void scan() {
 	}
 }
 
-void rotate_turntable(std::string degree_inc) {
+void rotate_turntable(int degree_inc) {
 	// Issue command to move turntable.
-	char *send = &degree_inc[0];
+	std::string degree_inc_str = std::to_string(degree_inc);
+	char *send = &degree_inc_str[0];
 	bool is_sent = Serial->WriteSerialPort(send);
 
 	if (is_sent) {
-		int wait_time = std::ceil(((abs(stoi(degree_inc))*200)+500)/1000)+5;
-		cout << "Message sent, waiting up to " << wait_time << " seconds.\n";
+		int wait_time = std::ceil(((abs(degree_inc)*200)+500)/1000)+5;
+		cout << "Message sent, moving: " << degree_inc << " degrees, waiting up to " << wait_time << " seconds.\n";
 		std::string incoming = Serial->ReadSerialPort(wait_time, "json");
 		cout << "Incoming: " << incoming;// << endl;
 		// std::this_thread::sleep_for(250ms);
@@ -340,7 +348,8 @@ void rotate_turntable(std::string degree_inc) {
 	}
 }
 
-bool generateTransform(std::string degree_inc, int num_moves) {
+bool generateTransform(int degree_inc, int num_moves) {
+	ConfigHandler& config = ConfigHandler::getInstance();
 	// std::string degree_inc;
 	// std::regex number_only("^([0-9]+|r)$");
 	// validate_input("\n\nEnter Degree Interval (integer): ", degree_inc, number_only);
@@ -349,13 +358,13 @@ bool generateTransform(std::string degree_inc, int num_moves) {
 	// validate_input("\n\nVisualize after finishing the transform? (y/n): ", visualize, confirmation_only);
 
 	// Generate transform
-	bool force = config["tg_force"] == "True";
-	bool visualize = config["tg_visualize"] == "True";
-	std::string calibration_dir = config["tg_calibration_dir_windows"];
-	std::string calibration = config["tg_calibration_mode"];
-	std::string output_dir = config["tg_output_dir_windows"];
+	bool force = config.getValue<bool>("transform_generator.force");
+	bool visualize = config.getValue<bool>("transform_generator.visualize");
+	std::string calibration_dir = config.getValue<std::string>("transform_generator.calibration_dir_windows");
+	std::string calibration = config.getValue<std::string>("transform_generator.calibration_mode");
+	std::string output_dir = config.getValue<std::string>("transform_generator.dir_windows");
 
-	int range = std::stoi(degree_inc) * num_moves;
+	int range = degree_inc * num_moves;
 	std::stringstream command_stream;
 	command_stream 
 		<< "python3 " 
@@ -391,14 +400,14 @@ bool customScan() {
 		return false;
 	}
 
-	std::string degree_inc;
+	int degree_inc;
 	int num_moves = 0;
 
 	cout << "Enter degrees per move: ";
 	std::cin >> degree_inc;
 	cout << "Enter number of moves: ";
 	std::cin >> num_moves;
-	// PressShutter(canonhandle.cameraArray, canonhandle.bodyID, kEdsCameraCommand_ShutterButton_Halfway);
+	
 	Sleep(200);
 	// Start the loop timer
 	auto start = std::chrono::high_resolution_clock::now();
@@ -407,7 +416,7 @@ bool customScan() {
 		scan();
 		rotate_turntable(degree_inc);
 		
-		degree_tracker += stoi(degree_inc);
+		degree_tracker += degree_inc;
 		cout << "Image " << rots+1 << "/" << num_moves << " taken. " << endl;
 	}
 	// Stop the loop timer
@@ -448,10 +457,11 @@ bool fullScan() {
 		return false;
 	}
 
-	std::string degree_inc = config["degree_inc"];
-	int num_moves = stoi(config["num_moves"]);
+	ConfigHandler& config = ConfigHandler::getInstance();
+
+	int degree_inc = config.getValue<int>("degree_inc");
+	int num_moves = config.getValue<int>("num_moves");
 	
-	// PressShutter(canonhandle.cameraArray, canonhandle.bodyID, kEdsCameraCommand_ShutterButton_Halfway);
 	Sleep(200);
 	// Start the loop timer
 	auto start = std::chrono::high_resolution_clock::now();
@@ -460,7 +470,7 @@ bool fullScan() {
 		scan();
 		rotate_turntable(degree_inc);
 		
-		degree_tracker += stoi(degree_inc);
+		degree_tracker += degree_inc;
 		cout << "Image " << rots+1 << "/" << num_moves << " taken. " << endl;
 	}
 	// Stop the loop timer
@@ -497,12 +507,13 @@ bool fullScan() {
 
 // TODO: Check Degree Tracker
 bool collectSampleData() {
-	if (bool(stoi(config["collect_dslr"]))) {
+	ConfigHandler& config = ConfigHandler::getInstance();
+	if (config.getValue<bool>("dslr.collect_dslr")) {
 		// Reset download counter to 0
 		canonhandle.images_downloaded = 0;
 		
 		// Change Pose
-		scan_folder = config["output_dir"]+"/"+obj_name;
+		scan_folder = config.getValue<std::string>("output_dir") + "/" + obj_name;
 		canonhandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\DSLR";
 
 		EdsError err;
@@ -519,7 +530,7 @@ bool collectSampleData() {
 		}
 		cout << "DSLR Timeout Count: " << c << "/" << dslr_timeout << endl;
 	}
-	if (bool(stoi(config["collect_rs"]))) {
+	if (config.getValue<bool>("realsense.collect_realsense")) {
 		rshandle.turntable_position = degree_tracker;
 		rshandle.get_current_frame(rs_timeout);
 	}
@@ -527,10 +538,12 @@ bool collectSampleData() {
 	return false;
 }
 
+// Depricated: No longer used
 bool calibrateCamera() {
 	// Get the image stream from the file
+	ConfigHandler& config = ConfigHandler::getInstance();
 	canonhandle.images_downloaded = 0;
-	scan_folder = config["output_dir"]+"/"+obj_name;
+	scan_folder = config.getValue<std::string>("output_dir") + "/" + obj_name;
 	canonhandle.save_dir = scan_folder + "\\calibration";
 
 	EdsError err;
@@ -576,26 +589,23 @@ bool calibrateCamera() {
 
 
 bool setObjectName() {
-	// std::string obj_name;
+	ConfigHandler& config = ConfigHandler::getInstance();
 	cout << "\n\nEnter Object Name: ";
 	std::cin >> obj_name; 
-	scan_folder = config["output_dir"]+"/"+obj_name;
+	scan_folder = config.getValue<std::string>("output_dir") + "/" + obj_name;
+
 	// Create Main Folder
 	create_folder(scan_folder);
+
 	// Create object info.json (template)
-	create_obj_info_json(config["output_dir"]);
-	config["object_name"] = obj_name;
+	create_obj_info_json(config.getValue<std::string>("output_dir"));
+	config.setValue<std::string>("object_name", obj_name);
 	object_info["Object Name"] = obj_name;
 
 	// Change pose
 	curr_pose = get_last_pose();
 	object_info["Pose"] = curr_pose;
 
-	// Create the .json file
-	create_obj_info_json(config["output_dir"]);
-
-	// Do handler objects need a config still?
-	rshandle.update_config(config);
 	rshandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\realsense";
 	create_folder(rshandle.save_dir,true);
 	canonhandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\DSLR";
@@ -1105,52 +1115,45 @@ int main(int argc, char* argv[])
 {	
 	// SETUP ----------------------------------------------------------------------------------------------
 	degree_tracker = 0;
-	std::smatch match_results;
     std::shared_ptr<std::thread> th = std::shared_ptr<std::thread>();
-	bool loop = true;
 
-	// Read in Parameters from config file
+	// Get the path of the root directory
 	fs::path executablePath(argv[0]);
 	fs::path projectDir = executablePath.parent_path().parent_path().parent_path();
-	std::string config_file = projectDir.string() + "\\moad_config.txt";
-	cout << "Loading Config File: " << config_file << endl;
-	config = loadParameters(config_file);
-	
-	// Print the config map
-	cout << "Initial Settings Loaded:\n";
-    for (auto it = config.begin(); it != config.end(); ++it) {
-        cout << it->first << " = " << it->second << endl;
-    }
+
+	// Load the JSON Config file
+	std::string json_path = projectDir.string() + "\\moad_config.json";
+	ConfigHandler& config = ConfigHandler::getInstance();
+	config.loadConfig(json_path);
 
 	// Create object folder 
-	scan_folder = config["output_dir"]+"/"+config["object_name"];
-	obj_name = config["object_name"];
+	scan_folder = config.getValue<std::string>("output_dir") + "/" + config.getValue<std::string>("object_name");
+	obj_name = config.getValue<std::string>("object_name");
 	object_info["Object Name"] = obj_name;
 
     create_folder(scan_folder);
 
 	// Create object info template
-	create_obj_info_json(config["output_dir"]);
+	create_obj_info_json(config.getValue<std::string>("output_dir"));
 	
 	// Set initial Object name
-	int turntable_delay_ms = stoi(config["turntable_delay_ms"]);
+	int turntable_delay_ms = config.getValue<int>("turntable_delay_ms");
 
 	// Get last pose
 	std::cout << "Checking Last Pose..." << std::endl;
 	curr_pose = get_last_pose();
 	std::cout << "Last Pose Checked." << std::endl;
 
-
 	// Setup Realsense Cameras
-	rs_timeout = stoi(config["rs_timeout_sec"]) * 1000;
-	if (bool(stoi(config["collect_rs"]))) {
+	rs_timeout = config.getValue<int>("realsense.realsense_timeout_sec") * 1000;
+	if (config.getValue<bool>("realsense.collect_realsense")) {
 		cout << "\nAttempting Realsense setup...\n";
 		// Create RealSense Handler
-		rshandle.initialize();
 		rshandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\realsense";
 		create_folder(rshandle.save_dir,true);
-		rshandle.update_config(config);
 		// Get some frames to settle autoexposure.
+		std::cout << "Getting frames..." << std::endl;
+		rshandle.initialize();
 		rshandle.get_frames(10); // make 30 later
 		// rshandle.get_current_frame();
 	} else {
@@ -1161,7 +1164,7 @@ int main(int argc, char* argv[])
 	// Setup Arduino serial port connection
 	cout << "\nAttempting Serial Motor Control setup...\n";
 	char com_port[] = "\\\\.\\COMX";
-	com_port[7] = config["serial_com_port"].at(0);
+	com_port[7] = config.getValue<std::string>("serial_com_port").at(0);
 	DWORD COM_BAUD_RATE = CBR_9600;
 
 	Serial = new SimpleSerial(com_port, COM_BAUD_RATE);
@@ -1172,8 +1175,8 @@ int main(int argc, char* argv[])
 	}
 
 	// Initialization of Canon SDK
-	dslr_timeout = stoi(config["dslr_timeout_sec"]) * 20;
-	if (bool(stoi(config["collect_dslr"]))) {
+	dslr_timeout = config.getValue<int>("dslr.dslr_timeout_sec") * 20;
+	if (config.getValue<bool>("dslr.collect_dslr")) {
 		cout << "\nEntering DSLR Setup...\n";
 		// CanonHandler canonhandle;
 		canonhandle.initialize();
@@ -1181,7 +1184,6 @@ int main(int argc, char* argv[])
 		create_folder(canonhandle.save_dir,true);
 		PreSetting(canonhandle.cameraArray, canonhandle.bodyID);
 		// Naming of the camera
-		canonhandle.rename_cameras = bool(stoi(config["dslr_name_override"]));
 		EdsChar serial[13];
 		EdsError err;
 		int index = 1;
@@ -1228,7 +1230,7 @@ int main(int argc, char* argv[])
 
 	// Change pose
 	curr_pose = get_last_pose();
-
+	
 	object_info["Object Name"] = obj_name;
 	object_info["Turntable Pos"] = std::to_string(degree_tracker);
 	object_info["Pose"] = curr_pose;

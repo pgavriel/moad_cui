@@ -1,0 +1,5 @@
+# Exclude the build folder
+build/
+
+# Exclude the moad_config.json file
+# moad_config.json
