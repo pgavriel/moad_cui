@@ -9,6 +9,7 @@
 #include <sstream>
 #include <vector>
 #include <thread>
+#include <mutex>
 #include <memory>
 #include <chrono>
 #include <opencv2/opencv.hpp>
@@ -295,6 +296,9 @@ char get_last_pose() {
 
 void scan() {
 	ConfigHandler& config = ConfigHandler::getInstance();
+	std::vector<std::thread> scan_threads;
+	std::mutex mtx;
+
 	// Collect DSLR Data
 	if(config.getValue<bool>("dslr.collect_dslr")) {
 		canonhandle.images_downloaded = 0;
@@ -303,20 +307,18 @@ void scan() {
 		canonhandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\DSLR";
 		create_folder(canonhandle.save_dir,true);
 		
-		int c = 0;
 		// int timeout = stoi(config["dslr_timeout_sec"]) * 20; // 20 = 1s
-		
-		EdsError err;
 		cout << "Getting DSLR Data...\n";
 		canonhandle.turntable_position = degree_tracker;
-		err = TakePicture(canonhandle.cameraArray, canonhandle.bodyID);
-		// cout << "Result: " << err << endl;
-		while (canonhandle.images_downloaded < canonhandle.cameras_found && c < dslr_timeout) {
-			EdsGetEvent();
-			std::this_thread::sleep_for(50ms);
-			c++;
+		
+		for (auto& camera : canonhandle.cameraArray) {
+			std::string cam_name = camera_name[camera];
+			scan_threads.emplace_back([&]() {
+				std::lock_guard<std::mutex> lock(mtx);
+				EdsError err = EDS_ERR_OK;
+				err = TakePicture(camera, cam_name);
+			});
 		}
-		cout << "DSLR Timeout Count: " << c << "/" << dslr_timeout << endl;
 	}
 
 	// Collect RealSense Data
@@ -327,6 +329,21 @@ void scan() {
 			cout << "RS Failure - " << rshandle.fail_count << endl;
 		}
 	}
+	
+	for (auto& thread : scan_threads) {
+		if (thread.joinable())
+		thread.join();
+	}
+	
+	// Collecting images from DSLR
+	// Once the picture is in memory, the download does not take long.
+	int c = 0;
+	while (canonhandle.images_downloaded < canonhandle.cameras_found && c < dslr_timeout) {
+		EdsGetEvent();
+		std::this_thread::sleep_for(50ms);
+		c++;
+	}
+	cout << "DSLR Timeout Count: " << c << "/" << dslr_timeout << endl;
 }
 
 void rotate_turntable(int degree_inc) {
@@ -519,7 +536,7 @@ bool collectSampleData() {
 		EdsError err;
 		cout << "Collecting DSLR images...\n";
 		canonhandle.turntable_position = degree_tracker;
-		err = TakePicture(canonhandle.cameraArray, canonhandle.bodyID);
+		err = TakePicture(canonhandle.cameraArray, camera_name);
 		cout << err << endl;
 		// EdsGetEvent();
 		int c = 0;
@@ -549,7 +566,7 @@ bool calibrateCamera() {
 	EdsError err;
 	cout << "Collecting DSLR images...\n";
 	canonhandle.turntable_position = degree_tracker;
-	err = TakePicture(canonhandle.cameraArray, canonhandle.bodyID);
+	err = TakePicture(canonhandle.cameraArray, camera_name);
 	// EdsGetEvent();
 	int c = 0;
 	while (canonhandle.images_downloaded < canonhandle.cameras_found && c < dslr_timeout) {
