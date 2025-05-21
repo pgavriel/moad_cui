@@ -16,11 +16,13 @@
 #include <nlohmann/json.hpp>
 
 #include "MenuHandler.h"
+#include "ConfigHandler.h"
+#include "CanonHandler.h"
+#include "RealSenseHandler.h"
+#include "ThreadPool.h"
 
 #include <windows.h>
 #include "tabulate.hpp"
-#include "CanonHandler.h"
-#include "ConfigHandler.h"
 #include "EDSDK.h"
 #include "EDSDKTypes.h"
 #include "Download.h"
@@ -30,7 +32,6 @@
 #include "Property.h"
 #include "TakePicture.h"
 #include "SimpleSerial.h"
-#include "RealSenseHandler.h"
 #include "CameraException.h"
 
 #define CAMERA_1 "352074022019"
@@ -74,6 +75,7 @@ MenuHandler* curr_menu;
 
 // TXT Config 
 std::map<std::string, std::string> object_info;
+std::string json_path;
 
 // std::map<std::string, std::string> loadParameters(const std::string& filename) {
 //     std::map<std::string, std::string> parameters;
@@ -104,6 +106,11 @@ std::map<std::string, std::string> object_info;
 //     }
 //     return parameters;
 // }
+
+void loadJsonConfig(std::string path) {
+	ConfigHandler& config = ConfigHandler::getInstance();
+	config.loadConfig(path);
+}
 
 void saveCameraConfig(std::string path) {
 	std::vector<std::tuple<EdsPropertyID, std::map<EdsUInt32, const char*>>> propertyIDs = {
@@ -294,7 +301,7 @@ char get_last_pose() {
 	return last_pose + 1; 
 }
 
-void scan() {
+void scan(ThreadPool* pool = nullptr) {
 	ConfigHandler& config = ConfigHandler::getInstance();
 	std::vector<std::thread> scan_threads;
 	std::mutex mtx;
@@ -324,7 +331,7 @@ void scan() {
 	// Collect RealSense Data
 	if(config.getValue<bool>("realsense.collect_realsense")) {
 		rshandle.turntable_position = degree_tracker;
-		rshandle.get_current_frame(rs_timeout);
+		rshandle.get_current_frame(rs_timeout, pool);
 		if (rshandle.fail_count > 0) {
 			cout << "RS Failure - " << rshandle.fail_count << endl;
 		}
@@ -412,11 +419,13 @@ bool generateTransform(int degree_inc, int num_moves) {
 }
 
 bool customScan() {
+	ConfigHandler& config = ConfigHandler::getInstance();
 	if (liveview_active){
 		std::cout << "Liveview is active, please stop it before scanning." << std::endl;
 		return false;
 	}
 
+	ThreadPool pool(5);
 	int degree_inc;
 	int num_moves = 0;
 
@@ -430,7 +439,7 @@ bool customScan() {
 	auto start = std::chrono::high_resolution_clock::now();
 	for (int rots = 0; rots < num_moves; rots++)
 	{
-		scan();
+		scan(&pool);
 		rotate_turntable(degree_inc);
 		
 		degree_tracker += degree_inc;
@@ -449,8 +458,10 @@ bool customScan() {
 	std::this_thread::sleep_for(3000ms);
 
 	// Save camera configurations in a json file
-	saveCameraConfig(scan_folder + "\\pose-" + curr_pose);
-	saveScanTime(duration, scan_folder + "\\pose-" + curr_pose);
+	if (config.getValue<bool>("dslr.collect_dslr")) {
+		saveCameraConfig(scan_folder + "\\pose-" + curr_pose);
+		saveScanTime(duration, scan_folder + "\\pose-" + curr_pose);
+	}
 
 	// Generate transform
 	generateTransform(degree_inc, num_moves);
@@ -1128,6 +1139,11 @@ bool downloadImages(){
 	return false;
 }
 
+bool reloadConfig() {
+	loadJsonConfig(json_path);
+	return false;
+}
+
 int main(int argc, char* argv[])
 {	
 	// SETUP ----------------------------------------------------------------------------------------------
@@ -1139,9 +1155,9 @@ int main(int argc, char* argv[])
 	fs::path projectDir = executablePath.parent_path().parent_path().parent_path();
 
 	// Load the JSON Config file
-	std::string json_path = projectDir.string() + "\\moad_config.json";
+	json_path = projectDir.string() + "\\moad_config.json";
+	loadJsonConfig(json_path);
 	ConfigHandler& config = ConfigHandler::getInstance();
-	config.loadConfig(json_path);
 
 	// Create object folder 
 	scan_folder = config.getValue<std::string>("output_dir") + "/" + config.getValue<std::string>("object_name");
@@ -1261,7 +1277,8 @@ int main(int argc, char* argv[])
 		{"6", "Camera Calibration..."},
 		{"7", "Camera Options..."},
 		{"8", "Turntable Options..."},
-		{"9", "Live View..."}
+		{"9", "Live View..."},
+		{"0", "Reload Config"}
 	},
 	{
 		{"1", fullScan},
@@ -1272,7 +1289,8 @@ int main(int argc, char* argv[])
 		{"6", CalibrationSubMenu},
 		{"7", CameraSubmenu},
 		{"8", TurntableSubMenu},
-		{"9", liveViewMenu}
+		{"9", liveViewMenu},
+		{"0", reloadConfig},
 	}, object_info);
 	menu_handler.setTitle("MOAD - CLI Menu");
 	menu_handler.ClearScreen();

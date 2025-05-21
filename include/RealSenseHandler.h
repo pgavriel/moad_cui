@@ -8,6 +8,7 @@
 #include <opencv2/opencv.hpp>
 #include <nlohmann/json.hpp>
 
+#include "ThreadPool.h"
 class RealSenseHandler {
 private:
     bool running = true;
@@ -43,5 +44,5 @@ public:
     int device_check();
     void initialize();
     void get_frames(int num_frames=1, int timeout_ms=10000);
-    void get_current_frame(int timeout_ms=10000);
+    void get_current_frame(int timeout_ms=10000, ThreadPool* pool=nullptr);
 };
