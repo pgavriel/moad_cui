@@ -49,13 +49,8 @@ std::string control_number = "";
 char curr_pose = 'a';
 bool keyflag;
 int degree_tracker = 0;
-std::string obj_name;
-// std::map<std::string, std::string> config;
-nlohmann::json json_config;
+
 std::string scan_folder;
-int rs_timeout;
-int dslr_timeout;
-int turntable_delay_ms;
 
 // Liveview Threads
 std::vector<std::thread> liveview_th;
@@ -77,39 +72,27 @@ MenuHandler* curr_menu;
 std::map<std::string, std::string> object_info;
 std::string json_path;
 
-// std::map<std::string, std::string> loadParameters(const std::string& filename) {
-//     std::map<std::string, std::string> parameters;
-//     std::ifstream file(filename);
-//     if (file.is_open()) {
-//         std::string line;
-//         while (std::getline(file, line)) {
-//             // Skip empty lines or lines starting with #
-//             if (line.empty() || line[0] == '#')
-//                 continue;
-            
-//             // Split the line into key and value
-//             size_t delimiterPos = line.find('=');
-//             if (delimiterPos != std::string::npos) {
-//                 std::string key = line.substr(0, delimiterPos);
-//                 std::string value = line.substr(delimiterPos + 1);
-                
-//                 // Remove leading/trailing whitespaces from key and value
-//                 key.erase(0, key.find_first_not_of(" \t"));
-//                 key.erase(key.find_last_not_of(" \t") + 1);
-//                 value.erase(0, value.find_first_not_of(" \t"));
-//                 value.erase(value.find_last_not_of(" \t") + 1);
-                
-//                 parameters[key] = value;
-//             }
-//         }
-//         file.close();
-//     }
-//     return parameters;
-// }
+// Initialize some functions
+void setObjectName(std::string object_name);
+
+int get_rs_timeout() {
+	ConfigHandler& config = ConfigHandler::getInstance();
+	int rs_timeout = config.getValue<int>("realsense.realsense_timeout_sec") * 1000;
+	return rs_timeout;
+}
+
+int get_dslr_timeout() {
+	ConfigHandler& config = ConfigHandler::getInstance();
+	int dslr_timeout = config.getValue<int>("dslr.dslr_timeout_sec") * 20;
+	return dslr_timeout;
+}
 
 void loadJsonConfig(std::string path) {
 	ConfigHandler& config = ConfigHandler::getInstance();
 	config.loadConfig(path);
+
+	std::string object_name = config.getValue<std::string>("object_name");
+	setObjectName(object_name);
 }
 
 void saveCameraConfig(std::string path) {
@@ -264,7 +247,9 @@ void validate_input(std::string text, std::string& input, std::regex validation)
 
 char get_last_pose() {
 	ConfigHandler& config = ConfigHandler::getInstance();
-	std::string path = config.getValue<std::string>("output_dir") + "/" + obj_name;
+	std::string object_name = config.getValue<std::string>("object_name");
+	std::string output_dir = config.getValue<std::string>("output_dir");
+	std::string path = output_dir + "/" + object_name;
 	char last_pose = 'a'; // First Pose
 	// Check if the directory exists
 	if (!fs::exists(path) || !fs::is_directory(path) || fs::is_empty(path)) {
@@ -303,58 +288,52 @@ char get_last_pose() {
 
 void scan(ThreadPool* pool = nullptr) {
 	ConfigHandler& config = ConfigHandler::getInstance();
-	std::vector<std::thread> scan_threads;
-	std::mutex mtx;
+
+	// Collect RealSense Data
+	if(config.getValue<bool>("realsense.collect_realsense")) {
+		int rs_timeout = get_rs_timeout();
+		rshandle.turntable_position = degree_tracker;
+		rshandle.get_current_frame(degree_tracker, rs_timeout, pool);
+		if (rshandle.fail_count > 0) {
+			cout << "RS Failure - " << rshandle.fail_count << endl;
+		}
+	}
 
 	// Collect DSLR Data
 	if(config.getValue<bool>("dslr.collect_dslr")) {
 		canonhandle.images_downloaded = 0;
+		
 		// Change Pose
-		scan_folder = config.getValue<std::string>("output_dir") + "/" + obj_name;
+		std::string object_name = config.getValue<std::string>("object_name");
+		std::string output_dir = config.getValue<std::string>("output_dir");
+		scan_folder = output_dir + "/" + object_name;
 		canonhandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\DSLR";
 		create_folder(canonhandle.save_dir,true);
 		
-		// int timeout = stoi(config["dslr_timeout_sec"]) * 20; // 20 = 1s
 		cout << "Getting DSLR Data...\n";
 		canonhandle.turntable_position = degree_tracker;
 		
 		for (auto& camera : canonhandle.cameraArray) {
 			std::string cam_name = camera_name[camera];
-			scan_threads.emplace_back([&]() {
-				std::lock_guard<std::mutex> lock(mtx);
-				EdsError err = EDS_ERR_OK;
-				err = TakePicture(camera, cam_name);
-			});
+			EdsError err = EDS_ERR_OK;
+			err = TakePicture(camera, cam_name);
 		}
-	}
 
-	// Collect RealSense Data
-	if(config.getValue<bool>("realsense.collect_realsense")) {
-		rshandle.turntable_position = degree_tracker;
-		rshandle.get_current_frame(rs_timeout, pool);
-		if (rshandle.fail_count > 0) {
-			cout << "RS Failure - " << rshandle.fail_count << endl;
+		// Collecting images from DSLR
+		int c = 0;
+		int dslr_timeout = get_dslr_timeout();
+		while (canonhandle.images_downloaded < canonhandle.cameras_found && c < dslr_timeout) {
+			EdsGetEvent();
+			std::this_thread::sleep_for(50ms);
+			c++;
 		}
+		cout << "DSLR Timeout Count: " << c << "/" << dslr_timeout << endl;
 	}
-	
-	for (auto& thread : scan_threads) {
-		if (thread.joinable())
-		thread.join();
-	}
-	
-	// Collecting images from DSLR
-	// Once the picture is in memory, the download does not take long.
-	int c = 0;
-	while (canonhandle.images_downloaded < canonhandle.cameras_found && c < dslr_timeout) {
-		EdsGetEvent();
-		std::this_thread::sleep_for(50ms);
-		c++;
-	}
-	cout << "DSLR Timeout Count: " << c << "/" << dslr_timeout << endl;
 }
 
 void rotate_turntable(int degree_inc) {
 	// Issue command to move turntable.
+	ConfigHandler& config = ConfigHandler::getInstance();
 	std::string degree_inc_str = std::to_string(degree_inc);
 	char *send = &degree_inc_str[0];
 	bool is_sent = Serial->WriteSerialPort(send);
@@ -366,6 +345,7 @@ void rotate_turntable(int degree_inc) {
 		cout << "Incoming: " << incoming;// << endl;
 		// std::this_thread::sleep_for(250ms);
 		
+		int turntable_delay_ms = config.getValue<int>("turntable_delay_ms");
 		std::this_thread::sleep_for(std::chrono::milliseconds(turntable_delay_ms));
 	} else {
 		cout << "WARNING: Serial command not sent, something went wrong.\n";
@@ -387,13 +367,14 @@ bool generateTransform(int degree_inc, int num_moves) {
 	std::string calibration_dir = config.getValue<std::string>("transform_generator.calibration_dir_windows");
 	std::string calibration = config.getValue<std::string>("transform_generator.calibration_mode");
 	std::string output_dir = config.getValue<std::string>("transform_generator.dir_windows");
+	std::string object_name = config.getValue<std::string>("object_name");
 
 	int range = degree_inc * num_moves;
 	std::stringstream command_stream;
 	command_stream 
 		<< "python3 " 
 		<< "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/scripts/transform_generator.py "
-		<< obj_name << " "
+		<< object_name << " "
 		<< "-d " << degree_inc << " "
 		<< "-r " << range << " "
 		<< "-c " << calibration << " "
@@ -424,8 +405,8 @@ bool customScan() {
 		std::cout << "Liveview is active, please stop it before scanning." << std::endl;
 		return false;
 	}
-
-	ThreadPool pool(5);
+	int thread_num = config.getValue<int>("thread_num");
+	ThreadPool pool(thread_num);
 	int degree_inc;
 	int num_moves = 0;
 
@@ -486,6 +467,8 @@ bool fullScan() {
 	}
 
 	ConfigHandler& config = ConfigHandler::getInstance();
+	int thread_num = config.getValue<int>("thread_num");
+	ThreadPool pool(thread_num);
 
 	int degree_inc = config.getValue<int>("degree_inc");
 	int num_moves = config.getValue<int>("num_moves");
@@ -495,7 +478,7 @@ bool fullScan() {
 	auto start = std::chrono::high_resolution_clock::now();
 	for (int rots = 0; rots < num_moves; rots++)
 	{
-		scan();
+		scan(&pool);
 		rotate_turntable(degree_inc);
 		
 		degree_tracker += degree_inc;
@@ -536,33 +519,10 @@ bool fullScan() {
 // TODO: Check Degree Tracker
 bool collectSampleData() {
 	ConfigHandler& config = ConfigHandler::getInstance();
-	if (config.getValue<bool>("dslr.collect_dslr")) {
-		// Reset download counter to 0
-		canonhandle.images_downloaded = 0;
-		
-		// Change Pose
-		scan_folder = config.getValue<std::string>("output_dir") + "/" + obj_name;
-		canonhandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\DSLR";
-
-		EdsError err;
-		cout << "Collecting DSLR images...\n";
-		canonhandle.turntable_position = degree_tracker;
-		err = TakePicture(canonhandle.cameraArray, camera_name);
-		cout << err << endl;
-		// EdsGetEvent();
-		int c = 0;
-		while (canonhandle.images_downloaded < canonhandle.cameras_found && c < dslr_timeout) {
-			EdsGetEvent();
-			std::this_thread::sleep_for(50ms);
-			c++;
-		}
-		cout << "DSLR Timeout Count: " << c << "/" << dslr_timeout << endl;
-	}
-	if (config.getValue<bool>("realsense.collect_realsense")) {
-		rshandle.turntable_position = degree_tracker;
-		rshandle.get_current_frame(rs_timeout);
-	}
-
+	int thread_num = config.getValue<int>("thread_num");
+	ThreadPool pool(thread_num);
+	scan(&pool);
+	
 	return false;
 }
 
@@ -571,7 +531,9 @@ bool calibrateCamera() {
 	// Get the image stream from the file
 	ConfigHandler& config = ConfigHandler::getInstance();
 	canonhandle.images_downloaded = 0;
-	scan_folder = config.getValue<std::string>("output_dir") + "/" + obj_name;
+	std::string object_name = config.getValue<std::string>("object_name");
+	std::string output_dir = config.getValue<std::string>("output_dir");
+	scan_folder = output_dir + "/" + object_name;
 	canonhandle.save_dir = scan_folder + "\\calibration";
 
 	EdsError err;
@@ -580,6 +542,7 @@ bool calibrateCamera() {
 	err = TakePicture(canonhandle.cameraArray, camera_name);
 	// EdsGetEvent();
 	int c = 0;
+	int dslr_timeout = get_dslr_timeout();
 	while (canonhandle.images_downloaded < canonhandle.cameras_found && c < dslr_timeout) {
 		EdsGetEvent();
 		std::this_thread::sleep_for(50ms);
@@ -615,20 +578,47 @@ bool calibrateCamera() {
 	return true;
 }
 
-
-bool setObjectName() {
+void setObjectName(std::string object_name) {
 	ConfigHandler& config = ConfigHandler::getInstance();
-	cout << "\n\nEnter Object Name: ";
-	std::cin >> obj_name; 
-	scan_folder = config.getValue<std::string>("output_dir") + "/" + obj_name;
+	config.setValue<std::string>("object_name", object_name);
+	std::string output_dir = config.getValue<std::string>("output_dir");
+	scan_folder = output_dir + "/" + object_name;
 
 	// Create Main Folder
 	create_folder(scan_folder);
 
 	// Create object info.json (template)
 	create_obj_info_json(config.getValue<std::string>("output_dir"));
-	config.setValue<std::string>("object_name", obj_name);
-	object_info["Object Name"] = obj_name;
+	config.setValue<std::string>("object_name", object_name);
+	object_info["Object Name"] = object_name;
+
+	// Change pose
+	curr_pose = get_last_pose();
+	object_info["Pose"] = curr_pose;
+
+	rshandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\realsense";
+	create_folder(rshandle.save_dir,true);
+	canonhandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\DSLR";
+	create_folder(canonhandle.save_dir,true);
+}
+
+bool setObjectName() {
+	ConfigHandler& config = ConfigHandler::getInstance();
+	std::string object_name_input;
+	cout << "\n\nEnter Object Name: ";
+	std::cin >> object_name_input;
+	
+	config.setValue<std::string>("object_name", object_name_input);
+	std::string output_dir = config.getValue<std::string>("output_dir");
+	scan_folder = output_dir + "/" + object_name_input;
+
+	// Create Main Folder
+	create_folder(scan_folder);
+
+	// Create object info.json (template)
+	create_obj_info_json(config.getValue<std::string>("output_dir"));
+	config.setValue<std::string>("object_name", object_name_input);
+	object_info["Object Name"] = object_name_input;
 
 	// Change pose
 	curr_pose = get_last_pose();
@@ -1161,9 +1151,7 @@ int main(int argc, char* argv[])
 
 	// Create object folder 
 	scan_folder = config.getValue<std::string>("output_dir") + "/" + config.getValue<std::string>("object_name");
-	obj_name = config.getValue<std::string>("object_name");
-	object_info["Object Name"] = obj_name;
-
+	
     create_folder(scan_folder);
 
 	// Create object info template
@@ -1178,7 +1166,6 @@ int main(int argc, char* argv[])
 	std::cout << "Last Pose Checked." << std::endl;
 
 	// Setup Realsense Cameras
-	rs_timeout = config.getValue<int>("realsense.realsense_timeout_sec") * 1000;
 	if (config.getValue<bool>("realsense.collect_realsense")) {
 		cout << "\nAttempting Realsense setup...\n";
 		// Create RealSense Handler
@@ -1208,7 +1195,6 @@ int main(int argc, char* argv[])
 	}
 
 	// Initialization of Canon SDK
-	dslr_timeout = config.getValue<int>("dslr.dslr_timeout_sec") * 20;
 	if (config.getValue<bool>("dslr.collect_dslr")) {
 		cout << "\nEntering DSLR Setup...\n";
 		// CanonHandler canonhandle;
@@ -1264,7 +1250,7 @@ int main(int argc, char* argv[])
 	// Change pose
 	curr_pose = get_last_pose();
 	
-	object_info["Object Name"] = obj_name;
+	object_info["Object Name"] = config.getValue<std::string>("object_name");
 	object_info["Turntable Pos"] = std::to_string(degree_tracker);
 	object_info["Pose"] = curr_pose;
 	// RUNNING MENU LOOP -----------------------------------------------------------------------------

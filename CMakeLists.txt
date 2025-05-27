@@ -66,6 +66,7 @@ add_executable (MultiCamCui
     ${SRC_DIR}/MenuHandler.cpp
     ${SRC_DIR}/ConfigHandler.cpp
     ${SRC_DIR}/ThreadPool.cpp
+    ${SRC_DIR}/DebugUtils.cpp
     
     
     #${SRC_DIR}/MultiCamCui.cpp

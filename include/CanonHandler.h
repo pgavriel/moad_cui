@@ -33,7 +33,7 @@ public:
     std::vector<EdsCameraRef> cameraArray;
 	std::vector<EdsUInt64> bodyID;
 
-    bool rename_cameras = false;
+    bool rename_cameras = true;
     std::map<std::string, std::string> camera_names;
 };
 

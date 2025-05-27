@@ -20,8 +20,8 @@
 #include <pcl/features/normal_3d.h>
 #include <pcl/features/normal_3d_omp.h>
 
-#include "ConfigHandler.h"
 #include "RealSenseHandler.h"
+#include "DebugUtils.h"
 
 using std::string;
 using std::cout;
@@ -209,17 +209,20 @@ void RealSenseHandler::get_frames(int num_frames, int timeout_ms) {
 }
 
 // Collects relevant MOAD data from all RealSense devices
-void RealSenseHandler::get_current_frame(int timeout_ms, ThreadPool* pool) {
+void RealSenseHandler::get_current_frame(int degree, int timeout_ms, ThreadPool* pool) {
+    ConfigHandler& config = ConfigHandler::getInstance();
     cout << "\nGetting RealSense Data... \n";
     cout << "Getting rotation matrix for " << turntable_position << " degress...\n";
     rot_matrix = createRotationMatrix(turntable_position);
-    cout << rot_matrix << endl << endl;
+    if (config.getValue<bool>("debug")) {
+        cout << rot_matrix << endl << endl;
+    }
 
     if (pool == nullptr) {
         std::vector<std::thread> thread_vector;
         for (const auto& pipe : pipeline_map) {
-            thread_vector.emplace_back([&, pipe, timeout_ms]() {
-                process_frames(pipe.second, timeout_ms);});
+            thread_vector.emplace_back([&, pipe, timeout_ms, degree]() {
+                process_frames(pipe.second, degree, timeout_ms);});
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     
@@ -229,22 +232,24 @@ void RealSenseHandler::get_current_frame(int timeout_ms, ThreadPool* pool) {
     }
     else {
         for (const auto& pipe : pipeline_map) {
-            pool->enqueueTask([&, pipe, timeout_ms]() {
-                process_frames(pipe.second, timeout_ms);});
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            pool->enqueueTask([&, pipe, timeout_ms, degree]() {
+                DebugUtils::startTimer();
+                process_frames(pipe.second, degree, timeout_ms);
+                DebugUtils::stopTimer("Processing frames for " + camera_names[pipe.first] + " at angle " + std::to_string(degree));
+            });
         }
     }
 
-    cout << "Got frames from all RS\n";
+    cout << "Got frames from all RS at angle " << degree << ", Saving in the background...\n";
 }
 
-void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
+void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeout_ms) {
     ConfigHandler& config = ConfigHandler::getInstance();
     std::stringstream out_file;
     
     // Get serial number for this camera
     std::string serial_number = pipe.get_active_profile().get_device().get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
-    cout << "Processing " << camera_names[serial_number] << "...\n";
+    cout << "Processing " << camera_names[serial_number] << " at angle " << degree << "...\n";
     
     // Collect frameset from camera
     rs2::frameset fs;
@@ -292,7 +297,8 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
     // Test time of saving the pointcloud
     // SAVE POINTCLOUD
     if (config.getValue<bool>("realsense.collect_pointcloud")) {
-        auto start = std::chrono::high_resolution_clock::now();
+        // [DEUG] Start Timer for pointcloud creation
+        DebugUtils::startTimer();
         // Create PCL point cloud
         pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
         pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr normal_cloud(new pcl::PointCloud<pcl::PointXYZRGBNormal>);
@@ -320,12 +326,10 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
         
             cloud->push_back(point);
         }
-        // Check the time taken to create the pointcloud
-        auto stop = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-        cout << camera_names[serial_number] << ": Pointcloud created in " << duration.count() << "ms\n";
-        // Output 'rsx:C' indicates the pointcloud object has been constructed.
-        // cout << "[" << camera_names[serial_number] << ":C]";
+        // [DEBUG] Stop Timer for pointcloud creation
+        std::stringstream message;
+        message << "[" << degree << "]" << camera_names[serial_number] << " PointCloud Created";
+        DebugUtils::stopTimer(message.str());
 
         // Don't apply transforms and filters if raw_pointclouds is true
         if (!config.getValue<bool>("realsense.raw_pointcloud")) {
@@ -342,9 +346,9 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
             //Apply passthrough filters to remove background
             pcl::PassThrough<pcl::PointXYZRGB> pass;
             float fmin, fmax;
-            // If rs_xpass=1, apply x-pass filter
-            start = std::chrono::high_resolution_clock::now();
+
             if (config.getValue<bool>("realsense.filter.xpass.apply")) {
+                DebugUtils::startTimer();
                 fmin = config.getValue<float>("realsense.filter.xpass.min");
                 fmax = config.getValue<float>("realsense.filter.xpass.max");
                 // cout << "[" << camera_names[serial_number] << ":X:" << fmin << "," << fmax << "]";
@@ -352,15 +356,14 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
                 pass.setFilterFieldName("x");
                 pass.setFilterLimits(fmin, fmax);
                 pass.filter(*cloud);
+                std::stringstream x_pass_message;
+                x_pass_message << "[" << degree << "]" << camera_names[serial_number] << " X-pass Filter";
+                DebugUtils::stopTimer(x_pass_message.str());
             }
-            //  Check time for the x-pass filter
-            stop = std::chrono::high_resolution_clock::now();
-            duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-            cout << camera_names[serial_number] << ": X-pass filter applied in " << duration.count() << "ms\n";
 
             // If rs_ypass=1, apply y-pass filter
-            start = std::chrono::high_resolution_clock::now();
             if (config.getValue<bool>("realsense.filter.ypass.apply")) {
+                DebugUtils::startTimer();
                 fmin = config.getValue<float>("realsense.filter.ypass.min");
                 fmax = config.getValue<float>("realsense.filter.ypass.max");
                 // cout << "[" << camera_names[serial_number] << ":Y:" << fmin << "," << fmax << "]";
@@ -368,15 +371,14 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
                 pass.setFilterFieldName("y");
                 pass.setFilterLimits(fmin, fmax);
                 pass.filter(*cloud);
+                std::stringstream y_pass_message;
+                y_pass_message << "[" << degree << "]" << camera_names[serial_number] << " Y-pass Filter";
+                DebugUtils::stopTimer(y_pass_message.str());
             }
-            //  Check time for the y-pass filter
-            stop = std::chrono::high_resolution_clock::now();
-            duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-            cout << camera_names[serial_number] << ": Y-pass filter applied in " << duration.count() << "ms\n";
 
             // If rs_zpass=1, apply z-pass filter
-            start = std::chrono::high_resolution_clock::now();
             if (config.getValue<bool>("realsense.filter.zpass.apply")) {
+                DebugUtils::startTimer();
                 fmin = config.getValue<float>("realsense.filter.zpass.min");
                 fmax = config.getValue<float>("realsense.filter.zpass.max");
                 // cout << "[" << camera_names[serial_number] << ":Z:" << fmin << "," << fmax << "]";
@@ -384,15 +386,14 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
                 pass.setFilterFieldName("z");
                 pass.setFilterLimits(fmin, fmax);
                 pass.filter(*cloud);
+                std::stringstream z_pass_message;
+                z_pass_message << "[" << degree << "]" << camera_names[serial_number] << " Z-pass Filter";
+                DebugUtils::stopTimer(z_pass_message.str());
             }
-            //  Check time for the z-pass filter
-            stop = std::chrono::high_resolution_clock::now();
-            duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-            cout << camera_names[serial_number] << ": Z-pass filter applied in " << duration.count() << "ms\n";
-
+            
             // If rs_sor=1, apply Statistical outlier removal filter
-            start = std::chrono::high_resolution_clock::now();
             if (config.getValue<bool>("realsense.filter.sor.apply")) {
+                DebugUtils::startTimer();
                 pcl::StatisticalOutlierRemoval<pcl::PointXYZRGB> sor(true);
                 fmin = config.getValue<float>("realsense.filter.sor.stddev");
                 int k = config.getValue<int>("realsense.filter.sor.k");
@@ -400,31 +401,23 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
                 sor.setMeanK(k);  // Number of neighbors to use for mean distance estimation
                 sor.setStddevMulThresh(fmin);  // Standard deviation threshold for outlier detection
                 sor.filter(*cloud);
-                int removed = sor.getRemovedIndices()->size();
-                // cout << "[" << camera_names[serial_number] << ":SOR:" << removed << " points]";
+                std::stringstream sor_message;
+                sor_message << "[" << degree << "]" << camera_names[serial_number] << " SOR Filter";
+                DebugUtils::stopTimer(sor_message.str());
             }
-            //  Check time for the SOR filter
-            stop = std::chrono::high_resolution_clock::now();
-            duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-            cout << camera_names[serial_number] << ": SOR filter applied in " << duration.count() << "ms\n";
 
             // If rs_voxel=1, apply Voxel Filter with rs_voxel_leafsize parameter
-            start = std::chrono::high_resolution_clock::now();
             if (config.getValue<bool>("realsense.filter.voxel.apply")) {
+                DebugUtils::startTimer();
                 pcl::VoxelGrid<pcl::PointXYZRGB> voxel_grid_filter;
                 fmin = config.getValue<float>("realsense.filter.voxel.leaf_size");
                 voxel_grid_filter.setInputCloud(cloud);
                 voxel_grid_filter.setLeafSize(fmin, fmin, fmin); // Adjust the values as per your needs
                 voxel_grid_filter.filter(*cloud);
-                // cout << "[" << camera_names[serial_number] << ":VOX:" << fmin << "]";
+                std::stringstream voxel_message;
+                voxel_message << "[" << degree << "]" << camera_names[serial_number] << " Voxel Filter";
+                DebugUtils::stopTimer(voxel_message.str());
             }
-            //  Check time for the Voxel filter
-            stop = std::chrono::high_resolution_clock::now();
-            duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-            cout << camera_names[serial_number] << ": Voxel filter applied in " << duration.count() << "ms\n";
-
-            // Output 'rsx:F' indicates the pointcloud has been filtered.
-            // cout << "[" << camera_names[serial_number] << ":F]";
         }
 
         // Compute Normals
@@ -434,34 +427,29 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
             // ne.setInputCloud(cloud);
             // Set the number of neighbors to be considered when estimating normals
             // ne.setKSearch(4);
-            // Compute the normals
-            auto start = std::chrono::high_resolution_clock::now();
             
+            DebugUtils::startTimer();
             pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
             pcl::NormalEstimationOMP<pcl::PointXYZRGB, pcl::Normal> ne;
             ne.setInputCloud(cloud);
+            ne.setNumberOfThreads(config.getValue<int>("realsense.normals_threads"));
             ne.setSearchMethod(pcl::search::KdTree<pcl::PointXYZRGB>::Ptr(new pcl::search::KdTree<pcl::PointXYZRGB>));
-            ne.setKSearch(4);
+            ne.setKSearch(2);
             ne.setViewPoint(origin[0],origin[1],origin[2]);
             // cout << "[" << camera_names[serial_number] << ":compN]";
             ne.compute(*normals);
             // Concatenate the original point cloud and the computed normals
             // cout << "[" << camera_names[serial_number] << ":catN]";
             pcl::concatenateFields(*cloud, *normals, *normal_cloud);
-
-            // Check the time taken to compute the normals
-            auto stop = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-            cout << camera_names[serial_number] << ": Normals computed in " << duration.count() << "ms\n";
-
-            // Output 'rsx:N' indicates the normals have been calculated  
-            // cout << "[" << camera_names[serial_number] << ":N]";
+            std::stringstream normals_message;
+            normals_message << "[" << degree << "]" << camera_names[serial_number] << " Normals Computation";
+            DebugUtils::stopTimer(normals_message.str());
         }
         
         // Generate pointcloud name and save
         out_file.str("");
         out_file << save_dir << "\\" << camera_names[serial_number] << "_"
-            << std::setfill('0') << std::setw(3) << turntable_position << "_cloud.ply";
+            << std::setfill('0') << std::setw(3) << degree << "_cloud.ply";
         // Save the point cloud to a PLY file
         // Output 'rsx:S' indicates the pointcloud is now being saved.
         // cout << "[" << camera_names[serial_number] << ":S]";
@@ -473,7 +461,7 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int timeout_ms) {
             pcl::io::savePLYFile(out_file.str(), *normal_cloud, true);
         }
         // pcl::io::savePLYFile(out_file.str(), *normal_cloud);
-        cout << "[" << camera_names[serial_number] << ":SAVED]\n";
+        cout << "[" << degree << "][" << camera_names[serial_number] << ":SAVED]\n";
     }
     
     // SAVE COLOR IMAGE

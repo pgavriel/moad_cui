@@ -1,6 +1,8 @@
 {
+    "debug": true,
     "output_dir": "G:/",
-    "object_name": "testing_config",
+    "object_name": "testing_speed_3",
+    "thread_num": 5,
     "degree_inc": 5,
     "num_moves": 72,
     "serial_com_port": "5",
@@ -10,7 +12,7 @@
         "dslr_timeout_sec": 5
     },
     "realsense": {
-        "collect_realsense": false,
+        "collect_realsense": true,
         "realsense_timeout_sec": 9, 
         "transform_path": "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/calibration/realsense/",
         "transform_file": "transform.json",
@@ -19,29 +21,30 @@
         "collect_pointcloud": true,
         "raw_pointcloud": false,
         "compute_normals": true,
+        "normals_threads": 1,
         "filter": {
             "xpass": {
                 "apply": true,
-                "min": -0.5,
-                "max": 0.5
+                "min": -0.3,
+                "max": 0.3
             },
             "ypass": {
                 "apply": true,
-                "min": -0.5,
-                "max": 0.5
+                "min": -0.3,
+                "max": 0.3
             },
             "zpass": {
                 "apply": true,
-                "min": -0.5,
+                "min": 0,
                 "max": 0.5
             },
             "sor": {
                 "apply": true,
-                "k": 20,
-                "stddev": 0.1
+                "k": 6,
+                "stddev": 1
             },
             "voxel": {
-                "apply": true,
+                "apply": false,
                 "leaf_size": 0.01
             }
         }
