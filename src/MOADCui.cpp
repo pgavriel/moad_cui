@@ -288,9 +288,17 @@ char get_last_pose() {
 
 void scan(ThreadPool* pool = nullptr) {
 	ConfigHandler& config = ConfigHandler::getInstance();
-
+	std::string object_name = config.getValue<std::string>("object_name");
+	std::string output_dir = config.getValue<std::string>("output_dir");
+	scan_folder = output_dir + "/" + object_name;
+	
 	// Collect RealSense Data
 	if(config.getValue<bool>("realsense.collect_realsense")) {
+		// Create RS Scan Folder
+		rshandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\realsense";
+		create_folder(rshandle.save_dir, true);
+
+		// Get the current frame from RealSense
 		int rs_timeout = get_rs_timeout();
 		rshandle.turntable_position = degree_tracker;
 		rshandle.get_current_frame(degree_tracker, rs_timeout, pool);
@@ -303,10 +311,7 @@ void scan(ThreadPool* pool = nullptr) {
 	if(config.getValue<bool>("dslr.collect_dslr")) {
 		canonhandle.images_downloaded = 0;
 		
-		// Change Pose
-		std::string object_name = config.getValue<std::string>("object_name");
-		std::string output_dir = config.getValue<std::string>("output_dir");
-		scan_folder = output_dir + "/" + object_name;
+		// Create DSLR Scan Folder
 		canonhandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\DSLR";
 		create_folder(canonhandle.save_dir,true);
 		
@@ -522,7 +527,7 @@ bool collectSampleData() {
 	int thread_num = config.getValue<int>("thread_num");
 	ThreadPool pool(thread_num);
 	scan(&pool);
-	
+
 	return false;
 }
 
