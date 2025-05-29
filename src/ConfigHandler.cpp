@@ -29,6 +29,10 @@ void ConfigHandler::saveConfig(const std::string& filepath) const {
 	}
 }
 
+bool ConfigHandler::emptyConfig() {
+    return config.empty();
+}
+
 std::vector<std::string> ConfigHandler::split(std::string str, char delimiter) {
     // Copied from: https://stackoverflow.com/questions/67486877/nlohmann-json-access-nested-value-by-single-string
     std::vector<std::string> res = {};

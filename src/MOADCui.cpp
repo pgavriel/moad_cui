@@ -74,6 +74,8 @@ std::string json_path;
 
 // Initialize some functions
 void setObjectName(std::string object_name);
+void initializeCanon();
+void initializeRealsense();
 
 int get_rs_timeout() {
 	ConfigHandler& config = ConfigHandler::getInstance();
@@ -89,7 +91,32 @@ int get_dslr_timeout() {
 
 void loadJsonConfig(std::string path) {
 	ConfigHandler& config = ConfigHandler::getInstance();
+	std::optional<bool> previous_DSLR;
+	std::optional<bool> previous_RS;
+
+	if (!config.emptyConfig()) {
+		previous_DSLR = config.getValue<bool>("dslr.collect_dslr");
+		previous_RS = config.getValue<bool>("realsense.collect_realsense");
+	}
+	
 	config.loadConfig(path);
+
+	// Needs to reinitialize the CanonHandler and RealSenseHandler
+	std::cout << "Initialzing CanonHandler and RealSenseHandler" << std::endl;
+
+	if (!previous_DSLR.has_value() || previous_DSLR != config.getValue<bool>("dslr.collect_dslr")) {
+		std::cout << "Initializing CanonHandler" << std::endl;
+		if (config.getValue<bool>("dslr.collect_dslr") && !canonhandle.isSDKLoaded) {
+			initializeCanon();
+		}
+	}
+
+	if (!previous_RS.has_value() || previous_RS != config.getValue<bool>("realsense.collect_realsense")) {
+		std::cout << "Initializing RealSenseHandler" << std::endl;
+		if (config.getValue<bool>("realsense.collect_realsense")) {
+			initializeRealsense();
+		}
+	}
 
 	std::string object_name = config.getValue<std::string>("object_name");
 	setObjectName(object_name);
@@ -1139,38 +1166,9 @@ bool reloadConfig() {
 	return false;
 }
 
-int main(int argc, char* argv[])
-{	
-	// SETUP ----------------------------------------------------------------------------------------------
-	degree_tracker = 0;
-    std::shared_ptr<std::thread> th = std::shared_ptr<std::thread>();
-
-	// Get the path of the root directory
-	fs::path executablePath(argv[0]);
-	fs::path projectDir = executablePath.parent_path().parent_path().parent_path();
-
-	// Load the JSON Config file
-	json_path = projectDir.string() + "\\moad_config.json";
-	loadJsonConfig(json_path);
+void initializeRealsense() {
 	ConfigHandler& config = ConfigHandler::getInstance();
 
-	// Create object folder 
-	scan_folder = config.getValue<std::string>("output_dir") + "/" + config.getValue<std::string>("object_name");
-	
-    create_folder(scan_folder);
-
-	// Create object info template
-	create_obj_info_json(config.getValue<std::string>("output_dir"));
-	
-	// Set initial Object name
-	int turntable_delay_ms = config.getValue<int>("turntable_delay_ms");
-
-	// Get last pose
-	std::cout << "Checking Last Pose..." << std::endl;
-	curr_pose = get_last_pose();
-	std::cout << "Last Pose Checked." << std::endl;
-
-	// Setup Realsense Cameras
 	if (config.getValue<bool>("realsense.collect_realsense")) {
 		cout << "\nAttempting Realsense setup...\n";
 		// Create RealSense Handler
@@ -1184,22 +1182,11 @@ int main(int argc, char* argv[])
 	} else {
 		cout << "\nSkipping RealSense setup, 'collect_rs=0'.\n";
 	}
+}
+
+void initializeCanon() {
+	ConfigHandler& config = ConfigHandler::getInstance();
 	
-
-	// Setup Arduino serial port connection
-	cout << "\nAttempting Serial Motor Control setup...\n";
-	char com_port[] = "\\\\.\\COMX";
-	com_port[7] = config.getValue<std::string>("serial_com_port").at(0);
-	DWORD COM_BAUD_RATE = CBR_9600;
-
-	Serial = new SimpleSerial(com_port, COM_BAUD_RATE);
-	if(Serial->connected_) {
-		cout << "Serial connected to " << com_port << endl;
-	} else {
-		cout << "Error creating serial connection.\n";
-	}
-
-	// Initialization of Canon SDK
 	if (config.getValue<bool>("dslr.collect_dslr")) {
 		cout << "\nEntering DSLR Setup...\n";
 		// CanonHandler canonhandle;
@@ -1250,6 +1237,50 @@ int main(int argc, char* argv[])
 		}
 	} else {
 		cout << "\nSkipping DSLR setup, 'collect_dslr=0'.\n";
+	}
+}
+
+int main(int argc, char* argv[])
+{	
+	// SETUP ----------------------------------------------------------------------------------------------
+	degree_tracker = 0;
+    std::shared_ptr<std::thread> th = std::shared_ptr<std::thread>();
+
+	// Get the path of the root directory
+	fs::path executablePath(argv[0]);
+	fs::path projectDir = executablePath.parent_path().parent_path().parent_path();
+
+	// Load the JSON Config file
+	json_path = projectDir.string() + "\\moad_config.json";
+	loadJsonConfig(json_path);
+	ConfigHandler& config = ConfigHandler::getInstance();
+
+	// Create object folder 
+	scan_folder = config.getValue<std::string>("output_dir") + "/" + config.getValue<std::string>("object_name");
+	create_folder(scan_folder);
+
+	// Create object info template
+	create_obj_info_json(config.getValue<std::string>("output_dir"));
+	
+	// Set initial Object name
+	int turntable_delay_ms = config.getValue<int>("turntable_delay_ms");
+
+	// Get last pose
+	std::cout << "Checking Last Pose..." << std::endl;
+	curr_pose = get_last_pose();
+	std::cout << "Last Pose Checked." << std::endl;
+
+	// Setup Arduino serial port connection
+	cout << "\nAttempting Serial Motor Control setup...\n";
+	char com_port[] = "\\\\.\\COMX";
+	com_port[7] = config.getValue<std::string>("serial_com_port").at(0);
+	DWORD COM_BAUD_RATE = CBR_9600;
+
+	Serial = new SimpleSerial(com_port, COM_BAUD_RATE);
+	if(Serial->connected_) {
+		cout << "Serial connected to " << com_port << endl;
+	} else {
+		cout << "Error creating serial connection.\n";
 	}
 
 	// Change pose

@@ -11,6 +11,7 @@ public:
 
     void loadConfig(const std::string&);
     void saveConfig(const std::string&) const;
+    bool emptyConfig();
 
     template <typename T>
     T getValue(const std::string& key) {
