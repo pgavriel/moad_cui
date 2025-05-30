@@ -25,6 +25,7 @@ typedef struct _EVF_DATASET
 	EdsSize			sizeJpegLarge;
 }EVF_DATASET;
 
+// Function to throw camera exceptions based on the error code
 void throwCameraException(EdsError err, const char* message = "") {
 	switch (err)
 	{
@@ -39,6 +40,7 @@ void throwCameraException(EdsError err, const char* message = "") {
 	}
 }
 
+// Function to release the stream and image references
 void ReleaseStream(EdsStreamRef& stream, EdsEvfImageRef& image) {
 	if (stream != NULL)
 	{
@@ -53,6 +55,7 @@ void ReleaseStream(EdsStreamRef& stream, EdsEvfImageRef& image) {
 	}
 }
 
+// Function to start the EVF command, setting the EVF mode and output device
 EdsError StartEvfCommand(EdsCameraRef const& camera, EdsUInt64 const& bodyID) {
 	EdsError err = EDS_ERR_OK;
 	EdsUInt32 evfMode = 0;
@@ -91,6 +94,7 @@ EdsError StartEvfCommand(EdsCameraRef const& camera, EdsUInt64 const& bodyID) {
 	return true;
 }
 
+// Function to download the EVF image from the camera and display it using OpenCV
 EdsError DownloadEvfCommand(EdsCameraRef const& camera, std::string const& cameraName, std::thread::id const& parentThreadID)
 {
 	EdsError err = EDS_ERR_OK;
@@ -204,6 +208,7 @@ EdsError DownloadEvfCommand(EdsCameraRef const& camera, std::string const& camer
 	return true;
 }
 
+// Function to end the EVF command, stopping the live view and releasing resources
 EdsError EndEvfCommand(EdsCameraRef const& camera, EdsUInt64 const& bodyID)
 {
 	EdsError err = EDS_ERR_OK;
@@ -268,6 +273,7 @@ EdsError EndEvfCommand(EdsCameraRef const& camera, EdsUInt64 const& bodyID)
 	return true;
 }
 
+// Function to start the EVF command for multiple cameras
 EdsError StartEvfCommand(std::vector<EdsCameraRef> const& cameraArray, std::vector<EdsUInt64> const& bodyID)
 {
 	int i;
@@ -282,7 +288,7 @@ EdsError StartEvfCommand(std::vector<EdsCameraRef> const& cameraArray, std::vect
 	return true;
 }
 
-// Depricated function. Use the one with EdsCameraRef instead.
+// (DEPRICATED) Function to download the image of each camera and then display it using OpenCV.
 EdsError DownloadEvfCommand(std::vector<EdsCameraRef> const& cameraArray, std::vector<EdsUInt64> const& _bodyID)
 {
 
@@ -406,6 +412,7 @@ EdsError DownloadEvfCommand(std::vector<EdsCameraRef> const& cameraArray, std::v
 	return true;
 }
 
+// Function to end the EVF command for multiple cameras
 EdsError EndEvfCommand(std::vector<EdsCameraRef> const& cameraArray, std::vector<EdsUInt64> const& bodyID)
 {
 	bool result;

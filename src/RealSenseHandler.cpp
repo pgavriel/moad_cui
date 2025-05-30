@@ -81,6 +81,8 @@ void RealSenseHandler::initialize() {
     std::ifstream realsense_file(transform_dir + transform_file);
     realsense_json = nlohmann::json::parse(realsense_file);
     std::cout << "Realsense camera transforms loaded.\n";
+
+    // Load camera names and transforms from JSON
     for (auto& [key, value] : realsense_json.items()) {
         Eigen::Matrix4f transform_matrix = Eigen::Matrix4f::Identity();
         for (int i = 0; i < 4; ++i) {
@@ -92,7 +94,7 @@ void RealSenseHandler::initialize() {
         camera_transforms[key] = transform_matrix;
     }
 
-    // Find all RS cameras and open streams
+    // Check if the device is returning frames
     try {
         device_check();
     }
@@ -105,18 +107,22 @@ void RealSenseHandler::initialize() {
 // Checks for all connected realsense devices, starts a pipeline for each,
 // and adds them all to the pipelines vector.
 int RealSenseHandler::device_check() {
+    // Get the list of connected devices
     auto devices_list = ctx.query_devices();
     device_count = devices_list.size();
     cout << device_count << " RealSense detected.\n";
     
+    // Display device information
     for (auto&& dev : devices_list) {
         std::string serial = dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
         cout << "[" << camera_names[serial] << "] " << serial << endl;
     }
+
     for (auto&& dev : devices_list) {
         // Print Device Information
         bool print_available_streams = false;
         print_device(dev,print_available_streams);
+
         // Start device data streams
         std::string serial = dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
         start_device(serial);
@@ -139,6 +145,7 @@ void RealSenseHandler::start_device(std::string serial_number) {
     // Start the stream
     pipe.start(cfg);
     cout << "[" << camera_names[serial_number] << "][DEVICE STARTED]\n" << endl;
+    
     // Add the pipeline to the vector
     pipeline_map[serial_number] = pipe;
 
@@ -212,26 +219,32 @@ void RealSenseHandler::get_frames(int num_frames, int timeout_ms) {
 void RealSenseHandler::get_current_frame(int degree, int timeout_ms, ThreadPool* pool) {
     ConfigHandler& config = ConfigHandler::getInstance();
     cout << "\nGetting RealSense Data... \n";
+    // Create a rotation matrix for the current turntable position
     cout << "Getting rotation matrix for " << turntable_position << " degress...\n";
     rot_matrix = createRotationMatrix(turntable_position);
     if (config.getValue<bool>("debug")) {
         cout << rot_matrix << endl << endl;
     }
 
+    // Check if the functon is being called with a thread pool
     if (pool == nullptr) {
+        // Create vector of threads
         std::vector<std::thread> thread_vector;
         for (const auto& pipe : pipeline_map) {
+            // Create a thread for each pipe
             thread_vector.emplace_back([&, pipe, timeout_ms, degree]() {
                 process_frames(pipe.second, degree, timeout_ms);});
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
-    
+        
+        // Join all threads
         for (auto& thread : thread_vector) {
             thread.join();
         }
     }
     else {
         for (const auto& pipe : pipeline_map) {
+            // Enqueue a task for each pipe in the thread pool
             pool->enqueueTask([&, pipe, timeout_ms, degree]() {
                 DebugUtils::startTimer();
                 process_frames(pipe.second, degree, timeout_ms);
@@ -284,6 +297,7 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
         cout << camera_names[serial_number] << ": may have recovered.\n";
     }
 
+    // Get color and depth frames from the frameset
     rs2::video_frame color = fs.get_color_frame();
     rs2::depth_frame depth = fs.get_depth_frame();
     
@@ -294,8 +308,7 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
     depth = spatial_filter.process(depth);
     depth = temporal_filter.process(depth);
 
-    // Test time of saving the pointcloud
-    // SAVE POINTCLOUD
+    // Check if collecting pointclouds is enabled
     if (config.getValue<bool>("realsense.collect_pointcloud")) {
         // [DEUG] Start Timer for pointcloud creation
         DebugUtils::startTimer();
@@ -306,6 +319,7 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
         Eigen::Vector4f origin(0.0f, 0.0f, 0.0f, 1.0f);
         // pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_filtered (new pcl::PointCloud<pcl::PointXYZRGB>);
 
+        // Get the number of points and vertices from the frame
         rs2::pointcloud pc;
         rs2::points points = pc.calculate(depth);
         const rs2::vertex* vertices = points.get_vertices();
@@ -313,6 +327,7 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
         // cout << "numVertices: " << numVertices << " - ";
         int i;
         for (i = 0; i < numVertices ; i++) {
+            // Create a point and set its coordinates
             pcl::PointXYZRGB point;
             point.x = vertices[i].x;
             point.y = vertices[i].y;
@@ -323,7 +338,8 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
             point.r = color_data[3 * i];
             point.g = color_data[3 * i + 1];
             point.b = color_data[3 * i + 2];
-        
+            
+            // Add the point to the point cloud
             cloud->push_back(point);
         }
         // [DEBUG] Stop Timer for pointcloud creation
@@ -331,7 +347,7 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
         message << "[" << degree << "]" << camera_names[serial_number] << " PointCloud Created";
         DebugUtils::stopTimer(message.str());
 
-        // Don't apply transforms and filters if raw_pointclouds is true
+        // Check for raw pointcloud collection, if enabled, skip the rest of the processing
         if (!config.getValue<bool>("realsense.raw_pointcloud")) {
             //Apply appropriate pointcloud transform
             pcl::transformPointCloud(*cloud, *cloud, camera_transforms[serial_number]);
@@ -340,107 +356,155 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
             // pcl::transformPointCloud(*normal_cloud, *normal_cloud, rot_matrix);
             origin = camera_transforms[serial_number] * origin;
             origin = rot_matrix * origin;
-            // cout << "[" << camera_names[serial_number] << ":Torigin:" << origin.transpose() << "]";
-            // Output 'rsx:T' indicates the appropriate pointcloud transforms have been performed.
-            // cout << "[" << camera_names[serial_number] << ":T]";
             //Apply passthrough filters to remove background
             pcl::PassThrough<pcl::PointXYZRGB> pass;
             float fmin, fmax;
 
+            // Check if xpass is enabled
             if (config.getValue<bool>("realsense.filter.xpass.apply")) {
+                // [DEBUG] Start Timer for x-pass filter
                 DebugUtils::startTimer();
+                
+                // Get the min and max values for the x-pass filter
                 fmin = config.getValue<float>("realsense.filter.xpass.min");
                 fmax = config.getValue<float>("realsense.filter.xpass.max");
-                // cout << "[" << camera_names[serial_number] << ":X:" << fmin << "," << fmax << "]";
+                
+                // Set the values to the pass filter
                 pass.setInputCloud(cloud);
                 pass.setFilterFieldName("x");
                 pass.setFilterLimits(fmin, fmax);
+
+                // Apply the filter to the point cloud
                 pass.filter(*cloud);
+
+                // [DEBUG] Stop Timer for x-pass filter
                 std::stringstream x_pass_message;
                 x_pass_message << "[" << degree << "]" << camera_names[serial_number] << " X-pass Filter";
                 DebugUtils::stopTimer(x_pass_message.str());
             }
 
-            // If rs_ypass=1, apply y-pass filter
+            // Check if ypass is enabled
             if (config.getValue<bool>("realsense.filter.ypass.apply")) {
+                // [DEBUG] Start Timer for y-pass filter
                 DebugUtils::startTimer();
+                
+                // Get the min and max values for the y-pass filter
                 fmin = config.getValue<float>("realsense.filter.ypass.min");
                 fmax = config.getValue<float>("realsense.filter.ypass.max");
-                // cout << "[" << camera_names[serial_number] << ":Y:" << fmin << "," << fmax << "]";
+
+                // Set the values to the pass filter
                 pass.setInputCloud(cloud);
                 pass.setFilterFieldName("y");
                 pass.setFilterLimits(fmin, fmax);
+
+                // Apply the filter to the point cloud
                 pass.filter(*cloud);
+                
+                // [DEBUG] Stop Timer for y-pass filter
                 std::stringstream y_pass_message;
                 y_pass_message << "[" << degree << "]" << camera_names[serial_number] << " Y-pass Filter";
                 DebugUtils::stopTimer(y_pass_message.str());
             }
 
-            // If rs_zpass=1, apply z-pass filter
+            // Check if zpass is enabled
             if (config.getValue<bool>("realsense.filter.zpass.apply")) {
+                // [DEBUG] Start Timer for z-pass filter
                 DebugUtils::startTimer();
+                
+                // Get the min and max values for the z-pass filter
                 fmin = config.getValue<float>("realsense.filter.zpass.min");
                 fmax = config.getValue<float>("realsense.filter.zpass.max");
-                // cout << "[" << camera_names[serial_number] << ":Z:" << fmin << "," << fmax << "]";
+
+                // Set the values to the pass filter
                 pass.setInputCloud(cloud);
                 pass.setFilterFieldName("z");
                 pass.setFilterLimits(fmin, fmax);
+
+                // Apply the filter to the point cloud
                 pass.filter(*cloud);
+
+                // [DEBUG] Stop Timer for z-pass filter
                 std::stringstream z_pass_message;
                 z_pass_message << "[" << degree << "]" << camera_names[serial_number] << " Z-pass Filter";
                 DebugUtils::stopTimer(z_pass_message.str());
             }
             
-            // If rs_sor=1, apply Statistical outlier removal filter
+            // Check if statistical outlier removal (SOR) is enabled
             if (config.getValue<bool>("realsense.filter.sor.apply")) {
+                // [DEBUG] Start Timer for SOR filter
                 DebugUtils::startTimer();
+
+                // Create a StatisticalOutlierRemoval filter
                 pcl::StatisticalOutlierRemoval<pcl::PointXYZRGB> sor(true);
+
+                // Get the standard deviation threshold and number of neighbors from the config
                 fmin = config.getValue<float>("realsense.filter.sor.stddev");
                 int k = config.getValue<int>("realsense.filter.sor.k");
+
+                // Set the parameters for the SOR filter
                 sor.setInputCloud(cloud);
                 sor.setMeanK(k);  // Number of neighbors to use for mean distance estimation
                 sor.setStddevMulThresh(fmin);  // Standard deviation threshold for outlier detection
+                
+                // Apply the filter to the point cloud
                 sor.filter(*cloud);
+
+                // [DEBUG] Stop Timer for SOR filter
                 std::stringstream sor_message;
                 sor_message << "[" << degree << "]" << camera_names[serial_number] << " SOR Filter";
                 DebugUtils::stopTimer(sor_message.str());
             }
 
-            // If rs_voxel=1, apply Voxel Filter with rs_voxel_leafsize parameter
+            // Check if voxel grid filter is enabled
             if (config.getValue<bool>("realsense.filter.voxel.apply")) {
+                // [DEBUG] Start Timer for voxel grid filter
                 DebugUtils::startTimer();
+
+                // Create a VoxelGrid filter
                 pcl::VoxelGrid<pcl::PointXYZRGB> voxel_grid_filter;
+
+                // Get the leaf size from the config
                 fmin = config.getValue<float>("realsense.filter.voxel.leaf_size");
+
+                // Set the parameters for the voxel grid filter
                 voxel_grid_filter.setInputCloud(cloud);
                 voxel_grid_filter.setLeafSize(fmin, fmin, fmin); // Adjust the values as per your needs
+
+                // Apply the filter to the point cloud
                 voxel_grid_filter.filter(*cloud);
+
+                // [DEBUG] Stop Timer for voxel grid filter
                 std::stringstream voxel_message;
                 voxel_message << "[" << degree << "]" << camera_names[serial_number] << " Voxel Filter";
                 DebugUtils::stopTimer(voxel_message.str());
             }
         }
 
-        // Compute Normals
+        // Check if computing normals is enabled
         if (config.getValue<bool>("realsense.compute_normals")) {
-            // Create a NormalEstimation object
-            // pcl::NormalEstimation<pcl::PointXYZRGB, pcl::Normal> ne;
-            // ne.setInputCloud(cloud);
-            // Set the number of neighbors to be considered when estimating normals
-            // ne.setKSearch(4);
-            
+            // [DEBUG] Start Timer for normals computation
             DebugUtils::startTimer();
+
+            // Create a pcl::PointCloud<pcl::Normal> to hold the normals
             pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
             pcl::NormalEstimationOMP<pcl::PointXYZRGB, pcl::Normal> ne;
+
+            // Set the input cloud and parameters for normal estimation
             ne.setInputCloud(cloud);
+
+            // Set the number of threads for parallel processing
             ne.setNumberOfThreads(config.getValue<int>("realsense.normals_threads"));
             ne.setSearchMethod(pcl::search::KdTree<pcl::PointXYZRGB>::Ptr(new pcl::search::KdTree<pcl::PointXYZRGB>));
             ne.setKSearch(2);
             ne.setViewPoint(origin[0],origin[1],origin[2]);
-            // cout << "[" << camera_names[serial_number] << ":compN]";
+            
+            // Compute the normals
             ne.compute(*normals);
+
             // Concatenate the original point cloud and the computed normals
-            // cout << "[" << camera_names[serial_number] << ":catN]";
             pcl::concatenateFields(*cloud, *normals, *normal_cloud);
+            
+            // [DEBUG] Stop Timer for normals computation
             std::stringstream normals_message;
             normals_message << "[" << degree << "]" << camera_names[serial_number] << " Normals Computation";
             DebugUtils::stopTimer(normals_message.str());
@@ -450,41 +514,50 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
         out_file.str("");
         out_file << save_dir << "\\" << camera_names[serial_number] << "_"
             << std::setfill('0') << std::setw(3) << degree << "_cloud.ply";
-        // Save the point cloud to a PLY file
-        // Output 'rsx:S' indicates the pointcloud is now being saved.
-        // cout << "[" << camera_names[serial_number] << ":S]";
         std::cout.copyfmt(std::ios(nullptr));
+
+        // Set the locale to "C" to avoid issues with decimal point formatting
         std::locale::global(std::locale("C"));
+
+        // Check if normals are computed to save the appropriate point cloud
         if (!config.getValue<bool>("realsense.compute_normals")) {
+            // Save the point cloud without normals as binary PLY
             pcl::io::savePLYFile(out_file.str(), *cloud, true);
         } else {
+            // Save the point cloud with normals as binary PLY
             pcl::io::savePLYFile(out_file.str(), *normal_cloud, true);
         }
-        // pcl::io::savePLYFile(out_file.str(), *normal_cloud);
+
         cout << "[" << degree << "][" << camera_names[serial_number] << ":SAVED]\n";
     }
     
-    // SAVE COLOR IMAGE
+    // Check if collecting color images is enabled
     if (config.getValue<bool>("realsense.collect_color")) {
+        // Convert the color frame to OpenCV Mat
         cv::Mat color_mat(color.get_height(), color.get_width(), CV_8UC3, (void*)color.get_data(), cv::Mat::AUTO_STEP);
         cv::cvtColor(color_mat, color_mat, cv::COLOR_RGB2BGR);
 
-        // Generate image name and save depth_mat
+        // Generate image name
         out_file.str("");
         out_file << save_dir << "\\" << camera_names[serial_number] << "_"
             << std::setfill('0') << std::setw(3) << turntable_position << "_color.png";
+
+        // Save the color image
         cv::imwrite(out_file.str(), color_mat);
     }
 
-    // SAVE DEPTH IMAGE
+    // Check if collecting depth images is enabled
     if (config.getValue<bool>("realsense.collect_depth")) {
+        // Convert the depth frame to OpenCV Mat
         cv::Mat depth_mat(cv::Size(depth.get_width(), depth.get_height()), CV_16UC1, (void*)depth.get_data(), cv::Mat::AUTO_STEP);
         cv::normalize(depth_mat, depth_mat, 0, 255, cv::NORM_MINMAX, CV_8UC1);
         
-        // Generate image name and save depth_mat
+        // Generate image name
         out_file.str("");
         out_file << save_dir << "\\" << camera_names[serial_number] << "_"
             << std::setfill('0') << std::setw(3) << turntable_position << "_depth.png";
+        
+        // Save the depth image
         cv::imwrite(out_file.str(), depth_mat);
     }
 }

@@ -11,6 +11,7 @@
 #include "EDSDK.h"
 #include "EDSDKTypes.h"
 
+// Returns a tuple with the property name and description based on the property ID, Used for displaying property information when updating properties.
 std::tuple<std::string, std::string> getPropertyString(EdsPropertyID propertyID) {
 	switch (propertyID) {
 		case kEdsPropID_AEMode:
@@ -51,6 +52,7 @@ std::tuple<std::string, std::string> getPropertyString(EdsPropertyID propertyID)
 	}
 }
 
+// Function to get the property value from the camera and return it as a string.
 EdsError GetProperty(EdsCameraRef const& camera, EdsUInt64 const& bodyID, EdsPropertyID propertyID, std::map<EdsUInt32, const char*> iso_table, std::string& output){
 	EdsError	 err = EDS_ERR_OK;
 	EdsDataType	dataType = EdsDataType::kEdsDataType_Unknown;
@@ -104,11 +106,10 @@ EdsError GetProperty(EdsCameraRef const& camera, EdsUInt64 const& bodyID, EdsPro
 	return err;
 }
 
+// Function to get the property value from multiple cameras and return it as a vector of strings.
 EdsError GetProperty(std::vector<EdsCameraRef> const& cameraArray, std::vector<EdsUInt64> const& bodyID, EdsPropertyID propertyID, std::map<EdsUInt32, const char*> iso_table, std::vector<std::string>& output)
 {
 	EdsError	 err = EDS_ERR_OK;
-	EdsDataType	dataType = EdsDataType::kEdsDataType_Unknown;
-	EdsUInt32   dataSize = 0;
 	std::vector<std::string> output_arr;
 	
 	for (int i = 0; i < cameraArray.size(); i++) {
@@ -122,6 +123,7 @@ EdsError GetProperty(std::vector<EdsCameraRef> const& cameraArray, std::vector<E
 	return err;
 }
 
+// Function to get the property description and create a table with the possible values for the given property ID.
 EdsError GetPropertyDesc(EdsCameraRef const& camera, EdsUInt64 const& bodyID, EdsPropertyID propertyID, std::map<EdsUInt32, const char*> prop_table, std::map<EdsUInt32, const char*>& out_table)
 {
 	EdsError	 err = EDS_ERR_OK;
@@ -192,6 +194,7 @@ EdsError GetPropertyDesc(EdsCameraRef const& camera, EdsUInt64 const& bodyID, Ed
 	return err;
 }
 
+// Function to get the property description and create a table with the possible values for the given property ID from multiple cameras.
 EdsError GetPropertyDesc(std::vector<EdsCameraRef> const& cameraArray, std::vector<EdsUInt64> const& bodyID, EdsPropertyID propertyID, std::map<EdsUInt32, const char*> prop_table, std::map<EdsUInt32, const char*>& out_table)
 {
 	EdsError	 err = EDS_ERR_OK;
@@ -201,6 +204,7 @@ EdsError GetPropertyDesc(std::vector<EdsCameraRef> const& cameraArray, std::vect
 	return err;
 }
 
+// Function to set a property on a camera, given the camera reference, body ID, property ID, and data to set.
 EdsError SetProperty(EdsCameraRef const& camera, EdsUInt64 const& bodyID, EdsPropertyID propertyID, EdsInt32 data, std::map<EdsUInt32, const char*> prop_table) {
 	EdsError	 err = EDS_ERR_OK;
 	EdsDataType	dataType = EdsDataType::kEdsDataType_Unknown;
@@ -257,11 +261,11 @@ EdsError SetProperty(EdsCameraRef const& camera, EdsUInt64 const& bodyID, EdsPro
 	return err;
 }
 
+// Function to set a property on multiple cameras, given the camera references, body IDs, property ID, and data to set.
 EdsError SetProperty(std::vector<EdsCameraRef> const& cameraArray, std::vector<EdsUInt64> const& bodyID, EdsPropertyID propertyID, EdsInt32 data, std::map<EdsUInt32, const char*> prop_table)
 {
 	EdsError	 err = EDS_ERR_OK;
-	EdsDataType	dataType = EdsDataType::kEdsDataType_Unknown;
-	EdsUInt32   dataSize = 0;	// Set property
+
 	EdsPropertyDesc	 propertyDesc = { 0 };
 	int i;
 	for (i = 0; i < cameraArray.size(); i++) {
