@@ -94,23 +94,25 @@ void loadJsonConfig(std::string path) {
 	std::optional<bool> previous_DSLR;
 	std::optional<bool> previous_RS;
 
+	// Check if config is initialized
 	if (!config.emptyConfig()) {
+		// Get the previous values of DSLR and RealSense collection settings
 		previous_DSLR = config.getValue<bool>("dslr.collect_dslr");
 		previous_RS = config.getValue<bool>("realsense.collect_realsense");
 	}
-	
+
+	// Load the configuration from the specified path
 	config.loadConfig(path);
 
-	// Needs to reinitialize the CanonHandler and RealSenseHandler
-	std::cout << "Initialzing CanonHandler and RealSenseHandler" << std::endl;
-
+	// Check if the configuration has changed for DSLR
 	if (!previous_DSLR.has_value() || previous_DSLR != config.getValue<bool>("dslr.collect_dslr")) {
 		std::cout << "Initializing CanonHandler" << std::endl;
 		if (config.getValue<bool>("dslr.collect_dslr") && !canonhandle.isSDKLoaded) {
 			initializeCanon();
 		}
 	}
-
+	
+	// Check if the configuration has changed for RealSense
 	if (!previous_RS.has_value() || previous_RS != config.getValue<bool>("realsense.collect_realsense")) {
 		std::cout << "Initializing RealSenseHandler" << std::endl;
 		if (config.getValue<bool>("realsense.collect_realsense")) {
@@ -118,6 +120,7 @@ void loadJsonConfig(std::string path) {
 		}
 	}
 
+	// Set the object name from the configuration
 	std::string object_name = config.getValue<std::string>("object_name");
 	setObjectName(object_name);
 }
@@ -133,6 +136,7 @@ void saveCameraConfig(std::string path) {
 	ConfigHandler& config = ConfigHandler::getInstance();
 	nlohmann::json json_data;
 
+	// Get the model and focal length for each camera
 	for (auto& camera : canonhandle.cameraArray) {
 		std::string cam = camera_name[camera];
 		EdsDeviceInfo deviceInfo;
@@ -141,6 +145,7 @@ void saveCameraConfig(std::string path) {
 		json_data[cam]["Focal Length"] = config.getValue<std::string>("transform_generator.calibration_mode");
 	}
 
+	// Get the configuration properties for each camera
 	for (auto propertyID : propertyIDs) {
 		std::string name = std::get<0>(getPropertyString(std::get<0>(propertyID)));
 		std::map<EdsUInt32, const char*> out_table;
@@ -154,6 +159,7 @@ void saveCameraConfig(std::string path) {
 		}
 	}
 
+	// Save the file as a JSON file
 	std::string output_file = "/camera_config.json";
     std::ofstream file(path + output_file);
     if (file.is_open()) {
@@ -166,7 +172,7 @@ void saveCameraConfig(std::string path) {
 }
 
 void saveScanTime(std::chrono::milliseconds duration, std::string path) {
-	// Get the current time
+	// Get the given duration in minutes and seconds
 	std::string minutes = std::to_string(duration.count() / 60000);
 	std::string seconds = std::to_string((duration.count() % 60000) / 1000);
 
@@ -238,7 +244,10 @@ int create_folder(std::string path, bool quiet = false) {
 void create_obj_info_json(std::string path) {
 	std::string object_name = object_info["Object Name"];
 	std::cout << "Creating object info JSON file: " << object_name << std::endl;
+
+	// Check if the path exists
 	if (fs::exists(path)){
+		// Generate the command to execute scripts\create_object_info.py
 		std::stringstream command_stream;
 		command_stream 
 			<< "python3 " 
@@ -342,9 +351,9 @@ void scan(ThreadPool* pool = nullptr) {
 		canonhandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\DSLR";
 		create_folder(canonhandle.save_dir,true);
 		
+		// Take pictures with DSLR
 		cout << "Getting DSLR Data...\n";
 		canonhandle.turntable_position = degree_tracker;
-		
 		for (auto& camera : canonhandle.cameraArray) {
 			std::string cam_name = camera_name[camera];
 			EdsError err = EDS_ERR_OK;
@@ -386,14 +395,8 @@ void rotate_turntable(int degree_inc) {
 
 bool generateTransform(int degree_inc, int num_moves) {
 	ConfigHandler& config = ConfigHandler::getInstance();
-	// std::string degree_inc;
-	// std::regex number_only("^([0-9]+|r)$");
-	// validate_input("\n\nEnter Degree Interval (integer): ", degree_inc, number_only);
-	// std::string visualize;
-	// std::regex confirmation_only("^(y|n|r)$");
-	// validate_input("\n\nVisualize after finishing the transform? (y/n): ", visualize, confirmation_only);
 
-	// Generate transform
+	// Collect parameters from config
 	bool force = config.getValue<bool>("transform_generator.force");
 	bool visualize = config.getValue<bool>("transform_generator.visualize");
 	std::string calibration_dir = config.getValue<std::string>("transform_generator.calibration_dir_windows");
@@ -401,6 +404,7 @@ bool generateTransform(int degree_inc, int num_moves) {
 	std::string output_dir = config.getValue<std::string>("transform_generator.dir_windows");
 	std::string object_name = config.getValue<std::string>("object_name");
 
+	// Prepare command to execute scripts/transform_generator.py
 	int range = degree_inc * num_moves;
 	std::stringstream command_stream;
 	command_stream 
@@ -413,7 +417,7 @@ bool generateTransform(int degree_inc, int num_moves) {
 		<< "--calibration_dir " << calibration_dir << " "
 		<< "-p " << output_dir << " "
 		<< "--pose " << "pose-" << curr_pose;
-
+ 
 	if (visualize) {
 		command_stream << " -v";
 	}
@@ -437,11 +441,13 @@ bool customScan() {
 		std::cout << "Liveview is active, please stop it before scanning." << std::endl;
 		return false;
 	}
+	// Create the thread pool
 	int thread_num = config.getValue<int>("thread_num");
 	ThreadPool pool(thread_num);
 	int degree_inc;
 	int num_moves = 0;
 
+	// Ask for the user to input the degree increment and number of moves
 	cout << "Enter degrees per move: ";
 	std::cin >> degree_inc;
 	cout << "Enter number of moves: ";
@@ -452,9 +458,12 @@ bool customScan() {
 	auto start = std::chrono::high_resolution_clock::now();
 	for (int rots = 0; rots < num_moves; rots++)
 	{
+		// Scan all the cameras
 		scan(&pool);
+		// Rotate the turntable
 		rotate_turntable(degree_inc);
 		
+		// Update the degree tracker 
 		degree_tracker += degree_inc;
 		cout << "Image " << rots+1 << "/" << num_moves << " taken. " << endl;
 	}
@@ -493,12 +502,13 @@ bool customScan() {
 }
 
 bool fullScan() {
+	ConfigHandler& config = ConfigHandler::getInstance();
 	if (liveview_active){
 		std::cout << "Liveview is active, please stop it before scanning." << std::endl;
 		return false;
 	}
 
-	ConfigHandler& config = ConfigHandler::getInstance();
+	// Create thread pool
 	int thread_num = config.getValue<int>("thread_num");
 	ThreadPool pool(thread_num);
 
@@ -510,9 +520,12 @@ bool fullScan() {
 	auto start = std::chrono::high_resolution_clock::now();
 	for (int rots = 0; rots < num_moves; rots++)
 	{
+		// Scan all the cameras
 		scan(&pool);
+		// Rotate the turntable
 		rotate_turntable(degree_inc);
 		
+		// Update the degree tracker
 		degree_tracker += degree_inc;
 		cout << "Image " << rots+1 << "/" << num_moves << " taken. " << endl;
 	}
@@ -551,68 +564,28 @@ bool fullScan() {
 // TODO: Check Degree Tracker
 bool collectSampleData() {
 	ConfigHandler& config = ConfigHandler::getInstance();
+	if (liveview_active){
+		std::cout << "Liveview is active, please stop it before scanning." << std::endl;
+		return false;
+	}
+
+	// Create thread pool
 	int thread_num = config.getValue<int>("thread_num");
 	ThreadPool pool(thread_num);
+
+	// Scan all the cameras
 	scan(&pool);
 
 	return false;
 }
 
-// Depricated: No longer used
-bool calibrateCamera() {
-	// Get the image stream from the file
-	ConfigHandler& config = ConfigHandler::getInstance();
-	canonhandle.images_downloaded = 0;
-	std::string object_name = config.getValue<std::string>("object_name");
-	std::string output_dir = config.getValue<std::string>("output_dir");
-	scan_folder = output_dir + "/" + object_name;
-	canonhandle.save_dir = scan_folder + "\\calibration";
-
-	EdsError err;
-	cout << "Collecting DSLR images...\n";
-	canonhandle.turntable_position = degree_tracker;
-	err = TakePicture(canonhandle.cameraArray, camera_name);
-	// EdsGetEvent();
-	int c = 0;
-	int dslr_timeout = get_dslr_timeout();
-	while (canonhandle.images_downloaded < canonhandle.cameras_found && c < dslr_timeout) {
-		EdsGetEvent();
-		std::this_thread::sleep_for(50ms);
-		c++;
-	}
-	// Convert the image from the camera to an opencv2::Mat object
-	cv::Mat img1 = cv::imread(canonhandle.save_dir + "/cam1_000_img.jpg");
-	cv::Mat img2 = cv::imread(canonhandle.save_dir + "/cam2_000_img.jpg");
-	cv::Mat img3 = cv::imread(canonhandle.save_dir + "/cam3_000_img.jpg");
-	cv::Mat img4 = cv::imread(canonhandle.save_dir + "/cam4_000_img.jpg");
-	cv::Mat img5 = cv::imread(canonhandle.save_dir + "/cam5_000_img.jpg");
-
-	cv::Point2i center = cv::Point2i(img1.rows / 2, (img1.cols / 2) + 200); 
-	cv::Vec3b color1 = img1.at<cv::Vec3b>(center);
-	cv::Vec3b color2 = img2.at<cv::Vec3b>(center);
-	cv::Vec3b color3 = img3.at<cv::Vec3b>(center);
-	cv::Vec3b color4 = img4.at<cv::Vec3b>(center);
-	cv::Vec3b color5 = img5.at<cv::Vec3b>(center);
-
-	std::cout << "Color 1: B = " << (int)color1[0] << " G = " << (int)color1[1] << " R = " << (int)color1[2] << std::endl;
-	std::cout << "Color 2: B = " << (int)color2[0] << " G = " << (int)color2[1] << " R = " << (int)color2[2] << std::endl;
-	std::cout << "Color 3: B = " << (int)color3[0] << " G = " << (int)color3[1] << " R = " << (int)color3[2] << std::endl;
-	std::cout << "Color 4: B = " << (int)color4[0] << " G = " << (int)color4[1] << " R = " << (int)color4[2] << std::endl;
-	std::cout << "Color 5: B = " << (int)color5[0] << " G = " << (int)color5[1] << " R = " << (int)color5[2] << std::endl;
-
-	// Compare the image
-		//  - IF the color of the image it is within the margin of error
-			// Do nothing
-		//  - Otherwise
-			// Save the difference
-			// Change the configuration of one of the camera
-			// Repeat
-	return true;
-}
-
 void setObjectName(std::string object_name) {
 	ConfigHandler& config = ConfigHandler::getInstance();
+	
+	// Set the object name in the config 
 	config.setValue<std::string>("object_name", object_name);
+
+	// Get the scan folder path
 	std::string output_dir = config.getValue<std::string>("output_dir");
 	scan_folder = output_dir + "/" + object_name;
 
@@ -628,6 +601,7 @@ void setObjectName(std::string object_name) {
 	curr_pose = get_last_pose();
 	object_info["Pose"] = curr_pose;
 
+	// Update the save directories for RealSense and DSLR
 	rshandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\realsense";
 	create_folder(rshandle.save_dir,true);
 	canonhandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\DSLR";
@@ -636,30 +610,14 @@ void setObjectName(std::string object_name) {
 
 bool setObjectName() {
 	ConfigHandler& config = ConfigHandler::getInstance();
+	
+	// Prompt for object name 
 	std::string object_name_input;
 	cout << "\n\nEnter Object Name: ";
 	std::cin >> object_name_input;
-	
-	config.setValue<std::string>("object_name", object_name_input);
-	std::string output_dir = config.getValue<std::string>("output_dir");
-	scan_folder = output_dir + "/" + object_name_input;
 
-	// Create Main Folder
-	create_folder(scan_folder);
-
-	// Create object info.json (template)
-	create_obj_info_json(config.getValue<std::string>("output_dir"));
-	config.setValue<std::string>("object_name", object_name_input);
-	object_info["Object Name"] = object_name_input;
-
-	// Change pose
-	curr_pose = get_last_pose();
-	object_info["Pose"] = curr_pose;
-
-	rshandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\realsense";
-	create_folder(rshandle.save_dir,true);
-	canonhandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\DSLR";
-	create_folder(canonhandle.save_dir,true);
+	// Set the object name using the given input
+	setObjectName(object_name_input);
 
 	return false;
 }
@@ -695,12 +653,16 @@ void _getCurrCameraValue(const std::vector<std::string>& value_arr) {
 	table.add_row({"Current Value:"});
 	tabulate::Table cam_val_table;
 	tabulate::Table::Row_t values;
+
+	// Create a row for camera names
 	for (const auto& name: canonhandle.camera_names) {
 		values.push_back(name.first);
 	}
 	cam_val_table.add_row(values);
 	
 	values.clear();
+
+	// Create a row for camera values
 	for (const auto& value: value_arr) {
 		values.push_back(value);
 	}
@@ -711,39 +673,48 @@ void _getCurrCameraValue(const std::vector<std::string>& value_arr) {
 }
 
 bool setTV() {
+	// Check if the operation will be applied to all cameras
 	if (all_cameras) {
+		// Get accepted property values
 		std::map<EdsUInt32, const char*> out_table;
 		GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Tv, tv_table, out_table);
+		
+		// Get the actual camera value
 		std::vector<std::string> value_arr;
 		GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Tv, out_table, value_arr);
 		
+		// Display the current camera value
 		_getCurrCameraValue(value_arr);
 		
 		std::cout << "WARNING: The modification will be applied to all cameras" << std::endl;
 		cout << "input no. (ex. 54 = 1/250)" << endl;
 		cout << ">";
 		
+		// Get user input for the new value
 		canonhandle.data = getvalue();
-		if (canonhandle.data != -1)
-		{
+		if (canonhandle.data != -1) {	
+			// Set the new value for all cameras
 			SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Tv, canonhandle.data, out_table);
 		}
 	}
 	else {
+		// Get accepted property values
 		std::map<EdsUInt32, const char*> out_table;
 		GetPropertyDesc(activeCamera, canonhandle.bodyID[0], kEdsPropID_Tv, tv_table, out_table);
+		
+		// Get the actual camera value
 		std::string value;
 		GetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_Tv, out_table, value);
 		
-		// _getCurrCameraValue(value);
 		std::cout << "Modifing " << camera_name[activeCamera] << std::endl;
 		std::cout << "Current Value: " << value << std::endl;
 		cout << "input no. (ex. 54 = 1/250)" << endl;
 		cout << ">";
 		
+		// Get user input for the new value
 		canonhandle.data = getvalue();
-		if (canonhandle.data != -1)
-		{
+		if (canonhandle.data != -1) {
+			// Set the new value for the active camera
 			SetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_Tv, canonhandle.data, out_table);
 		}
 		
@@ -754,40 +725,49 @@ bool setTV() {
 
 bool setAV() {
 	if(all_cameras) {
+		// Get accepted property values
 		std::map<EdsUInt32, const char*> out_table;
 		GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Av, av_table, out_table);
+		
+		// Get the actual camera value
 		std::vector<std::string> value_arr;
 		GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Av, out_table, value_arr);
 		
+		// Display the current camera value
 		_getCurrCameraValue(value_arr);
 		
 		std::cout << "WARNING: The modification will be applied to all cameras" << std::endl;
 		cout << "input Av (ex. 21 = 5.6)" << endl;
 		cout << ">";
 		
+		// Get user input for the new value
 		canonhandle.data = getvalue();
-		if (canonhandle.data != -1)
-		{
+		if (canonhandle.data != -1) {
+			// Set the new value for all cameras
 			SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Av, canonhandle.data, out_table);
 		}
 	
 		return false;
 	}
 	else {
+		// Get accepted property values
 		std::map<EdsUInt32, const char*> out_table;
 		GetPropertyDesc(activeCamera, canonhandle.bodyID[0], kEdsPropID_Av, av_table, out_table);
+		
+		// Get the actual camera value
 		std::string value;
 		GetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_Av, out_table, value);
 		
-		// _getCurrCameraValue(value_arr);
+
 		std::cout << "Modifing " << camera_name[activeCamera] << std::endl;
 		std::cout << "Current Value: " << value << std::endl;
 		cout << "input Av (ex. 21 = 5.6)" << endl;
 		cout << ">";
-		
+
+		// Get user input for the new value
 		canonhandle.data = getvalue();
-		if (canonhandle.data != -1)
-		{
+		if (canonhandle.data != -1) {
+			// Set the new value for the active camera
 			SetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_Av, canonhandle.data, out_table);
 		}
 	
@@ -801,37 +781,44 @@ bool setISO() {
 		// Get accepted property values
 		std::map<EdsUInt32, const char*> out_table;
 		GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_ISOSpeed, iso_table, out_table);
+
 		// Get the actual camera value
 		std::vector<std::string> value_arr;
 		GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_ISOSpeed, out_table, value_arr);
 		
+		// Display the current camera value
 		_getCurrCameraValue(value_arr);
 
 		std::cout << "WARNING: The modification will be applied to all cameras" << std::endl;
 		cout << "input ISOSpeed > ";
+
+		// Get user input for the new value
 		canonhandle.data = getvalue();
-		if (canonhandle.data != -1)
-		{
+		if (canonhandle.data != -1) {
+			// Set the new value for all cameras
 			err = SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_ISOSpeed, canonhandle.data, out_table);
 		}
 		
 		return false;
 	}
 	else {
+		// Get accepted property values
 		std::map<EdsUInt32, const char*> out_table;
 		GetPropertyDesc(activeCamera, canonhandle.bodyID[0], kEdsPropID_ISOSpeed, iso_table, out_table);
 		
+		// Get the actual camera value
 		std::string value;
 		GetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_ISOSpeed, out_table, value);
 		
-		// _getCurrCameraValue(value);
 		std::cout << "Modifing " << camera_name[activeCamera] << std::endl;
 		std::cout << "Current Value: " << value << std::endl;
 		cout << "input ISOSpeed (ex. 8 = ISO 200)" << endl;
 		cout << ">";
+
+		// Get user input for the new value
 		canonhandle.data = getvalue();
-		if (canonhandle.data != -1)
-		{
+		if (canonhandle.data != -1) {
+			// Set the new value for the active camera
 			SetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_ISOSpeed, canonhandle.data, out_table);
 		}
 		
@@ -841,39 +828,48 @@ bool setISO() {
 
 bool setWhiteBalance() {
 	if (all_cameras) {
+		// Get accepted property values
 		std::map<EdsUInt32, const char*> out_table;
 		GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_WhiteBalance, whitebalance_table, out_table);
+
+		// Get the actual camera value
 		std::vector<std::string> value_arr;
 		GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_WhiteBalance, out_table, value_arr);
 		
+		// Display the current camera value
 		_getCurrCameraValue(value_arr);
+
 		std::cout << "WARNING: The modification will be applied to all cameras" << std::endl;
 		cout << "input WhiteBalance (ex. 0 = Auto)" << endl;
 		cout << ">";
 		
+		// Get user input for the new value
 		canonhandle.data = getvalue();
-		if (canonhandle.data != -1)
-		{
+		if (canonhandle.data != -1)	{
+			// Set the new value for all cameras
 			SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_WhiteBalance, canonhandle.data, out_table);
 		}
 		
 		return false;
 	}
 	else {
+		// Get accepted property values
 		std::map<EdsUInt32, const char*> out_table;
 		GetPropertyDesc(activeCamera, canonhandle.bodyID[0], kEdsPropID_WhiteBalance, whitebalance_table, out_table);
+
+		// Get the actual camera value
 		std::string value;
 		GetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_WhiteBalance, out_table, value);
 		
-		// _getCurrCameraValue(value);
 		std::cout << "Modifing " << camera_name[activeCamera] << std::endl;
 		std::cout << "Current Value: " << value << std::endl;
 		cout << "input WhiteBalance (ex. 0 = Auto)" << endl;
 		cout << ">";
 		
+		// Get user input for the new value
 		canonhandle.data = getvalue();
-		if (canonhandle.data != -1)
-		{
+		if (canonhandle.data != -1)	{
+			// Set the new value for the active camera
 			SetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_WhiteBalance, canonhandle.data, out_table);
 		}
 		
@@ -883,39 +879,47 @@ bool setWhiteBalance() {
 
 bool setDriveMode() {
 	if (all_cameras) {
+		// Get accepted property values
 		std::map<EdsUInt32, const char*> out_table;
 		GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_DriveMode, drivemode_table, out_table);
+		
+		// Get the actual camera value
 		std::vector<std::string> value_arr;
 		GetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_DriveMode, out_table, value_arr);
 		
+		// Display the current camera value
 		_getCurrCameraValue(value_arr);
 		std::cout << "WARNING: The modification will be applied to all cameras" << std::endl;
 		cout << "input Drive Mode (ex. 0 = Single shooting)" << endl;
 		cout << ">";
 		
+		// Get user input for the new value
 		canonhandle.data = getvalue();
-		if (canonhandle.data != -1)
-		{
+		if (canonhandle.data != -1)	{
+			// Set the new value for all cameras
 			SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_DriveMode, canonhandle.data, out_table);
 		}
 		
 		return false;
 	}
 	else {
+		// Get accepted property values
 		std::map<EdsUInt32, const char*> out_table;
 		GetPropertyDesc(activeCamera, canonhandle.bodyID[0], kEdsPropID_DriveMode, drivemode_table, out_table);
+
+		// Get the actual camera value
 		std::string value;
 		GetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_DriveMode, out_table, value);
 		
-		// _getCurrCameraValue(value);
 		std::cout << "Modifing " << camera_name[activeCamera] << std::endl;
 		std::cout << "Current Value: " << value << std::endl;
 		cout << "input Drive Mode (ex. 0 = Single shooting)" << endl;
 		cout << ">";
 		
+		// Get user input for the new value
 		canonhandle.data = getvalue();
-		if (canonhandle.data != -1)
-		{
+		if (canonhandle.data != -1)	{
+			// Set the new value for the active camera
 			SetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_DriveMode, canonhandle.data, out_table);
 		}
 		
@@ -923,6 +927,7 @@ bool setDriveMode() {
 	}
 }
 
+// DEPRICATED: This function does not do anything at the moment 
 bool setAEMode() {
 	// That does nothing at the moment
 	std::map<EdsUInt32, const char*> out_table;
@@ -939,6 +944,8 @@ bool changeCamera() {
 	int option = -1;
 	std::cout << "Change Camera. Select which camera to use (0 = all camera):" << std::endl;
 	int i = 1;
+	
+	// Display all available cameras 
 	std::cout << "0. All cameras" << std::endl;
 	for (const auto& camera : canonhandle.cameraArray) {
 		std::cout << i << ". " << camera_name[camera] << std::endl;
@@ -946,6 +953,7 @@ bool changeCamera() {
 	}
 	option = getvalue();
 
+	// Switch to the selected camera
 	all_cameras = false;
 	switch (option){
 		case 0:
@@ -973,40 +981,13 @@ bool changeCamera() {
 	return false;
 }
 
-void _liveView(int retry = 0) {
-	// Start Live View configuration
-	// Download and display Image from camera
-	if (retry >= 3) {
-		std::cout << "Maximum tries reached!" << std::endl;
-		return;
-	}
-
-	try {
-		std::cout << "Starting Liveview: Try #" << retry + 1 << std::endl;
-		StartEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
-		std::this_thread::sleep_for(.5s);
-		for (auto& camera : canonhandle.cameraArray) {
-			// Download the image from the camera
-			// liveview_th =
-			DownloadEvfCommand(camera, camera_name[camera], liveview_thread_id);
-		}
-		DownloadEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
-		EndEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
-		std::cout << "Liveview sucessfully closed" << std::endl;
-	}
-	catch (const CameraObjectNotReadyException& err) {
-		std::cout << "Error trying to open liveview: \n" << err.what() << std::endl;
-		_liveView(++retry);
-	}
-	catch (const CameraException& err) {
-		// curr_menu->addMessage("Cannot open the liveview");
-		std::cout << "Error trying to open liveview: \n" << err.what() << std::endl;
-	}
-	// End Live View Configuration
-	liveview_active = false;
-}
-
 bool getLiveView() {
+	ConfigHandler& config = ConfigHandler::getInstance();
+	if (!config.getValue<bool>("dslr.collect_dslr")){
+		std::cout << "DSLR option is set to false, Liveview unavaliable" << std::endl;
+		return false;
+	}
+
 	if (!liveview_active) {
 		// Start Live View configuration
 		liveview_active = true;
@@ -1035,14 +1016,23 @@ bool getLiveView() {
 }
 
 bool endLiveView() {
+	ConfigHandler& config = ConfigHandler::getInstance();
+	// Check if the DSLR option is enabled
+	if (!config.getValue<bool>("dslr.collect_dslr")) {
+		std::cout << "DSLR option is set to false, Liveview unavaliable" << std::endl;
+		return false;
+	}
+
 	std::cout << "Ending Liveview..." << std::endl;
+	// Join all liveview threads
 	liveview_active = false;
 	for (auto& th : liveview_th) {
 		if (th.joinable()) {
-			std::cout << "Joining thread..." << std::endl;
 			th.join();
 		}
 	}
+
+	// Revert camera configuration to normal mode
 	EndEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
 	std::cout << "Liveview sucessfully closed" << std::endl;
 	return false;
@@ -1065,38 +1055,49 @@ bool turntableControl() {
 	cout << "\n\n\nTURNTABLE CONTROL\n\n";
 	std::string degree_inc;
 	while(degree_inc != "r"){
+		// Prompt for degrees to move
 		cout << "Enter degrees to move (r = Return): ";
 		std::cin >> degree_inc;
+
+		// Check if the input is "r" to return
 		if (degree_inc == "r")
 			break;
-		else {
-			char *send = &degree_inc[0];
-			bool is_sent = Serial->WriteSerialPort(send);
-			// TODO: Calculate wait time based on degrees entered and motor speed ||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
-			if (is_sent) {
-				int wait_time = std::ceil(((abs(stoi(degree_inc))*200)+500)/1000)+5;
-				cout << "Message sent, waiting up to " << wait_time << " seconds.\n";
-				std::string incoming = Serial->ReadSerialPort(wait_time, "json");
-				cout << "Incoming: " << incoming;// << endl;
-				//Sleep(4000);
-			} 
-		}
+		
+		// Send the degree increment to the turntable
+		char *send = &degree_inc[0];
+		bool is_sent = Serial->WriteSerialPort(send);
+		
+		// TODO: Calculate wait time based on degrees entered and motor speed 
+		if (is_sent) {
+			// Calculate wait time based on the degree increment
+			int wait_time = std::ceil(((abs(stoi(degree_inc))*200)+500)/1000)+5;
+			cout << "Message sent, waiting up to " << wait_time << " seconds.\n";
+			
+			// Check if the message matched the expected format
+			std::string incoming = Serial->ReadSerialPort(wait_time, "json");
+			cout << "Incoming: " << incoming;
+		} 
+
 		// Update degree tracker
 		degree_tracker += std::stoi(degree_inc);
 		degree_tracker = degree_tracker % 360;
 	}
 
+	// Update the object info with the new turntable position
 	object_info["Turntable Pos"] = std::to_string(degree_tracker);
 
 	return false;
 }
 
 bool turntablePosition() {
+	// Prompt for the turntable position
 	cout << "\n\nEnter Turntable Position: ";
 	std::cin >> degree_tracker;
 
+	// Update the turntable position
 	object_info["Turntable Pos"] = std::to_string(degree_tracker);
 
+	// Add a success message to the current menu
 	curr_menu->addMessage(MenuMessageStatus::SUCCESS, "Turntable Position updated sucessfully");
 	
 	return false;
@@ -1106,13 +1107,11 @@ bool CalibrationSubMenu(){
 	MenuHandler calibration_menu_handler({
 		{"1", "Press Halfway"},
 		{"2", "Press Completely"},
-		{"3", "Press Off"},
-		{"4", "Calibrate Camera"},
+		{"3", "Press Off"}
 	},{
 		{"1", pressHalfway},
 		{"2", pressCompletely},
-		{"3", pressOff},
-		{"4", calibrateCamera},
+		{"3", pressOff}
 	}, object_info);
 	calibration_menu_handler.setTitle("Calibration Menu");
 	calibration_menu_handler.initialize(curr_menu);
@@ -1154,14 +1153,12 @@ bool TurntableSubMenu(){
 	return true;
 }
 
-bool downloadImages(){
-	DownloadImageAll(canonhandle.cameraArray, canonhandle.bodyID);
-	MenuHandler::WaitUntilKeypress();
-
-	return false;
-}
-
 bool reloadConfig() {
+	if (liveview_active) {
+		std::cout << "Liveview is active, please stop it before reloading the config." << std::endl;
+		return false;
+	}
+
 	loadJsonConfig(json_path);
 	return false;
 }
@@ -1261,9 +1258,6 @@ int main(int argc, char* argv[])
 
 	// Create object info template
 	create_obj_info_json(config.getValue<std::string>("output_dir"));
-	
-	// Set initial Object name
-	int turntable_delay_ms = config.getValue<int>("turntable_delay_ms");
 
 	// Get last pose
 	std::cout << "Checking Last Pose..." << std::endl;
@@ -1289,7 +1283,8 @@ int main(int argc, char* argv[])
 	object_info["Object Name"] = config.getValue<std::string>("object_name");
 	object_info["Turntable Pos"] = std::to_string(degree_tracker);
 	object_info["Pose"] = curr_pose;
-	// RUNNING MENU LOOP -----------------------------------------------------------------------------
+	
+	// Main Menu initialization
 	MenuHandler menu_handler({
 		{"1", "Full Scan"},
 		{"2", "Custom Scan"},
