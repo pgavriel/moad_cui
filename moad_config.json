@@ -1,7 +1,7 @@
 {
     "debug": false,
     "output_dir": "G:/MOAD_V2",
-    "object_name": "test1",
+    "object_name": "test2",
     "thread_num": 5,
     "degree_inc": 5,
     "num_moves": 72,
