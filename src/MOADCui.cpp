@@ -287,18 +287,26 @@ char get_last_pose() {
 	std::string output_dir = config.getValue<std::string>("output_dir");
 	std::string path = output_dir + "/" + object_name;
 	char last_pose = 'a'; // First Pose
+	
 	// Check if the directory exists
+	// NOTE: possibly fails on this if statement -GS 7/3
 	if (!fs::exists(path) || !fs::is_directory(path) || fs::is_empty(path)) {
 		return 'a';
 	}
 	
 	// Check for files that start with 'pose-'
 	for (const auto& entry : fs::directory_iterator(path)) {
+		// first check if directory exists
 		if (fs::is_directory(entry)) {
+
+			// setup entry as string filepath so we can run find() with "pose-"
 			std::string name = entry.path().filename().string();
 			if (name.find("pose-") != std::string::npos) {
+
+				// get the current letter by checking the last character of the entry filepath with pose-
 				int length = name.length();
 				char letter = name[length - 1];
+
 				// Check if the folder is empty
 				if (fs::is_empty(path + "/pose-" + letter + "/")) {
 					return letter; // Current pose
@@ -593,9 +601,9 @@ void setObjectName(std::string object_name) {
 	create_folder(scan_folder);
 
 	// Create object info.json (template)
-	create_obj_info_json(config.getValue<std::string>("output_dir"));
 	config.setValue<std::string>("object_name", object_name);
 	object_info["Object Name"] = object_name;
+	create_obj_info_json(config.getValue<std::string>("output_dir"));
 
 	// Change pose
 	curr_pose = get_last_pose();
