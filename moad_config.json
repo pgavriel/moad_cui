@@ -1,7 +1,7 @@
 {
-    "debug": true,
-    "output_dir": "G:/",
-    "object_name": "testing_speed_3",
+    "debug": false,
+    "output_dir": "G:/MOAD_V2",
+    "object_name": "test1",
     "thread_num": 5,
     "degree_inc": 5,
     "num_moves": 72,
@@ -12,7 +12,7 @@
         "dslr_timeout_sec": 5
     },
     "realsense": {
-        "collect_realsense": true,
+        "collect_realsense": true, 
         "realsense_timeout_sec": 9, 
         "transform_path": "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/calibration/realsense/",
         "transform_file": "transform.json",
@@ -51,7 +51,7 @@
     },
     "transform_generator": {
         "dir_linux": "home/csrobot/ns-data",
-        "dir_windows": "G:/",
+        "dir_windows": "G:/MOAD_V2",
         "calibration_dir_linux": "home/csrobot/moad_cui/calibration",
         "calibration_dir_windows": "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/calibration",
         "calibration_mode": "55mm",
