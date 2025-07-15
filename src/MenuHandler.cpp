@@ -7,6 +7,23 @@
 
 using namespace std::chrono_literals;
 
+/*
+Comments via Graham Stelzer 7/3/2025
+
+Regarding this class:
+
+    - initialize instance with json arrays into maps:
+        format: 
+            menu_list: {<string> option, <string> name} ... ex: "1", "Full Scan"
+            menu_action: {<string> option, <function pointer> action} ... ex: "1", fullScan
+            info_list: {<string> key, <string> value} ... (object_info)
+
+    - menu runs in do-while loop until 'r' is pressed    
+    - execution occurs in SelectMenu function via "bool is_submenu = menu_action[item]();"
+*/
+
+
+
 MenuHandler::MenuHandler(
     std::map<std::string, std::string> menu,
     std::map<std::string, bool (*)()> actions,
