@@ -75,7 +75,7 @@ def print_array(array, name=None):
     for row in array:
         print(row)
 
-def get_zrot_matrix(degrees):
+def get_zrot_matrix(degrees, verbose=False):
     # Convert the angle to radians
     angle_radians = np.radians(degrees)
 
@@ -84,8 +84,8 @@ def get_zrot_matrix(degrees):
     rotation_matrix = transforms3d.axangles.axangle2mat((0, 0, 1), -angle_radians)
     transform_matrix = np.eye(4)
     transform_matrix[:3, :3] = rotation_matrix
-    print(f"Rotation Matrix for {degrees} degrees:")
-    print(transform_matrix)
+    if verbose: print(f"Rotation Matrix for {degrees} degrees:")
+    if verbose: print(transform_matrix)
     return transform_matrix
 
 def check_os():
