@@ -76,6 +76,7 @@ std::string json_path;
 void setObjectName(std::string object_name);
 void initializeCanon();
 void initializeRealsense();
+void run_filecount_check();
 
 int get_rs_timeout() {
 	ConfigHandler& config = ConfigHandler::getInstance();
@@ -290,8 +291,18 @@ char get_last_pose() {
 	
 	// Check if the directory exists
 	// NOTE: possibly fails on this if statement -GS 7/3
+
+	// if the filepath of the new object does NOT exist OR if NOT a directory OR if path is empty: return a (early exit)
 	if (!fs::exists(path) || !fs::is_directory(path) || fs::is_empty(path)) {
 		return 'a';
+	}
+
+	
+
+	// print out path and contents of path
+	std::cout << "printing contents of directory " << path << std::endl;
+	for (const auto & entry : fs::directory_iterator(path)) {
+		std::cout << entry.path() << std:: endl;
 	}
 	
 	// Check for files that start with 'pose-'
@@ -561,8 +572,11 @@ bool fullScan() {
 	object_info["Turntable Pos"] = std::to_string(degree_tracker);
 
 	// Change Pose
-	curr_pose++;
+	curr_pose++; // TODO: last pose QoL bug, this line potentially not needed?
 	object_info["Pose"] = curr_pose;
+
+	run_filecount_check();
+
 
 	MenuHandler::WaitUntilKeypress();
 
@@ -583,6 +597,8 @@ bool collectSampleData() {
 
 	// Scan all the cameras
 	scan(&pool);
+
+	run_filecount_check();
 
 	return false;
 }
@@ -1245,6 +1261,40 @@ void initializeCanon() {
 	}
 }
 
+
+
+/*
+	Runs /scripts/filecount_test.py via CLI args with preset args
+	Note: args available are --count, --create, --prog-delay, --delay=<seconds> (see comments in filecount_test.py)
+	TODO: add function parameters that setup CLI args the script is called with (personally i dont see an immediate need for this)
+	- GS 7/15
+*/
+void run_filecount_check() {
+
+	Sleep(200);
+
+	std::cout << "Running file count checking script: " << std::endl;
+
+	// Prepare command to execute scripts/filecount_test.py
+	std::stringstream command_stream;
+	command_stream 
+		<< "python " 
+		<< "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/scripts/filecount_test.py "
+		<< "--count "
+		<< "--prog-delay "
+		<< "--delay=0.4 ";
+
+	// Execute command
+	// convert to string for output debug message
+	std::string command = command_stream.str(); 
+	std::cout << "\nExecuting Command: " << command; 
+	
+	// system requires c string
+	const char* c_command = command.c_str();
+	system(c_command);
+}
+
+
 int main(int argc, char* argv[])
 {	
 	// SETUP ----------------------------------------------------------------------------------------------
@@ -1286,6 +1336,7 @@ int main(int argc, char* argv[])
 	}
 
 	// Change pose
+	// NOTE: get_last_pose() called twice? (2nd instance, 1st on line 1280 or so) - GS 7/8
 	curr_pose = get_last_pose();
 	
 	object_info["Object Name"] = config.getValue<std::string>("object_name");
