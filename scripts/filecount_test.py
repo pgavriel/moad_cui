@@ -19,6 +19,8 @@ OTHER THINGS:
         - will only count images in the DSLR folder and images subfolders
     - "--prog_delay"
         - will introduce a delay between processing each object folder for better progress monitoring
+    - "--delay=<seconds>"
+        - sets the delay time in seconds (default is 0.0, no delay)
 
 TODO:
 - only show error messages for incomplete folders?
