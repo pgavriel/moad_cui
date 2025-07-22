@@ -106,8 +106,9 @@ def check_and_create_images_subfolders(object_folder, object_path, pose_folder, 
     else:
         print(f"Some images subfolders for {object_folder} - {pose_folder} were incomplete. Processing images...")
         # process images in the DSLR folder
-        print("temp skipping image processing for now...")
-        # process_images(object_folder, object_path, pose_folder, dslr_folder)
+        # NOTE: print("temp skipping image processing for now...")
+        # TODO: add run_once option to skip processing after the first pose folder
+        process_images(object_folder, object_path, pose_folder, dslr_folder)
         return
 
 
@@ -174,7 +175,12 @@ def process_images(object_folder, object_path, pose_folder, dslr_folder):
         cv2.imwrite(new_image_path_8, downscaled_image_8)
         # print(f"Saved downscaled image as {new_name} in {fourth_images_subfolder}")
 
-        print(f"Successfully processed image {new_name} to images, images_2, images_4, and images_8 subfolders.")
+        # Print a simple loading bar
+        bar_length = 40
+        progress = (index + 1) / len(os.listdir(dslr_folder))
+        block = int(bar_length * progress)
+        bar = "█" * block + "-" * (bar_length - block)
+        print(f"\rProcessing images: {bar} {index + 1}/{len(os.listdir(dslr_folder))}", end="", flush=True)
 
     print(f"Processed all images in {dslr_folder} for {object_folder} - {pose_folder}.")
 
@@ -184,10 +190,17 @@ def process_images(object_folder, object_path, pose_folder, dslr_folder):
 
 
 
-def main(count_images=False, create_folders=False, prog_delay=False, delay=0.0):
+def main(count_images=False, create_folders=False, prog_delay=False, delay=0.0, run_once=True, manual_check=False):
     # all_objects = []
     # loop over all folders (aka all objects that have been scanned)
     for object_folder in sorted(os.listdir(root_dir)):
+
+        # Prompt user to continue to next object
+        if manual_check and object_folder != sorted(os.listdir(root_dir))[-1]:
+            user_input = input("Press Enter to continue to the next object, or type 'q' to quit: ")
+            if user_input.strip().lower() == 'q':
+                print("Exiting as requested by user.")
+                sys.exit(0)
 
         if count_images:
             # slow down to show progress
@@ -228,8 +241,10 @@ def main(count_images=False, create_folders=False, prog_delay=False, delay=0.0):
             if create_folders:
                 check_and_create_images_subfolders(object_folder, object_path, pose_folder, dslr_folder, NUM_IMAGES, prog_delay, delay)
 
-            # exit after processing the first pose folder   
-            # exit(1)          
+            # NOTE: exit after processing the first pose folder
+            if run_once:
+                print("Exiting after processing the first pose folder.")
+                sys.exit(1)
 
     # print(f"Found {len(all_objects)} objects with DSLR images:")
     # for obj, count in all_objects:
@@ -244,12 +259,15 @@ if __name__ == "__main__":
     parser.add_argument("--create", action="store_true", help="Create folders")
     parser.add_argument("--prog-delay", action="store_true", help="Enable progress delay")
     parser.add_argument("--delay", type=float, default=0.0, help="Delay between processing images (in seconds, used if --prog-delay is set)")
+    parser.add_argument("--run_once", action="store_true", help="Run only once and exit after processing the first pose folder")
+    parser.add_argument("--manual_check", action="store_true", help="Enable manual check for each object folder")
     args = parser.parse_args()
 
     if not args.count and not args.create:
-        print("Please specify --count or --create and optionally --prog-delay with a delay value.")
+        print("Please specify --count or --create and optionally: ")
+        print("--prog-delay with --delay=<seconds> and/or --run_once and/or --manual_check")
         sys.exit(1)
 
-    print(f"Running with count={args.count}, create={args.create}, prog_delay={args.prog_delay}, delay={args.delay}")
+    print(f"Running with count={args.count}, create={args.create}, prog_delay={args.prog_delay}, delay={args.delay}, run_once={args.run_once}, manual_check={args.manual_check}")
 
-    main(args.count, args.create, args.prog_delay, args.delay)
+    main(args.count, args.create, args.prog_delay, args.delay, args.run_once, args.manual_check)
