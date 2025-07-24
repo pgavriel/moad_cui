@@ -4,7 +4,7 @@ functions to:
 - count images in ANY folder (via path args) and compare to expected 360 (for full degree rotation)
 - create subfolders for images, images_2, images_4, images_8
     - NOTE: renames/saves/downscales each image from DSLR to these subfolders
-- optionally add progress delay
+- optionally add progress delay, single run, and manual checks
 
 OTHER THINGS:
 - during counting, the CLI will print different colors based on the results:
@@ -21,10 +21,16 @@ OTHER THINGS:
         - will introduce a delay between processing each object folder for better progress monitoring
     - "--delay=<seconds>"
         - sets the delay time in seconds (default is 0.0, no delay)
+    - "--run_once"
+        - will exit after processing the first pose folder
+    - "--manual_check"
+        - will prompt the user to continue to the next object folder or quit  
 
 TODO:
 - only show error messages for incomplete folders?
 - definitely possibility for more modular code
+- CLI colored outputs meant for certain sized terminals, looks weird on smaller terminals and coloring
+    gets added to the new line
 """
 
 
