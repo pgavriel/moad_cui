@@ -78,6 +78,46 @@ void initializeCanon();
 void initializeRealsense();
 void run_filecount_check();
 
+void write_to_moadfig(int degree, int current_move); // template this later for int item
+
+void write_to_moadfig(int degree, int current_move) {
+	
+	// just write input info back to config
+	
+	// this will be first used to save state of camera/turntable
+	//		so hardcoding for now:
+	
+	std::cout << "writing rotation to moad config" << std::endl;
+
+	// loc should be "turntable_pos" FOR NOW, will try new locs later
+	std::ifstream config_file(json_path);
+	nlohmann::json config_json;
+	if (config_file.is_open()) {
+		config_file >> config_json;
+		config_file.close();
+	} else {
+		std::cerr << "Failed to open config file: " << json_path << std::endl;
+		return;
+	}
+
+	// Set prev_state.turntable_pos to 999
+	config_json["prev_state"]["turntable_pos"] = degree;
+
+	// Set prev_state.current_move to current_move
+	config_json["prev_state"]["current_move"] = current_move;
+
+	// Write back to file
+	std::ofstream out_file(json_path);
+	if (out_file.is_open()) {
+		out_file << config_json.dump(4);
+		out_file.close();
+		std::cout << "Updated prev_state.turntable_pos in moad_config.json" << std::endl;
+	} else {
+		std::cerr << "Failed to write to config file: " << json_path << std::endl;
+	}
+
+}
+
 int get_rs_timeout() {
 	ConfigHandler& config = ConfigHandler::getInstance();
 	int rs_timeout = config.getValue<int>("realsense.realsense_timeout_sec") * 1000;
@@ -297,8 +337,6 @@ char get_last_pose() {
 		return 'a';
 	}
 
-	
-
 	// print out path and contents of path
 	std::cout << "printing contents of directory " << path << std::endl;
 	for (const auto & entry : fs::directory_iterator(path)) {
@@ -341,7 +379,7 @@ char get_last_pose() {
 	return last_pose + 1; 
 }
 
-void scan(ThreadPool* pool = nullptr) {
+bool scan(ThreadPool* pool = nullptr) {
 	ConfigHandler& config = ConfigHandler::getInstance();
 	std::string object_name = config.getValue<std::string>("object_name");
 	std::string output_dir = config.getValue<std::string>("output_dir");
@@ -359,6 +397,7 @@ void scan(ThreadPool* pool = nullptr) {
 		rshandle.get_current_frame(degree_tracker, rs_timeout, pool);
 		if (rshandle.fail_count > 0) {
 			cout << "RS Failure - " << rshandle.fail_count << endl;
+			return false; // Return false if RealSense failed to get frames
 		}
 	}
 
@@ -379,22 +418,51 @@ void scan(ThreadPool* pool = nullptr) {
 			err = TakePicture(camera, cam_name);
 		}
 
+
 		// Collecting images from DSLR
 		int c = 0;
 		int dslr_timeout = get_dslr_timeout();
+		// possible error with this while loop, images downloaded and cameras found is always equal?
+		//		must double check the boolean condition - GS 7/24
 		while (canonhandle.images_downloaded < canonhandle.cameras_found && c < dslr_timeout) {
+
+			// debug comments delete these:
+			// std::cout << "\nimages_downloaded: " << canonhandle.images_downloaded << std::endl;
+			// std::cout << "cameras_found: " << canonhandle.images_downloaded << std::endl << std::endl;
+
 			EdsGetEvent();
-			std::this_thread::sleep_for(50ms);
+			std::this_thread::sleep_for(50ms); // !!! THIS MIGHT CAUSE CAMERAS TO TRY 2 THINGS AT ONCE AND BREAK (TODO)
 			c++;
 		}
 		cout << "DSLR Timeout Count: " << c << "/" << dslr_timeout << endl;
+
+
+		// check if 5 images were downloaded
+		if (canonhandle.images_downloaded != 5) {
+			std::cerr << "ERROR: Expected 5 images to be downloaded, but got " 
+				<< canonhandle.images_downloaded << "." << std::endl;
+
+			// return to the main menu
+			// note we have to stop all threads and return to the main menu
+			std::cout << "Returning to main menu..." << std::endl;
+			return false;
+		}
+
 	}
+
+	return true;
 }
 
 void rotate_turntable(int degree_inc) {
 	// Issue command to move turntable.
 	ConfigHandler& config = ConfigHandler::getInstance();
 	std::string degree_inc_str = std::to_string(degree_inc);
+	// I think the SerialPort things are used for the rotation/image namings?
+	// cli looks like:
+	// 		Renamed cam1 -> cam1
+	// 		Saving: \cam1_020_img.jpg
+	// so current images to take are based on degree_inc which gets sent to renaming?
+	// double check this - GS 7/24
 	char *send = &degree_inc_str[0];
 	bool is_sent = Serial->WriteSerialPort(send);
 
@@ -454,6 +522,130 @@ bool generateTransform(int degree_inc, int num_moves) {
 	return false;
 }
 
+
+
+/*
+	COMMENTS FOR fullScan(), customScan(), and scanFromSaveState()
+		args: none
+		returns: previously void as of 7/24/2025, now bool (UPDATE THIS COMMENT LATER ONCE APPROPRIATE PARTIES NOTIFIED)
+
+		or rather, three functions that run scan() and rotate_turntable()
+
+	added interrupt for if NOT 5 images were downloaded
+	this checks off of "canonhandle.images_downloaded" INSIDE scan(...) which i dont quite know where canonhandle 
+		comes from… possibly a global variable somewhere? i looked for it for several seconds but couldnt find it
+
+	considering the threading part, any attempt to exit or return in the scan() function itself didnt stop the 
+		overall process, so this required me to change the scan() function to bool and just run the check in the loop 
+		that calls the scan method
+
+	this means that each time scan() is called, it will check if the return is false and break from the loop
+
+	notably, due to placement of the check:
+		- degree_tracker does not increment
+		- turntable does not rotate
+		- moad config file is not updated
+		- images ARE saved
+		- realsense data IS saved
+		- transforms ARE generated
+		- file count check IS run
+	which is desired functionality (i think) since the scanFromSaveState function will pickup scanning and saving
+		from the last successful state
+
+	bugs:
+		- degree tracker calculation outside of for loop?
+		- possible index out of range error occurs at the end BUT as of 7/25 when i wrote this one of the cameras
+			does not work so i havent managed to hit the end of the image collection
+
+	- GS 7/25/2025
+
+*/
+
+bool fullScan() {
+	ConfigHandler& config = ConfigHandler::getInstance();
+	if (liveview_active){
+		std::cout << "Liveview is active, please stop it before scanning." << std::endl;
+		return false;
+	}
+
+	// Create thread pool
+	int thread_num = config.getValue<int>("thread_num");
+	ThreadPool pool(thread_num);
+
+	int degree_inc = config.getValue<int>("degree_inc");
+	int num_moves = config.getValue<int>("num_moves");
+	
+	Sleep(200);
+	// Start the loop timer
+	auto start = std::chrono::high_resolution_clock::now();
+	for (int rots = 0; rots < num_moves; rots++)
+	{
+
+		if(scan(&pool) == false) {
+			std::cerr << "\n============================================================" << std::endl;
+			std::cerr << "!!! ERROR: scan() failed at move " << rots + 1 << "/" << num_moves << ". Aborting scan. !!!" << std::endl;
+			std::cerr << "============================================================\n" << std::endl;
+			// add delay
+			std::this_thread::sleep_for(3000ms);
+			break;
+		}
+
+		// Rotate the turntable
+		rotate_turntable(degree_inc);
+		
+		// Update the degree tracker
+		degree_tracker += degree_inc;
+
+		std::cout << "\n==========write to moadfig here===========" << std::endl; // debug msgs delete these
+		write_to_moadfig(degree_tracker, rots + 1); // NOTE: double check 0 indexing for this +1
+		std::cout << "==========write to moadfig here===========\n" << std::endl;
+		
+		cout << "Image " << rots+1 << "/" << num_moves << " taken. " << endl;
+	}
+	// Stop the loop timer
+	auto end = std::chrono::high_resolution_clock::now();
+	// Calculate the elapsed time
+	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+	// Convert the duration to minutes, seconds, and milliseconds
+	int minutes = duration.count() / 60000;
+	int seconds = (duration.count() % 60000) / 1000;
+	cout << "Scan Time: " << std::setfill('0') << std::setw(2) << minutes << ":" 
+	<< std::setfill('0') << std::setw(2) << seconds << endl;
+	cout << "RS Fail Count: " << rshandle.fail_count << endl;
+	std::this_thread::sleep_for(3000ms);
+	
+	// Save camera configurations in a json file
+	// NOTE: this occurs at the END of the full rotation. this might cause saving bugs - GS 7/24
+	saveCameraConfig(scan_folder + "\\pose-" + curr_pose);
+	std::cout << "================\nsaved to" << scan_folder + "\\pose-" + curr_pose << "\n================\n";
+	saveScanTime(duration, scan_folder + "\\pose-" + curr_pose);
+
+	// Generate transform
+	generateTransform(degree_inc, num_moves);
+
+	// Recalculate angle
+	degree_tracker = degree_tracker % 360; // why is this needed? - GS 7/24
+	std::cout << "Recalculated degree_tracker: " << degree_tracker << std::endl;
+
+	object_info["Turntable Pos"] = std::to_string(degree_tracker);
+
+	// Change Pose
+	curr_pose++; // TODO: last pose QoL bug, this line potentially not needed?
+	object_info["Pose"] = curr_pose;
+
+	run_filecount_check();
+
+
+	MenuHandler::WaitUntilKeypress();
+
+	return true;
+}
+
+
+
+
+
+
 bool customScan() {
 	ConfigHandler& config = ConfigHandler::getInstance();
 	if (liveview_active){
@@ -477,8 +669,16 @@ bool customScan() {
 	auto start = std::chrono::high_resolution_clock::now();
 	for (int rots = 0; rots < num_moves; rots++)
 	{
-		// Scan all the cameras
-		scan(&pool);
+
+		if(scan(&pool) == false) {
+			std::cerr << "\n============================================================" << std::endl;
+			std::cerr << "!!! ERROR: scan() failed at move " << rots + 1 << "/" << num_moves << ". Aborting scan. !!!" << std::endl;
+			std::cerr << "============================================================\n" << std::endl;
+			// add delay
+			std::this_thread::sleep_for(3000ms);
+			break;
+		}
+
 		// Rotate the turntable
 		rotate_turntable(degree_inc);
 		
@@ -520,34 +720,136 @@ bool customScan() {
 	return true;
 }
 
-bool fullScan() {
+
+
+
+/*
+	COMMENTS FOR scanFromSaveState():
+		args: none
+		returns: bool (as per other scan functions)
+
+	Runs a scan based on previous state recorded in moad_config.json
+	This should only be run if a camera fails like err 30 (see devlog)
+
+	- the turntable should have stopped turning after camera fail and the rotational
+			position saved in config
+	- apparently degree_tracker is a global variable but for this function
+			we will use the recorded item in config
+	- we will also set the degree_tracker to the current position and ideally
+			this will rename the images correctly and start creating them from
+			the current rotation
+
+	OR TODO IMPORTANT:
+	- change away from global variable to use the config and only reset for fullscan or custom
+			which should always start at 0
+	
+	NOTE: we cannot really account for the situation where:
+	1. camera fails and then
+	2. turntable moves OR object moves
+
+	since the rotation is based off each previous movement
+
+	bugs:
+	- possible index our of range error occurs at the end BUT as of 7/24 when i wrote this one of the cameras
+			does not work so i havent managed to hit the end of the image collection (same possible bug AS fullScan() 
+			and customScan())
+
+	- GS 7/25/2025
+*/
+
+bool scanFromSaveState() {
 	ConfigHandler& config = ConfigHandler::getInstance();
 	if (liveview_active){
 		std::cout << "Liveview is active, please stop it before scanning." << std::endl;
 		return false;
 	}
-
-	// Create thread pool
+	// Create the thread pool
 	int thread_num = config.getValue<int>("thread_num");
 	ThreadPool pool(thread_num);
 
-	int degree_inc = config.getValue<int>("degree_inc");
+	// get previous state STRAIGHT FROM THE CONFIG FILE (instead of global variable stuff)
+	int prev_inc = 0;
+	// Read previous turntable position from config
+	std::ifstream config_file(json_path);
+	nlohmann::json config_json;
+	if (config_file.is_open()) {
+		config_file >> config_json;
+		config_file.close();
+		if (config_json.contains("prev_state") && config_json["prev_state"].contains("turntable_pos")) {
+			prev_inc = config_json["prev_state"]["turntable_pos"].get<int>();
+			degree_tracker = prev_inc;
+			std::cout << "Loaded previous turntable position: " << prev_inc << std::endl;
+		} else {
+			std::cout << "No previous turntable position found in config." << std::endl;
+		}
+	} else {
+		std::cerr << "Failed to open config file: " << json_path << std::endl;
+	}
+
+	// get the previous number of moves from config
+	int num_moves_left = 0;
+	if (config_json.contains("prev_state") && config_json["prev_state"].contains("current_move")) {
+		num_moves_left = config_json["prev_state"]["current_move"].get<int>();
+		std::cout << "Loaded previous number of moves: " << num_moves_left << std::endl;
+	} else {
+		std::cout << "No previous number of moves found in config." << std::endl;
+	}
+
+	// get total number of moves from config
 	int num_moves = config.getValue<int>("num_moves");
-	
+	// get the degree increment and number of moves from config
+	int degree_inc = config.getValue<int>("degree_inc");
+
+	// validity checks
+	if (degree_inc <= 0) {
+		std::cerr << "Invalid degree increment: " << degree_inc << ". It must be greater than 0." << std::endl;
+		return false;
+	}
+	if (num_moves_left > num_moves) {	
+		std::cout << "WARNING: Previous number of moves exceeds total number of moves. Resetting to 0." << std::endl;
+		num_moves_left = 0; // Reset to 0 if it exceeds total moves
+	}
+	if (num_moves <= 0) {
+		std::cerr << "Invalid number of moves: " << num_moves << ". It must be greater than 0." << std::endl;
+		return false;
+	}
+
+
+	// debug messages
+	std::cout << "Starting scan from saved state..." << std::endl;
+	std::cout << "Previous Turntable Position: " << prev_inc << std::endl;
+	std::cout << "Current Degree Tracker: " << degree_tracker << std::endl;
+	std::cout << "Number of Moves Left: " << num_moves_left << std::endl;
+	std::cout << "Total Number of Moves: " << num_moves << std::endl;
+
+
 	Sleep(200);
 	// Start the loop timer
 	auto start = std::chrono::high_resolution_clock::now();
-	for (int rots = 0; rots < num_moves; rots++)
+	for (int rots = num_moves_left; rots < num_moves; rots++)
 	{
-		// Scan all the cameras
-		scan(&pool);
+		if(scan(&pool) == false) {
+			std::cerr << "\n============================================================" << std::endl;
+			std::cerr << "!!! ERROR: scan() failed at move " << rots + 1 << "/" << num_moves << ". Aborting scan. !!!" << std::endl;
+			std::cerr << "============================================================\n" << std::endl;
+			// add delay
+			std::this_thread::sleep_for(3000ms);
+			break;
+		}
+
 		// Rotate the turntable
 		rotate_turntable(degree_inc);
-		
+
 		// Update the degree tracker
 		degree_tracker += degree_inc;
-		cout << "Image " << rots+1 << "/" << num_moves << " taken. " << endl;
+		std::cout << "\n==========write to moadfig here===========" << std::endl; // debug msgs delete these
+		write_to_moadfig(degree_tracker, rots + 1); // NOTE: double check 0 indexing for this +1
+		std::cout << "==========write to moadfig here===========\n" << std::endl;
+		
+		std::cout << "Image " << rots+1 << "/" << num_moves << " taken. " << std::endl;
 	}
+
+
 	// Stop the loop timer
 	auto end = std::chrono::high_resolution_clock::now();
 	// Calculate the elapsed time
@@ -556,13 +858,15 @@ bool fullScan() {
 	int minutes = duration.count() / 60000;
 	int seconds = (duration.count() % 60000) / 1000;
 	cout << "Scan Time: " << std::setfill('0') << std::setw(2) << minutes << ":" 
-	<< std::setfill('0') << std::setw(2) << seconds << endl;
+		<< std::setfill('0') << std::setw(2) << seconds << endl;
 	cout << "RS Fail Count: " << rshandle.fail_count << endl;
 	std::this_thread::sleep_for(3000ms);
-	
+
 	// Save camera configurations in a json file
-	saveCameraConfig(scan_folder + "\\pose-" + curr_pose);
-	saveScanTime(duration, scan_folder + "\\pose-" + curr_pose);
+	if (config.getValue<bool>("dslr.collect_dslr")) {
+		saveCameraConfig(scan_folder + "\\pose-" + curr_pose);
+		saveScanTime(duration, scan_folder + "\\pose-" + curr_pose);
+	}
 
 	// Generate transform
 	generateTransform(degree_inc, num_moves);
@@ -572,18 +876,17 @@ bool fullScan() {
 	object_info["Turntable Pos"] = std::to_string(degree_tracker);
 
 	// Change Pose
-	curr_pose++; // TODO: last pose QoL bug, this line potentially not needed?
+	curr_pose++;
 	object_info["Pose"] = curr_pose;
-
-	run_filecount_check();
-
 
 	MenuHandler::WaitUntilKeypress();
 
 	return true;
 }
 
-// TODO: Check Degree Tracker
+
+
+
 bool collectSampleData() {
 	ConfigHandler& config = ConfigHandler::getInstance();
 	if (liveview_active){
@@ -1264,6 +1567,11 @@ void initializeCanon() {
 
 
 /*
+	COMMENTS for run_filecount_check():
+		args: none
+		returns: void
+	(For now no parameters used, hardcoded args for a python script)
+
 	Runs /scripts/filecount_test.py via CLI args with preset args
 	Note: args available are --count, --create, --prog-delay, --delay=<seconds> (see comments in filecount_test.py)
 	TODO: add function parameters that setup CLI args the script is called with (personally i dont see an immediate need for this)
@@ -1282,7 +1590,7 @@ void run_filecount_check() {
 		<< "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/scripts/filecount_test.py "
 		<< "--count "
 		<< "--prog-delay "
-		<< "--delay=0.4 ";
+		<< "--delay=0.3 ";
 
 	// Execute command
 	// convert to string for output debug message
@@ -1298,6 +1606,10 @@ void run_filecount_check() {
 int main(int argc, char* argv[])
 {	
 	// SETUP ----------------------------------------------------------------------------------------------
+	
+	// NOTE: degree_tracker is a global variable so that every function can use it
+	//		initially it is set to 0, but in order to save state for potential cam
+	//		interrupts, it needs to be loaded from config
 	degree_tracker = 0;
     std::shared_ptr<std::thread> th = std::shared_ptr<std::thread>();
 
@@ -1318,6 +1630,9 @@ int main(int argc, char* argv[])
 	create_obj_info_json(config.getValue<std::string>("output_dir"));
 
 	// Get last pose
+	// NOTE: something about the last pose doesnt work, I think it's that the previous pose never gets saved
+	//		*IN THE JSON FILE* so the last pose is whatever it says in the json file NOT what the program ran
+	//		last time - GS 7/24
 	std::cout << "Checking Last Pose..." << std::endl;
 	curr_pose = get_last_pose();
 	std::cout << "Last Pose Checked." << std::endl;
@@ -1336,7 +1651,7 @@ int main(int argc, char* argv[])
 	}
 
 	// Change pose
-	// NOTE: get_last_pose() called twice? (2nd instance, 1st on line 1280 or so) - GS 7/8
+	// NOTE: get_last_pose() called twice? (2nd instance, 1st on a couple lines up or so) - GS 7/8
 	curr_pose = get_last_pose();
 	
 	object_info["Object Name"] = config.getValue<std::string>("object_name");
@@ -1354,6 +1669,7 @@ int main(int argc, char* argv[])
 		{"7", "Camera Options..."},
 		{"8", "Turntable Options..."},
 		{"9", "Live View..."},
+		{"p", "Scan from saved state"},
 		{"0", "Reload Config"}
 	},
 	{
@@ -1366,6 +1682,7 @@ int main(int argc, char* argv[])
 		{"7", CameraSubmenu},
 		{"8", TurntableSubMenu},
 		{"9", liveViewMenu},
+		{"p", scanFromSaveState}, // TODO: "10" seemed to not work??
 		{"0", reloadConfig},
 	}, object_info);
 	menu_handler.setTitle("MOAD - CLI Menu");
