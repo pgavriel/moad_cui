@@ -1,43 +1,24 @@
 {
     "debug": false,
-    "output_dir": "G:/MOAD_V2",
-    "object_name": "test1",
-    "thread_num": 5,
     "degree_inc": 5,
-    "num_moves": 72,
-    "serial_com_port": "5",
-    "turntable_delay_ms": 1000,
     "dslr": {
         "collect_dslr": true,
         "dslr_timeout_sec": 5
     },
+    "num_moves": 72,
+    "object_name": "zoomed_out",
+    "output_dir": "G:/MOAD_V2",
+    "prev_state": {
+        "current_move": 5,
+        "turntable_pos": 25
+    },
     "realsense": {
-        "collect_realsense": true, 
-        "realsense_timeout_sec": 9, 
-        "transform_path": "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/calibration/realsense/",
-        "transform_file": "transform.json",
         "collect_color": false,
         "collect_depth": false,
         "collect_pointcloud": true,
-        "raw_pointcloud": false,
+        "collect_realsense": true,
         "compute_normals": true,
-        "normals_threads": 1,
         "filter": {
-            "xpass": {
-                "apply": true,
-                "min": -0.3,
-                "max": 0.3
-            },
-            "ypass": {
-                "apply": true,
-                "min": -0.3,
-                "max": 0.3
-            },
-            "zpass": {
-                "apply": true,
-                "min": 0,
-                "max": 0.5
-            },
             "sor": {
                 "apply": true,
                 "k": 6,
@@ -46,18 +27,41 @@
             "voxel": {
                 "apply": false,
                 "leaf_size": 0.01
+            },
+            "xpass": {
+                "apply": true,
+                "max": 0.3,
+                "min": -0.3
+            },
+            "ypass": {
+                "apply": true,
+                "max": 0.3,
+                "min": -0.3
+            },
+            "zpass": {
+                "apply": true,
+                "max": 0.5,
+                "min": 0
             }
-        }
+        },
+        "normals_threads": 1,
+        "raw_pointcloud": false,
+        "realsense_timeout_sec": 9,
+        "transform_file": "transform.json",
+        "transform_path": "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/calibration/realsense/"
     },
+    "serial_com_port": "5",
+    "thread_num": 5,
     "transform_generator": {
-        "dir_linux": "home/csrobot/ns-data",
-        "dir_windows": "G:/MOAD_V2",
         "calibration_dir_linux": "home/csrobot/moad_cui/calibration",
         "calibration_dir_windows": "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/calibration",
         "calibration_mode": "55mm",
         "degree_angle": 5,
+        "dir_linux": "home/csrobot/ns-data",
+        "dir_windows": "G:/MOAD_V2",
+        "force": true,
         "scan_range": 360,
-        "visualize": false,
-        "force": true
-    }
+        "visualize": false
+    },
+    "turntable_delay_ms": 1000
 }
