@@ -437,15 +437,21 @@ bool scan(ThreadPool* pool = nullptr) {
 		cout << "DSLR Timeout Count: " << c << "/" << dslr_timeout << endl;
 
 
-		// check if 5 images were downloaded
-		if (canonhandle.images_downloaded != 5) {
-			std::cerr << "ERROR: Expected 5 images to be downloaded, but got " 
+		std::cout << "\nimages_downloaded: " << canonhandle.images_downloaded << std::endl;
+		std::cout << "cameras_found: " << canonhandle.cameras_found << std::endl << std::endl;
+
+
+		// check if same number of images were downloaded as their are cameras
+		if (canonhandle.images_downloaded != canonhandle.cameras_found) {
+
+
+			std::cerr << "ERROR: Expected " << canonhandle.cameras_found << " images to be downloaded, but got " 
 				<< canonhandle.images_downloaded << "." << std::endl;
 
 			// return to the main menu
 			// note we have to stop all threads and return to the main menu
 			std::cout << "Returning to main menu..." << std::endl;
-			return false;
+			return false; // NOTE: COMMENT THIS TO IGNORE INTERRUPT // TODO: MAKE TOGGLEABLE
 		}
 
 	}
