@@ -37,7 +37,7 @@
 #define CAMERA_1 "352074022019"
 #define CAMERA_2 "352074022024"
 #define CAMERA_3 "352074022025"
-#define CAMERA_4 "352074022005"
+#define CAMERA_4 "602075011474" // "352074022005" // old cam (shutter broke)
 #define CAMERA_5 "352074022021"
 
 using namespace std::chrono_literals;
@@ -87,7 +87,7 @@ void write_to_moadfig(int degree, int current_move) {
 	// this will be first used to save state of camera/turntable
 	//		so hardcoding for now:
 	
-	std::cout << "writing rotation to moad config" << std::endl;
+	// std::cout << "writing rotation to moad config" << std::endl;
 
 	// loc should be "turntable_pos" FOR NOW, will try new locs later
 	std::ifstream config_file(json_path);
@@ -602,9 +602,9 @@ bool fullScan() {
 		// Update the degree tracker
 		degree_tracker += degree_inc;
 
-		std::cout << "\n==========write to moadfig here===========" << std::endl; // debug msgs delete these
+		// std::cout << "\n==========write to moadfig here===========" << std::endl; // debug msgs delete these
 		write_to_moadfig(degree_tracker, rots + 1); // NOTE: double check 0 indexing for this +1
-		std::cout << "==========write to moadfig here===========\n" << std::endl;
+		// std::cout << "==========write to moadfig here===========\n" << std::endl;
 		
 		cout << "Image " << rots+1 << "/" << num_moves << " taken. " << endl;
 	}
@@ -622,12 +622,20 @@ bool fullScan() {
 	
 	// Save camera configurations in a json file
 	// NOTE: this occurs at the END of the full rotation. this might cause saving bugs - GS 7/24
-	saveCameraConfig(scan_folder + "\\pose-" + curr_pose);
-	std::cout << "================\nsaved to" << scan_folder + "\\pose-" + curr_pose << "\n================\n";
-	saveScanTime(duration, scan_folder + "\\pose-" + curr_pose);
+	// saveCameraConfig(scan_folder + "\\pose-" + curr_pose);
+	// std::cout << "================\nsaved to" << scan_folder + "\\pose-" + curr_pose << "\n================\n";
+	// saveScanTime(duration, scan_folder + "\\pose-" + curr_pose);
+
+		// Save camera configurations in a json file
+	if (config.getValue<bool>("dslr.collect_dslr")) {
+		saveCameraConfig(scan_folder + "\\pose-" + curr_pose);
+		saveScanTime(duration, scan_folder + "\\pose-" + curr_pose);
+		generateTransform(degree_inc, num_moves);
+	}
+
 
 	// Generate transform
-	generateTransform(degree_inc, num_moves);
+	// generateTransform(degree_inc, num_moves);
 
 	// Recalculate angle
 	degree_tracker = degree_tracker % 360; // why is this needed? - GS 7/24
@@ -639,7 +647,7 @@ bool fullScan() {
 	curr_pose++; // TODO: last pose QoL bug, this line potentially not needed?
 	object_info["Pose"] = curr_pose;
 
-	run_filecount_check();
+	// run_filecount_check();
 
 
 	MenuHandler::WaitUntilKeypress();
@@ -708,10 +716,11 @@ bool customScan() {
 	if (config.getValue<bool>("dslr.collect_dslr")) {
 		saveCameraConfig(scan_folder + "\\pose-" + curr_pose);
 		saveScanTime(duration, scan_folder + "\\pose-" + curr_pose);
+		generateTransform(degree_inc, num_moves);
 	}
 
 	// Generate transform
-	generateTransform(degree_inc, num_moves);
+	// generateTransform(degree_inc, num_moves);
 
 	// Recalculate angle
 	degree_tracker = degree_tracker % 360;
@@ -848,9 +857,9 @@ bool scanFromSaveState() {
 
 		// Update the degree tracker
 		degree_tracker += degree_inc;
-		std::cout << "\n==========write to moadfig here===========" << std::endl; // debug msgs delete these
+		// std::cout << "\n==========write to moadfig here===========" << std::endl; // debug msgs delete these
 		write_to_moadfig(degree_tracker, rots + 1); // NOTE: double check 0 indexing for this +1
-		std::cout << "==========write to moadfig here===========\n" << std::endl;
+		// std::cout << "==========write to moadfig here===========\n" << std::endl;
 		
 		std::cout << "Image " << rots+1 << "/" << num_moves << " taken. " << std::endl;
 	}
@@ -872,10 +881,11 @@ bool scanFromSaveState() {
 	if (config.getValue<bool>("dslr.collect_dslr")) {
 		saveCameraConfig(scan_folder + "\\pose-" + curr_pose);
 		saveScanTime(duration, scan_folder + "\\pose-" + curr_pose);
+		generateTransform(degree_inc, num_moves);
 	}
 
 	// Generate transform
-	generateTransform(degree_inc, num_moves);
+	// generateTransform(degree_inc, num_moves);
 
 	// Recalculate angle
 	degree_tracker = degree_tracker % 360;
@@ -892,7 +902,7 @@ bool scanFromSaveState() {
 
 
 
-
+// single scan
 bool collectSampleData() {
 	ConfigHandler& config = ConfigHandler::getInstance();
 	if (liveview_active){
@@ -907,7 +917,7 @@ bool collectSampleData() {
 	// Scan all the cameras
 	scan(&pool);
 
-	run_filecount_check();
+	// run_filecount_check();
 
 	return false;
 }
