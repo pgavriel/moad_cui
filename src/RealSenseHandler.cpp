@@ -137,13 +137,25 @@ void RealSenseHandler::start_device(std::string serial_number) {
     rs2::config cfg;
     cfg.enable_device(serial_number);
     cfg.disable_all_streams();
-    // cfg.enable_stream(RS2_STREAM_COLOR,640,360,RS2_FORMAT_RGB8,5); 
-    // cfg.enable_stream(RS2_STREAM_DEPTH,640,360,RS2_FORMAT_Z16,5);  
-    cfg.enable_stream(RS2_STREAM_COLOR,1280,720,RS2_FORMAT_RGB8,5);
-    cfg.enable_stream(RS2_STREAM_DEPTH,1280,720,RS2_FORMAT_Z16,5); 	
+
+
+
+    
+    if (ConfigHandler::getInstance().getValue<bool>("realsense.high_res")) {
+        cfg.enable_stream(RS2_STREAM_COLOR,1280,720,RS2_FORMAT_RGB8,5);
+        cfg.enable_stream(RS2_STREAM_DEPTH,1280,720,RS2_FORMAT_Z16,5);
+        std::cout << "High resolution mode enabled for " << camera_names[serial_number] << std::endl;
+    } else {
+        cfg.enable_stream(RS2_STREAM_COLOR,640,480,RS2_FORMAT_RGB8,5);
+        cfg.enable_stream(RS2_STREAM_DEPTH,640,480,RS2_FORMAT_Z16,5);
+        std::cout << "Low resolution mode enabled for " << camera_names[serial_number] << std::endl;
+
+    }
 
     // Start the stream
-    pipe.start(cfg);
+    auto r = pipe.start(cfg);
+    auto intr = r.get_stream(RS2_STREAM_DEPTH).as<rs2::video_stream_profile>().get_intrinsics();
+    cout << "Depth Intrinsics: [" << intr.fx << ", " << intr.fy << ", " << intr.ppx << ", " << intr.ppy << ", " << intr.model << "]" << endl;
     cout << "[" << camera_names[serial_number] << "][DEVICE STARTED]\n" << endl;
     
     // Add the pipeline to the vector
@@ -285,28 +297,91 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
         cout << "WARNING: " << camera_names[serial_number] << " did not get frames.\n";
         return;
     }
+    
 
-    rs2::align align_to_depth(RS2_STREAM_DEPTH);
-    try {
-        fs = align_to_depth.process(fs);
-    } catch (const std::exception& ex) {
-        std::cerr << camera_names[serial_number] << ": Error aligning frameset: " << ex.what() << std::endl;
-        fs = pipe.wait_for_frames(timeout_ms);
-        cout << camera_names[serial_number] << ": got another frameset\n";
-        fs = align_to_depth.process(fs);
-        cout << camera_names[serial_number] << ": may have recovered.\n";
-    }
+    // function to swap between data collection strategies (color/depth)
+
+     if (config.getValue<bool>("realsense.align_to_color")) {
+        // Align frames to color if enabled
+        rs2::align align(RS2_STREAM_COLOR);
+        try {
+            fs = align.process(fs);
+        } catch (const std::exception& ex) {
+            std::cerr << camera_names[serial_number] << ": Error aligning frameset: " << ex.what() << std::endl;
+            fs = pipe.wait_for_frames(timeout_ms);
+            cout << camera_names[serial_number] << ": got another frameset\n";
+            fs = align.process(fs);
+            cout << camera_names[serial_number] << ": may have recovered.\n";
+        }
+     } else {
+        // Align frames to depth
+        rs2::align align(RS2_STREAM_DEPTH);
+        try {
+            fs = align.process(fs);
+        } catch (const std::exception& ex) {
+            std::cerr << camera_names[serial_number] << ": Error aligning frameset: " << ex.what() << std::endl;
+            fs = pipe.wait_for_frames(timeout_ms);
+            cout << camera_names[serial_number] << ": got another frameset\n";
+            fs = align.process(fs);
+            cout << camera_names[serial_number] << ": may have recovered.\n";
+        }
+     }
+
+    
 
     // Get color and depth frames from the frameset
     rs2::video_frame color = fs.get_color_frame();
     rs2::depth_frame depth = fs.get_depth_frame();
-    
-    // At this point, we should throw the rest of the process in a thread pool 
 
-    // Apply filters to depth frame
+    //Apply threshold filter to depth frame
     depth = threshold_filter.process(depth);
     depth = spatial_filter.process(depth);
     depth = temporal_filter.process(depth);
+
+    // //Testing: Create the color/depth images before processing/filtering
+    // Check if collecting color images is enabled
+    // Convert the color frame to OpenCV Mat
+
+    if (config.getValue<bool>("realsense.collect_color")) {
+        cv::Mat color_mat(color.get_height(), color.get_width(), CV_8UC3, (void*)color.get_data(), cv::Mat::AUTO_STEP);
+        cv::cvtColor(color_mat, color_mat, cv::COLOR_RGB2BGR);
+        // Generate image name
+        out_file.str("");
+        out_file << save_dir << "\\" << camera_names[serial_number] << "_"
+            << std::setfill('0') << std::setw(3) << turntable_position << "_color.png";
+
+        // Save the color image
+        cv::imwrite(out_file.str(), color_mat);
+    }
+
+    // Check if collecting depth images is enabled
+    if (config.getValue<bool>("realsense.collect_depth")) {
+        // Convert the depth frame to OpenCV Mat
+        cv::Mat depth_mat(cv::Size(depth.get_width(), depth.get_height()), CV_16UC1, (void*)depth.get_data(), cv::Mat::AUTO_STEP);
+        if (config.getValue<bool>("realsense.normalize_depth_image")) {
+            cv::normalize(depth_mat, depth_mat, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+        }
+
+        // Generate image name
+        out_file.str("");
+        out_file << save_dir << "\\" << camera_names[serial_number] << "_"
+            << std::setfill('0') << std::setw(3) << turntable_position << "_depth.png";
+        
+        // Save the depth image
+        cv::imwrite(out_file.str(), depth_mat);
+    }
+
+    // At this point, we should throw the rest of the process in a thread pool 
+
+    // Apply filters to depth frame
+    // depth = threshold_filter.process(depth);
+    // depth = spatial_filter.process(depth);
+    // depth = temporal_filter.process(depth);
+
+
+    // this check must be outside of the below if statements and for loop!! - GS 8/22
+    BOOL COLOR_ORDER_BGR = config.getValue<bool>("realsense.collect_color");
+
 
     // Check if collecting pointclouds is enabled
     if (config.getValue<bool>("realsense.collect_pointcloud")) {
@@ -333,12 +408,22 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
             point.y = vertices[i].y;
             point.z = vertices[i].z;
 
+
             // Get color from the corresponding pixel in the color frame
+            // this ensures right color mapping otherwise they turn out with the wreong colors
             const uint8_t* color_data = reinterpret_cast<const uint8_t*>(color.get_data());
-            point.r = color_data[3 * i];
-            point.g = color_data[3 * i + 1];
-            point.b = color_data[3 * i + 2];
-            
+            if (COLOR_ORDER_BGR) {
+                // BGR format
+                point.b = color_data[3 * i];
+                point.g = color_data[3 * i + 1];
+                point.r = color_data[3 * i + 2];
+            } else {
+                // RGB format
+                point.r = color_data[3 * i];
+                point.g = color_data[3 * i + 1];
+                point.b = color_data[3 * i + 2];
+            }
+
             // Add the point to the point cloud
             cloud->push_back(point);
         }
@@ -527,39 +612,39 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
             // Save the point cloud with normals as binary PLY
             pcl::io::savePLYFile(out_file.str(), *normal_cloud, true);
         }
-
-        cout << "[" << degree << "][" << camera_names[serial_number] << ":SAVED]\n";
     }
+    cout << "[" << degree << "][" << camera_names[serial_number] << ":SAVED]\n";
+    // }
     
-    // Check if collecting color images is enabled
-    if (config.getValue<bool>("realsense.collect_color")) {
-        // Convert the color frame to OpenCV Mat
-        cv::Mat color_mat(color.get_height(), color.get_width(), CV_8UC3, (void*)color.get_data(), cv::Mat::AUTO_STEP);
-        cv::cvtColor(color_mat, color_mat, cv::COLOR_RGB2BGR);
+    // // Check if collecting color images is enabled
+    // if (config.getValue<bool>("realsense.collect_color")) {
+    //     // Convert the color frame to OpenCV Mat
+    //     cv::Mat color_mat(color.get_height(), color.get_width(), CV_8UC3, (void*)color.get_data(), cv::Mat::AUTO_STEP);
+    //     cv::cvtColor(color_mat, color_mat, cv::COLOR_RGB2BGR);
 
-        // Generate image name
-        out_file.str("");
-        out_file << save_dir << "\\" << camera_names[serial_number] << "_"
-            << std::setfill('0') << std::setw(3) << turntable_position << "_color.png";
+    //     // Generate image name
+    //     out_file.str("");
+    //     out_file << save_dir << "\\" << camera_names[serial_number] << "_"
+    //         << std::setfill('0') << std::setw(3) << turntable_position << "_color.png";
 
-        // Save the color image
-        cv::imwrite(out_file.str(), color_mat);
-    }
+    //     // Save the color image
+    //     cv::imwrite(out_file.str(), color_mat);
+    // }
 
-    // Check if collecting depth images is enabled
-    if (config.getValue<bool>("realsense.collect_depth")) {
-        // Convert the depth frame to OpenCV Mat
-        cv::Mat depth_mat(cv::Size(depth.get_width(), depth.get_height()), CV_16UC1, (void*)depth.get_data(), cv::Mat::AUTO_STEP);
-        cv::normalize(depth_mat, depth_mat, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+    // // Check if collecting depth images is enabled
+    // if (config.getValue<bool>("realsense.collect_depth")) {
+    //     // Convert the depth frame to OpenCV Mat
+    //     cv::Mat depth_mat(cv::Size(depth.get_width(), depth.get_height()), CV_16UC1, (void*)depth.get_data(), cv::Mat::AUTO_STEP);
+    //     cv::normalize(depth_mat, depth_mat, 0, 255, cv::NORM_MINMAX, CV_8UC1);
         
-        // Generate image name
-        out_file.str("");
-        out_file << save_dir << "\\" << camera_names[serial_number] << "_"
-            << std::setfill('0') << std::setw(3) << turntable_position << "_depth.png";
+    //     // Generate image name
+    //     out_file.str("");
+    //     out_file << save_dir << "\\" << camera_names[serial_number] << "_"
+    //         << std::setfill('0') << std::setw(3) << turntable_position << "_depth.png";
         
-        // Save the depth image
-        cv::imwrite(out_file.str(), depth_mat);
-    }
+    //     // Save the depth image
+    //     cv::imwrite(out_file.str(), depth_mat);
+    // }
 }
 
 /* Prints out RealSense device information, if print_streams is true, 
