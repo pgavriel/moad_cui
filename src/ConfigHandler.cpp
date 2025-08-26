@@ -2,6 +2,7 @@
 #include <fstream>
 
 #include <ConfigHandler.h>
+#include <DebugUtils.h>
 
 ConfigHandler::ConfigHandler() {
     // Constructor
@@ -13,6 +14,12 @@ ConfigHandler::~ConfigHandler() {
 }
 
 void ConfigHandler::loadConfig(const std::string& filepath) {
+
+    std::cout << "=============================== " << std::endl; // isolate this msg 
+    std::cout << "loading config from " << filepath << std::endl;
+    std::cout << "=============================== " << std::endl; // isolate this msg 
+    DebugUtils::logConfig("Loading config from " + filepath);
+
     std::ifstream json_file(filepath);
 	config = nlohmann::json::parse(json_file);
 	json_file.close();
@@ -23,9 +30,13 @@ void ConfigHandler::saveConfig(const std::string& filepath) const {
     if (file.is_open()) {
         file << config.dump(4); // Pretty print with 4 spaces indentation
         file.close();
+
         std::cout << "Camera configuration saved to " << filepath << std::endl;
+        DebugUtils::logConfig("Camera configuration saved to " + filepath);
+
     } else {
         std::cerr << "Failed to open file for writing: " << filepath << std::endl;
+        DebugUtils::logConfig("Failed to open file for writing: " + filepath);
 	}
 }
 
