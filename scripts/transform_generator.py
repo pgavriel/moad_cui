@@ -1,4 +1,6 @@
 import os
+import argparse
+import platform
 import datetime
 from os.path import join
 import json
@@ -86,11 +88,19 @@ def get_zrot_matrix(degrees):
     print(transform_matrix)
     return transform_matrix
 
+def check_os():
+    if os.name == "nt":
+        return "Windows"
+    elif os.name == "posix":
+        return platform.system()
+    else:
+        return "Unknown"
 
 class MoadTransformGenerator:
     def __init__(self,object_name="Test"):
         self.output_dir = "E:/MOAD"
         self.object_name = object_name
+        self.pose = "pose-a"
 
         self.calibration_dir = "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/calibration"
         self.modes = ['18mm','55mm'] #TODO: Add 24mm and 35mm?
@@ -261,25 +271,42 @@ class MoadTransformGenerator:
 
     def save_json(self,out_dir=None,out_file="transforms.json"):
         if out_dir is None:
-            out_dir = join(self.output_dir,self.object_name)
+            out_dir = join(self.output_dir,self.object_name, self.pose)
         
         print(f"Writing {out_file} to {out_dir}...")
         with open(join(out_dir,out_file), "w") as f:
             json.dump(self.transform_json, f, indent=4)  # Use indent for human-readable formatting
         print("Done.")
 
+# Check for OS 
+is_linux = check_os() == "Linux" 
+
+# Get CLI arguments
+parser = argparse.ArgumentParser()
+parser.add_argument('object_name', help="Name of the scanned object")
+parser.add_argument('-p', '--path', type=str, default="/home/csrobot/ns-data" if is_linux else "G:/", help="Directory where the object is located")
+parser.add_argument('--pose', type=str, default="pose-a", help="The current pose of the scan")
+parser.add_argument('-d', '--degree', type=int, default=5, help="Degree difference between each image (Default: 5)")
+parser.add_argument('-r', '--range', type=int, default=360, help="Max angle of rotation (Default: 360)")
+parser.add_argument('-c', '--calibration', type=str, default="55mm", choices=["55mm", "18mm"], help="Type of calibration that the camera is configured")
+parser.add_argument('--calibration_dir', type=str, default="/home/csrobot/moad_cui/calibration" if is_linux else "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/calibration", help="Directory where the calibration files are")
+parser.add_argument('-v', '--visualize', action="store_true", help="Flag: Visualize the 3D position of the camera")
+parser.add_argument('-f', '--force', action="store_true", help="Bypass the confirmation prompt before calculating the transform position")
+
+args = parser.parse_args()
 
 tf_gen = MoadTransformGenerator()
 # Set the directory containing calibrations and the calibration (subfolder) to use.
-tf_gen.calibration_dir = "/home/csrobot/moad_cui/calibration"
-tf_gen.mode = '55mm'
+tf_gen.calibration_dir = args.calibration_dir
+tf_gen.mode = args.calibration
 # Set the directory containing object data and the object (subfoler) to write to.
-tf_gen.output_dir = "/home/csrobot/ns-data"
-tf_gen.output_dir = "/home/csrobot/data-mount"
-tf_gen.object_name = None #"t1_zoomcan"
+tf_gen.output_dir = args.path
+tf_gen.object_name = args.object_name #"t1_zoomcan"
+tf_gen.pose = args.pose
 # Set the angle increment of the collected image data.
-tf_gen.scan_angle_inc = 5
-tf_gen.visualize = True
+tf_gen.scan_range = args.range
+tf_gen.scan_angle_inc = args.degree
+tf_gen.visualize = args.visualize
 tf_gen.auto_save = True
 # tf_gen.load_transforms()
 # tf_gen.calculate_transforms()
@@ -290,7 +317,7 @@ tf_gen.exclude_cameras = [] # [1, 2, 3, 4, 5]
 tf_gen.exclude_frames = {
     1: [],
     2: [],
-    3: [30],
+    3: [],
     4: [],
     5: []
 }
@@ -301,7 +328,7 @@ mode = 0
 
 if generate_modes[mode] == "name":
     # SET OBJECT NAMES
-    obj_list = ["a3_gear_large_pose-a"]
+    obj_list = [args.object_name]
     
 elif generate_modes[mode] == "date":
     # SET DATE, RETURN ALL FOLDERS CREATED DURING OR AFTER
@@ -324,7 +351,10 @@ else:
     print("No frames being excluded.")
 print(f"Calibration Folder: {join(tf_gen.calibration_dir,tf_gen.mode)}")
 print(f"Object List: {obj_list}")
-input("Continue? (Ctrl+C to cancel)")
+
+if not args.force:
+    input("Continue? (Ctrl+C to cancel)")
+
 tf_gen.batch_generate(obj_list)
 
 print("Done.")

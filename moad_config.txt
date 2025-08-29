@@ -1,23 +1,27 @@
-output_dir=E:/MOAD
-object_name=checker_calibration
+output_dir=G:/
+object_name=rs_calibration_test
+degree_inc=5
+num_moves=72
 # Serial port Configuration (COM[x]) (Double digit ports will need to modify source code)
 serial_com_port=5
 # Delay before collecting data after movement (was 250)
 turntable_delay_ms=1000
 
 # Canon Configuration
-collect_dslr=1
+collect_dslr=0
 dslr_timeout_sec=5
 # This is a bad way to handle naming, but the SDK was giving me too many problems
 dslr_name_override=1
-cam1_rename=5
-cam2_rename=4
-cam3_rename=3
-cam4_rename=2
-cam5_rename=1
+cam1_rename=4
+cam2_rename=1
+cam3_rename=5
+cam4_rename=3
+cam5_rename=2
 
 # RealSense Configuration
-collect_rs=0
+collect_rs=1
+rs_path=C:/Users/csrobot/Documents/Version13.16.01/moad_cui/calibration/realsense/
+rs_filename=transform.json
 rs_color=0
 rs_depth=0
 rs_pointcloud=1
@@ -33,10 +37,21 @@ rs_ypass=1
 rs_ypass_min=-0.3
 rs_ypass_max=0.3
 rs_zpass=1
-rs_zpass_min=0.0
+rs_zpass_min=-0.1
 rs_zpass_max=0.5
 rs_sor=1
 rs_sor_meank=6
 rs_sor_stddev=1.0
 rs_voxel=0
 rs_voxel_leafsize=0.001
+
+# Transform Generator Parameters
+tg_output_dir_linux=/home/csrobot/ns-data
+tg_output_dir_windows=G:/
+tg_calibration_dir_linux=/home/csrobot/moad_cui/calibration
+tg_calibration_dir_windows=C:/Users/csrobot/Documents/Version13.16.01/moad_cui/calibration
+tg_calibration_mode=55mm
+tg_degree_angle=5
+tg_scan_range=360
+tg_visualize=False
+tg_force=True

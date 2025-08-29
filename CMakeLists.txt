@@ -25,8 +25,14 @@ set(OpenCV_DIR "C:/opencv/build")
 find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})
 
+include(FetchContent)
+FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz)
+FetchContent_MakeAvailable(json)
+
+
 # set(PCL_DIR "C:\\src\\vcpkg\\installed\\x64-windows\\share\\pcl")
 find_package(PCL 1.3 REQUIRED COMPONENTS)
+
 
 if(MSVC)
     string(REPLACE "/W3" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
@@ -44,7 +50,7 @@ endif()
 
 add_executable (MultiCamCui
     ${SRC_DIR}/MOADCui.cpp
-
+    
     ${SRC_DIR}/RealSenseHandler.cpp
     ${SRC_DIR}/CanonHandler.cpp
     ${SER_DIR}/SimpleSerial.cpp
@@ -56,6 +62,11 @@ add_executable (MultiCamCui
     ${SRC_DIR}/Property.cpp
     ${SRC_DIR}/TakePicture.cpp
     ${SRC_DIR}/DownloadEvf.cpp
+
+    ${SRC_DIR}/MenuHandler.cpp
+    ${SRC_DIR}/ConfigHandler.cpp
+    ${SRC_DIR}/ThreadPool.cpp
+    ${SRC_DIR}/DebugUtils.cpp
     
     
     #${SRC_DIR}/MultiCamCui.cpp
@@ -90,6 +101,7 @@ if(MSVC)
         PRIVATE
             ${EDSDK_LDIR}/Library/EDSDK.lib
             ${PCL_LIBRARIES}
+            nlohmann_json::nlohmann_json
         PUBLIC
             ${REALSENSE2_FOUND}
             ${OpenCV_LIBS}
