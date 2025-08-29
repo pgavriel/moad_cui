@@ -26,7 +26,7 @@ def ensure_directory_exists(directory):
 def select_pointcloud(init_dir="/home/csrobot"):
     """Open a file dialog to select a point cloud file."""
     Tk().withdraw()  # Hide the root window
-    file_path = filedialog.askopenfilename(initialdir=init_dir,filetypes=[("Point Cloud Files", "*.ply *.pcd *.xyz *.pts *.txt")])
+    file_path = filedialog.askopenfilename(initialdir=init_dir,filetypes=[("Point Cloud Files", "*.ply *.pcd *.xyz *.pts *.txt *.fbx")])
     return file_path
 
 def capture_frames(vis, image_list, render=True):
@@ -108,7 +108,7 @@ def main():
 
     # TODO: Implement programmatic check for whether file is mesh or cloud
     
-    if "mesh" in  os.path.basename(file_path).lower():
+    if "mesh" in  os.path.basename(file_path).lower() or "fbx" in  os.path.basename(file_path).lower():
         print("\'mesh\' in file name, attempting to load as mesh...")
         pcd = o3d.io.read_triangle_mesh(file_path)
     else: # Load as pointcloud
@@ -134,9 +134,10 @@ def main():
     # ro.mesh_color_option = o3d.visualization.MeshColorOption.XCoordinate
     # ro.mesh_shade_option = 
     ro.background_color = np.asarray([0.7,0.7,0.7])
+    ro.background_color = np.asarray([0,0,0])
     ro.show_coordinate_frame = False
     ro.point_size = 1.0
-    ro.point_show_normal = False
+    ro.point_show_normal = False # Adds an arrow indicating normal direction
 
 
     
@@ -146,7 +147,7 @@ def main():
     ctr.set_lookat(pcd.get_center())
     ctr.rotate(0.0, -350.0)
     ctr.translate(0.0, 100.0)
-    ctr.scale(5.0)
+    ctr.scale(10.0)
     # Explicitly setting initial camera pose, get extrinsic from pressing 'C'
     # cam_params = ctr.convert_to_pinhole_camera_parameters()
     # cam_params.extrinsic = np.array([[0.9991301898048487, 0.04132926684272, -0.005545766202292168, 6.446856964342426e-05], [-0.037467686786386456, 0.8313793262619816, -0.5544407888233431, -0.008564534417497827], [-0.018303995940899983, 0.5541663176036747, 0.8322046960731347, 0.31708622503657724], [0.0, 0.0, 0.0, 1.0]])
@@ -158,12 +159,14 @@ def main():
     img = capture_frame(vis)
     # Save frames as a video
     height, width, _ = img.shape
+    print(f"Detected Frame Shape: {width} x {height}")
     video_writer = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*"mp4v"), 24, (width, height))
 
     img_list = []
-    angle_inc = 5
+    angle_inc = 1
+    loops = 1
     # Rotate Z Loop
-    for i in range(360//angle_inc):
+    for i in range(loops*360//angle_inc):
         # print(i)
         rotate_geometry(pcd,0,0,angle_inc)
         vis.update_geometry(pcd)
@@ -171,13 +174,31 @@ def main():
         vis.update_renderer()
         img = capture_frames(vis,img_list)
     # Rotate X loop
-    # for i in range(360//angle_inc):
-    #     # print(i)
-    #     rotate_geometry(pcd,-angle_inc,0,0)
-    #     vis.update_geometry(pcd)
-    #     vis.poll_events()
-    #     vis.update_renderer()
-    #     img = capture_frames(vis,img_list)
+    for i in range(60//angle_inc):
+        # print(i)
+        rotate_geometry(pcd,-angle_inc,0,0)
+        vis.update_geometry(pcd)
+        vis.poll_events()
+        vis.update_renderer()
+        img = capture_frames(vis,img_list)
+
+    # EXTRA
+    # Rotate Z Loop
+    for i in range(loops*360//angle_inc):
+        # print(i)
+        rotate_geometry(pcd,0,0,angle_inc)
+        vis.update_geometry(pcd)
+        vis.poll_events()
+        vis.update_renderer()
+        img = capture_frames(vis,img_list)
+    # Rotate X loop
+    for i in range(60//angle_inc):
+        # print(i)
+        rotate_geometry(pcd,angle_inc,0,0)
+        vis.update_geometry(pcd)
+        vis.poll_events()
+        vis.update_renderer()
+        img = capture_frames(vis,img_list)
     
     print(f"Imgs:{len(img_list)}")
     for img in img_list:

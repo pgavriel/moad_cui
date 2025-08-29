@@ -11,7 +11,7 @@ def ensure_directory_exists(directory):
         path.mkdir(parents=True, exist_ok=True)
         print(f"Created directory: {directory}")
 
-def create_video_from_images(search_dir, recursive, output_dir, output_file, downscale_factor=1,fps=30,exclude_strings=None):
+def create_video_from_images(search_dir, recursive, output_dir, output_file, downscale_factor=1,fps=30,exclude_strings=None,max_frames=None):
     # Validate inputs
     search_dir = Path(search_dir)
     output_dir = Path(output_dir)
@@ -38,6 +38,9 @@ def create_video_from_images(search_dir, recursive, output_dir, output_file, dow
             print(f"Excluding Strings: {exclude_strings}...")
             images = [img for img in images if not any(excl in img.name for excl in exclude_strings)]
             print(f"Images After Exlcusion: {len(images)}")
+        if max_frames is not None and len(images) > max_frames:
+            print(f"[WARNING] Max Frames exceeded, reducing to {max_frames} frames.")
+            images = images[:max_frames]
 
     # Read images and process them
     frames = []
@@ -84,16 +87,16 @@ def create_video_from_images(search_dir, recursive, output_dir, output_file, dow
 # Example usage
 if __name__ == "__main__":
     # Define parameters
-    USING_MOAD_DATA = True
+    USING_MOAD_DATA = False
 
     if USING_MOAD_DATA:
         root_dir = "/home/csrobot/data-mount"
-        object_name = "a3_mustard"
+        object_name = "demo_waterproof_connector"
         subfolder = "pose-a/DSLR"
         search_dir = join(root_dir,object_name,subfolder)
 
         recursive_search = True
-        search_exclude_strings = ["cam1","cam2","cam4","cam5"]
+        search_exclude_strings = []#["cam1","cam2","cam4","cam5"]
 
         output_file = f"{object_name}_DSLR_cam3.mp4"
         output_dir = join(root_dir,object_name, "media")
@@ -101,22 +104,28 @@ if __name__ == "__main__":
         output_fps = 24
         downscale_factor = 4.0
     else:
-        dataset = "solo_2"
-        search_dir = join("/home/csrobot/Unity/SynthData/Fetchit",dataset)
-        # search_dir = "/home/csrobot/synth_perception/testing"
-        # search_dir = "/home/csrobot/Unity/SynthData/EngineTest/engine_fruit"
+        # NOT USING MOAD DATA
+        # dataset = "solo_3"
+        # search_dir = join("/home/csrobot/synth_perception/data/windex",dataset)
+        search_dir = "/home/csrobot/FoundationPose/debug/track_vis"
+        # search_dir = "/home/csrobot/Unity/SynthData/PoseTesting/wp_demo/x"
+        # search_dir = "/home/csrobot/synth_perception/replicator_docker/output/test_018"
+        # search_dir = "/home/csrobot/Pictures/eng_pose_demo_002"
 
         recursive_search = True
-        search_exclude_strings = ["cam1","cam2","cam4","cam5"]
+        search_exclude_strings = []#["cam1","cam2","cam4","cam5"]
 
         # output_dir = "/home/csrobot/synth_perception"
-        output_dir = search_dir
-        output_file = f"dataset_{dataset}.mp4"
-        output_fps = 24
+        # output_dir = search_dir
+        output_dir = "/home/csrobot/FoundationPose/demo_data/results"
+        # output_file = f"dataset_{dataset}.mp4"
+        output_file = f"gear1_result.mp4"
+        output_fps = 15
 
         downscale_factor = 1.0
 
     # Create Video
+    max_frames = None # Cut down to specified number of frames 
     create_video_from_images(
         search_dir = search_dir,
         recursive = recursive_search,
@@ -124,5 +133,6 @@ if __name__ == "__main__":
         output_file = output_file,
         downscale_factor = downscale_factor,
         fps = output_fps,
-        exclude_strings=search_exclude_strings
+        exclude_strings=search_exclude_strings,
+        max_frames=max_frames
     )

@@ -275,6 +275,7 @@ tf_gen.calibration_dir = "/home/csrobot/moad_cui/calibration"
 tf_gen.mode = '55mm'
 # Set the directory containing object data and the object (subfoler) to write to.
 tf_gen.output_dir = "/home/csrobot/ns-data"
+tf_gen.output_dir = "/home/csrobot/data-mount"
 tf_gen.object_name = None #"t1_zoomcan"
 # Set the angle increment of the collected image data.
 tf_gen.scan_angle_inc = 5
@@ -287,11 +288,11 @@ tf_gen.auto_save = True
 tf_gen.exclude_cameras = [] # [1, 2, 3, 4, 5]
 # Specific frames to exclude
 tf_gen.exclude_frames = {
-    1: [95, 175, 295, 335],
-    2: [35, 85, 185],
-    3: [255],
+    1: [],
+    2: [],
+    3: [30],
     4: [],
-    5: [235]
+    5: []
 }
 excluded_frames = sum(len(positions) for positions in tf_gen.exclude_frames.values())
 
@@ -300,7 +301,7 @@ mode = 0
 
 if generate_modes[mode] == "name":
     # SET OBJECT NAMES
-    obj_list = ["a2-engine-bot"]
+    obj_list = ["a3_gear_large_pose-a"]
     
 elif generate_modes[mode] == "date":
     # SET DATE, RETURN ALL FOLDERS CREATED DURING OR AFTER
@@ -309,7 +310,7 @@ elif generate_modes[mode] == "date":
     
 elif generate_modes[mode] == "prefix":
     # SET PREFIX, RETURN ALL FOLDERS STARTING WITH PREFIX
-    prefix = "a2-"
+    prefix = "robot"
     obj_list = get_folders_with_prefix(tf_gen.output_dir,prefix)
 
 
