@@ -1,35 +1,36 @@
 {
-    "num_moves": 72,
-    "object_name": "atb1_board-full_18mm_bottom",
-    "output_dir": "G:/MOAD_V2",
     "debug": false,
-    "log_debug": true,
     "degree_inc": 5,
-    "filecount_testing": {
-        "enabled": false,
-        "dir_to_run_in": "g:\\MOAD_V2",
-        "count": true,
-        "create": true,
-        "manual_check": true,
-        "delay": true
-    },
-    "prev_state": {
-        "current_move": 72,
-        "current_object": "",
-        "current_pose": 98,
-        "turntable_pos": 360
-    },
     "dslr": {
         "collect_dslr": true,
         "dslr_timeout_sec": 10,
         "safe_take_picture": false
     },
+    "filecount_testing": {
+        "enabled": true,
+        "check_all": true,
+        "count": true,
+        "create": true,
+        "delay": false,
+        "dir_to_run_in": "g:\\MOAD_V2",
+        "manual_check": false
+    },
+    "log_debug": true,
+    "num_moves": 72,
+    "object_name": "paper_testing",
+    "output_dir": "G:/MOAD_V2",
+    "prev_state": {
+        "current_move": 72,
+        "current_object": "",
+        "current_pose": 105,
+        "turntable_pos": 360
+    },
     "realsense": {
-        "collect_realsense": true,
         "align_to_color": false,
         "collect_color": false,
         "collect_depth": false,
         "collect_pointcloud": true,
+        "collect_realsense": true,
         "compute_normals": true,
         "filter": {
             "sor": {

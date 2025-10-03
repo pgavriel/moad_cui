@@ -39,7 +39,7 @@
 #define CAMERA_2 "352074022024"
 #define CAMERA_3 "352074022025"
 #define CAMERA_4 "602075011474" // "352074022005" // old cam (shutter broke)
-#define CAMERA_5 "352074022021"
+#define CAMERA_5 "602075011361" // "352074022021" // old cam (shutter broke again)
 
 using namespace std::chrono_literals;
 namespace fs = std::filesystem;
@@ -87,7 +87,7 @@ bool WaitForCameraReady(EdsCameraRef camera, int timeoutMs);
 //	   currently set to run at the end of various scans WITH A HARDCODED FILEPATH
 //     TODO: add flag in config
 //	   TODO: make file path configurable
-void run_filecount_check();
+bool run_filecount_check();
 
 
 
@@ -1773,6 +1773,15 @@ bool reloadConfig() {
 	return false;
 }
 
+/*
+	InitializeRealsense()
+		args: none
+		returns: void
+
+	TODO: this adds a lot of possibly unneeded info to the console upon startup, clear this up
+		or add a verbose flag in the config for info toggling.
+*/
+
 void initializeRealsense() {
 	ConfigHandler& config = ConfigHandler::getInstance();
 
@@ -1798,11 +1807,23 @@ void initializeRealsense() {
 	}
 }
 
+
+/*
+	InitializeCanon()
+		args: none
+		returns: void
+	
+	TODO: This should be edited to be more prominent on startup so the user is aware of
+			how many cameras are connected.
+	COMPLETED: added yellow text on startup that displays number of connected cameras - GS 10/3
+	
+*/
+
 void initializeCanon() {
 	ConfigHandler& config = ConfigHandler::getInstance();
 	
 	if (config.getValue<bool>("dslr.collect_dslr")) {
-		cout << "\nEntering DSLR Setup...\n";
+		cout << "\033[1;33m\nEntering DSLR Setup...\n\033[0m";
 		// CanonHandler canonhandle;
 		canonhandle.initialize();
 		canonhandle.save_dir = scan_folder + "\\pose-" + curr_pose + "\\DSLR";
@@ -1866,15 +1887,19 @@ void initializeCanon() {
 	Note: args available are --count, --create, --prog-delay, --delay=<seconds> (see comments in filecount_test.py)
 	TODO: add function parameters that setup CLI args the script is called with (personally i dont see an immediate need for this)
 	- GS 7/15
+
+	TODO 10/3:
+	    - must tweak the python code such that we can run with only the current object selected
+
 */
-void run_filecount_check() {
+bool run_filecount_check() {
 
 	Sleep(200); // wait a bit for realsense to save, otherwise jumbled console output
 
 	ConfigHandler& config = ConfigHandler::getInstance();
 	if (config.getValue<bool>("filecount_testing.enabled") == false) {
 		std::cout << "Filecount testing disabled in config, skipping..." << std::endl;
-		return;
+		return false;
 	}
 
 	std::cout << "Running file count checking script: " << std::endl;
@@ -1916,6 +1941,8 @@ void run_filecount_check() {
 	// system requires c string
 	const char* c_command = command.c_str();
 	system(c_command);
+
+	return true;
 }
 
 
@@ -2022,7 +2049,8 @@ int main(int argc, char* argv[])
 		{"8", "Turntable Options..."},
 		{"9", "Live View..."},
 		{"p", "Scan from saved state"},
-		{"0", "Reload Config"}
+		{"0", "Reload Config"},
+		{"f", "Run Filecount Check Script"}
 	},
 	{
 		{"1", fullScan},
@@ -2036,6 +2064,7 @@ int main(int argc, char* argv[])
 		{"9", liveViewMenu},
 		{"p", scanFromSaveState}, // TODO: "10" seemed to not work??
 		{"0", reloadConfig},
+		{"f", run_filecount_check}
 	}, object_info);
 	menu_handler.setTitle("MOAD - CLI Menu");
 	menu_handler.ClearScreen();
