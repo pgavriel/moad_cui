@@ -54,8 +54,10 @@ EdsError downloadImage(EdsDirectoryItemRef  directoryItem, EdsVoid* _bodyID)
 
 	// Create filename
 	std::string cam_name = std::to_string(camid);
+
 	if (canonhandle.rename_cameras) {
-		std::cout << "Renamed cam" << cam_name << " -> cam" << canonhandle.camera_names[std::to_string(camid)] << std::endl;
+		// TODO: add verbose flag in console
+		// std::cout << "Renamed cam" << cam_name << " -> cam" << canonhandle.camera_names[std::to_string(camid)] << std::endl;
 		cam_name = canonhandle.camera_names[std::to_string(camid)];
 	}
 	std::string tmp;
@@ -70,27 +72,44 @@ EdsError downloadImage(EdsDirectoryItemRef  directoryItem, EdsVoid* _bodyID)
 
 
 	// Create file stream for transfer destination  
-	if (err == EDS_ERR_OK)
-	{
+	if (err == EDS_ERR_OK) {
 		err = EdsCreateFileStream(filename, kEdsFileCreateDisposition_CreateAlways, kEdsAccess_ReadWrite, &stream);
+		// TODO: add verbose flag in console
+		// std::cout << "eds create filestream, err: " << err << std::endl;
+	} else {
+		// std::cout << "eds create filestream, err: " << err << std::endl;
 	}
 
+
 	// Download image  
-	if (err == EDS_ERR_OK)
-	{
+	if (err == EDS_ERR_OK) {
 		err = EdsDownload(directoryItem, dirItemInfo.size, stream);
+	} else {
+		// TODO: add verbose flag in console
+		// std::cout << "eds download, err: " << err << std::endl;
 	}
+
 	// Issue notification that download is complete  
 	if (err == EDS_ERR_OK) {
 		err = EdsDownloadComplete(directoryItem);
+	} else {
+		// TODO: add verbose flag in console
+		// std::cout << "eds download complete, err: " << err << std::endl;
 	}
 
 	// Release stream  
 	if (stream != NULL) {
-		EdsRelease(stream);   stream = NULL;
+		err = EdsRelease(stream);   stream = NULL;
+	} else {
+		// TODO: add verbose flag in console
+		// std::cout << "eds release filestream, err: " << err << std::endl;
 	}
 
 	canonhandle.images_downloaded++;
+
+	// TODO: add verbose flag in console
+	// std::cout << "downloaded with no obvious errors," << std::endl;
+    // std::this_thread::sleep_for(std::chrono::seconds(2));
 
 	return err;
 }
