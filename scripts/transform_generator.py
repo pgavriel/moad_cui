@@ -108,10 +108,11 @@ class MoadTransformGenerator:
 
         self.scan_angle_inc = 45 # 5
         self.scan_range = 360
+        self.total_frames = 360
         # self.scan_init_angle = 0
         self.num_cameras = 5
 
-        self.exclude_cams = []
+        self.exclude_cameras = []
         self.exclude_frames = None
 
         self.apply_alignment = True
@@ -177,32 +178,48 @@ class MoadTransformGenerator:
         transformed_matrices = [np.dot(alignment_tf, matrix) for matrix in transforms]
 
         # Calculate all transforms and json frames list
-        frame_count = 1 
+        # frame_count = 1 
         frames = []
-        frames_per_camera = self.scan_range // self.scan_angle_inc
+        # frames_per_camera = self.scan_range // self.scan_angle_inc
+        position_list = []
+        for i in range(self.scan_range):
+            if i % self.scan_angle_inc == 0:
+               position_list.append(i)
+        # exclude_cameras = [1]
         print(f"Cameras: {self.num_cameras}")
         print(f"Angle Inc: {self.scan_angle_inc}")
-        print(f"Frames Per Camera: {frames_per_camera}")
+        print(f"Frames Per Camera: {len(position_list)}")
+        print(f"Positions: {position_list}")
+        print(f"Total Frames: {self.total_frames}")
+        
+        def GetFrameNum(cam_idx, pos, total):
+            frame_per_cam = total // self.num_cameras
+            frame_per_degree = self.scan_range // frame_per_cam
+            frame_num = 1 + ((cam_idx-1) * frame_per_cam) + (pos // frame_per_degree)
+            # print(f"ID:{cam_idx}\tPOS:{pos}\t`FPC:{frame_per_cam}\tFPD{frame_per_degree}\tFN:{frame_num}")
+            return frame_num
         
         for i in range(self.num_cameras):
             current_camera = i+1
-            current_position = 0
-            for j in range(frames_per_camera):
+            if current_camera in self.exclude_cameras: continue
+            # current_position = 0
+            for pos in position_list:
                 base_camera_tf = transformed_matrices[i]
-                rotation_matrix = get_zrot_matrix(current_position)
+                rotation_matrix = get_zrot_matrix(pos)
                 camera_tf = np.dot(rotation_matrix, base_camera_tf)
+                frame_num = GetFrameNum(current_camera,pos,self.total_frames)
                 frame = {
-                    "file_path": f"images/frame_{frame_count:05d}.jpg",
+                    "file_path": f"images/frame_{frame_num:05d}.jpg",
                     "camera_id": current_camera,
-                    "position_deg": current_position,
+                    "position_deg": pos,
                     "transform_matrix": camera_tf.tolist()
                 }
                 # TESTING EXCLUDING CAMERA AND FRAMES
-                if current_camera not in self.exclude_cams:
-                    if self.exclude_frames is None or current_position not in self.exclude_frames[current_camera]:
+                if current_camera not in self.exclude_cameras:
+                    if self.exclude_frames is None or pos not in self.exclude_frames[current_camera]:
                         frames.append(frame)
-                frame_count += 1
-                current_position += self.scan_angle_inc
+                # frame_count += 1
+                # current_position += self.scan_angle_inc
 
         self.transform_json["frames"] = frames
         print(f"Frames Generated: {len(frames)}")
@@ -288,6 +305,7 @@ parser.add_argument('-p', '--path', type=str, default="/home/csrobot/ns-data" if
 parser.add_argument('--pose', type=str, default="pose-a", help="The current pose of the scan")
 parser.add_argument('-d', '--degree', type=int, default=5, help="Degree difference between each image (Default: 5)")
 parser.add_argument('-r', '--range', type=int, default=360, help="Max angle of rotation (Default: 360)")
+parser.add_argument('-t', '--totalframes', type=int, default=360, help="Total images collected in the target scan (Default: 360)")
 parser.add_argument('-c', '--calibration', type=str, default="55mm", choices=["55mm", "18mm"], help="Type of calibration that the camera is configured")
 parser.add_argument('--calibration_dir', type=str, default="/home/csrobot/moad_cui/calibration" if is_linux else "C:/Users/csrobot/Documents/Version13.16.01/moad_cui/calibration", help="Directory where the calibration files are")
 parser.add_argument('-v', '--visualize', action="store_true", help="Flag: Visualize the 3D position of the camera")
@@ -305,6 +323,7 @@ tf_gen.object_name = args.object_name #"t1_zoomcan"
 tf_gen.pose = args.pose
 # Set the angle increment of the collected image data.
 tf_gen.scan_range = args.range
+tf_gen.total_frames = args.totalframes
 tf_gen.scan_angle_inc = args.degree
 tf_gen.visualize = args.visualize
 tf_gen.auto_save = True
