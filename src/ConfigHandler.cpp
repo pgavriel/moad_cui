@@ -18,7 +18,15 @@ void ConfigHandler::loadConfig(const std::string& filepath) {
     std::cout << "=============================== " << std::endl; // isolate this msg 
     std::cout << "loading config from " << filepath << std::endl;
     std::cout << "=============================== " << std::endl; // isolate this msg 
-    DebugUtils::logConfig("Loading config from " + filepath);
+    
+
+    // NOTE: this debugutils statement actually cant be here, since the function defintion
+    //       needs to check the config before writing to the log file and the config
+    //       hasnt actually been created yet and the debug utils havent actaully been instantiated
+    // TODO: have debugutils be the first thing loaded, and the statement written out to
+    //       logfile afterwards (though this is probably fixable in the MOADCui main function)
+    // DebugUtils::logConfig("Loading config from " + filepath);
+
 
     std::ifstream json_file(filepath);
 	config = nlohmann::json::parse(json_file);

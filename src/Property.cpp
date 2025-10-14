@@ -1,3 +1,9 @@
+/*
+	This file seems to be used within the camera settings options from the console menu. -GS 9/23
+	
+*/
+
+
 #include <map>
 #include <vector>
 #include <tuple>
