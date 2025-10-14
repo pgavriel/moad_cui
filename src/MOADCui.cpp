@@ -1883,6 +1883,8 @@ void initializeCanon() {
 		returns: void
 	(For now no parameters used, hardcoded args for a python script)
 
+	THIS IS THE CONNECTION POINT TO THE PYTHON SCRIPT
+
 	Runs /scripts/filecount_test.py via CLI args with preset args
 	Note: args available are --count, --create, --prog-delay, --delay=<seconds> (see comments in filecount_test.py)
 	TODO: add function parameters that setup CLI args the script is called with (personally i dont see an immediate need for this)
@@ -1926,12 +1928,15 @@ bool run_filecount_check() {
 	}
 
 	if (config.getValue<bool>("filecount_testing.delay") == true) {
-		command_stream << "--prog_delay " << "--delay=0.3 "; // hardcoded delay for now
+		command_stream << "--prog_delay " << "--delay=0.1 "; // hardcoded delay for now
 	}
 
+	// add current object directory:
+	command_stream << "--directory=\"" << scan_folder << "\" ";
 
-		// << "--prog_delay "
-		// << "--delay=0.3 ";
+	if (config.getValue<bool>("filecount_testing.check_single_object") == true) {
+		command_stream << "--check_single_object ";
+	}
 
 	// Execute command
 	// convert to string for output debug message
