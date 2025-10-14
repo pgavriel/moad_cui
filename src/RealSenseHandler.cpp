@@ -1,3 +1,12 @@
+/*
+TODO: complete adding DebugUtils logging to all couts...
+
+- GS 8/26
+
+*/
+
+
+
 #include <iostream>
 #include <thread>
 #include <mutex>
@@ -69,6 +78,14 @@ RealSenseHandler::~RealSenseHandler() {
     std::cout << "Done.\n";
 }
 
+/*
+    Initialize the RealSense Handler
+        args: none
+        returns: void
+
+    TODO: Clear up some of the console spam on startup via verbose flag?
+*/
+
 void RealSenseHandler::initialize() {
     std::cout << "Initializing RealSense Handler...\n";
     ConfigHandler& config = ConfigHandler::getInstance();
@@ -76,11 +93,11 @@ void RealSenseHandler::initialize() {
     // Get Realsense camera transforms from JSON file
     nlohmann::json realsense_json;
     std::string transform_dir = config.getValue<std::string>("realsense.transform_path");
-    std::cout << "Loading Realsense camera transforms...\n";
+    // std::cout << "Loading Realsense camera transforms...\n";
     std::string transform_file = config.getValue<std::string>("realsense.transform_file");
     std::ifstream realsense_file(transform_dir + transform_file);
     realsense_json = nlohmann::json::parse(realsense_file);
-    std::cout << "Realsense camera transforms loaded.\n";
+    // std::cout << "Realsense camera transforms loaded.\n";
 
     // Load camera names and transforms from JSON
     for (auto& [key, value] : realsense_json.items()) {
@@ -115,13 +132,24 @@ int RealSenseHandler::device_check() {
     // Display device information
     for (auto&& dev : devices_list) {
         std::string serial = dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
-        cout << "[" << camera_names[serial] << "] " << serial << endl;
+        // TODO: add to verbose flagging
+        // cout << "[" << camera_names[serial] << "] " << serial << endl;
+    }
+
+    // temporarily moving the "high resolution" console statement to here to
+    //  clean up console output
+    // TODO: verbose flag in console
+    if (ConfigHandler::getInstance().getValue<bool>("realsense.high_res")) {
+        std::cout << "High resolution mode enabled for all RealSense cameras.\n";
+    } else {
+        std::cout << "Low resolution mode enabled for all RealSense cameras.\n";
     }
 
     for (auto&& dev : devices_list) {
         // Print Device Information
         bool print_available_streams = false;
-        print_device(dev,print_available_streams);
+        // TODO: add to verbose flagging
+        // print_device(dev,print_available_streams);
 
         // Start device data streams
         std::string serial = dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
@@ -138,25 +166,25 @@ void RealSenseHandler::start_device(std::string serial_number) {
     cfg.enable_device(serial_number);
     cfg.disable_all_streams();
 
-
-
     
     if (ConfigHandler::getInstance().getValue<bool>("realsense.high_res")) {
         cfg.enable_stream(RS2_STREAM_COLOR,1280,720,RS2_FORMAT_RGB8,5);
         cfg.enable_stream(RS2_STREAM_DEPTH,1280,720,RS2_FORMAT_Z16,5);
-        std::cout << "High resolution mode enabled for " << camera_names[serial_number] << std::endl;
+        // TODO: add to verbose flagging
+        // std::cout << "High resolution mode enabled for " << camera_names[serial_number] << std::endl;
     } else {
         cfg.enable_stream(RS2_STREAM_COLOR,640,480,RS2_FORMAT_RGB8,5);
         cfg.enable_stream(RS2_STREAM_DEPTH,640,480,RS2_FORMAT_Z16,5);
-        std::cout << "Low resolution mode enabled for " << camera_names[serial_number] << std::endl;
-
+        // TODO: add to verbose flagging
+        // std::cout << "Low resolution mode enabled for " << camera_names[serial_number] << std::endl;
     }
 
     // Start the stream
     auto r = pipe.start(cfg);
     auto intr = r.get_stream(RS2_STREAM_DEPTH).as<rs2::video_stream_profile>().get_intrinsics();
-    cout << "Depth Intrinsics: [" << intr.fx << ", " << intr.fy << ", " << intr.ppx << ", " << intr.ppy << ", " << intr.model << "]" << endl;
-    cout << "[" << camera_names[serial_number] << "][DEVICE STARTED]\n" << endl;
+    // TODO: add to verbose flagging
+    // cout << "Depth Intrinsics: [" << intr.fx << ", " << intr.fy << ", " << intr.ppx << ", " << intr.ppy << ", " << intr.model << "]" << endl;
+    // cout << "[" << camera_names[serial_number] << "][DEVICE STARTED]\n" << endl;
     
     // Add the pipeline to the vector
     pipeline_map[serial_number] = pipe;
@@ -202,6 +230,9 @@ void RealSenseHandler::get_frames(int num_frames, int timeout_ms) {
     //     << " devices:\n";
     cout << "Getting " << num_frames << " frames from " << pipeline_map.size()
         << " devices:\n";
+
+        DebugUtils::logRS("Getting frames from all connected devices...");
+
     // new_frames.clear();
     for (int i = 0 ; i < num_frames ; i++) {
         if (pipeline_map.size() == 0) break;
@@ -210,6 +241,7 @@ void RealSenseHandler::get_frames(int num_frames, int timeout_ms) {
             rs2::frameset fs;
             fs = pipe.second.wait_for_frames(timeout_ms);
             cout << "- ";
+            DebugUtils::logRS("- ");
             std::this_thread::sleep_for(std::chrono::milliseconds(25));
         }
         // if (frameset_map.size() == 0) break;
@@ -225,14 +257,21 @@ void RealSenseHandler::get_frames(int num_frames, int timeout_ms) {
         cout << endl;
     }
     cout << " [DONE]\n";
+    DebugUtils::logRS("Finished getting frames from all connected devices.");
 }
 
 // Collects relevant MOAD data from all RealSense devices
 void RealSenseHandler::get_current_frame(int degree, int timeout_ms, ThreadPool* pool) {
     ConfigHandler& config = ConfigHandler::getInstance();
+
     cout << "\nGetting RealSense Data... \n";
+    DebugUtils::logRS("Getting RealSense data at angle " + std::to_string(degree) + " degrees...");
+
     // Create a rotation matrix for the current turntable position
     cout << "Getting rotation matrix for " << turntable_position << " degress...\n";
+    DebugUtils::logRS("Getting rotation matrix for " + std::to_string(turntable_position) + " degrees...");
+
+
     rot_matrix = createRotationMatrix(turntable_position);
     if (config.getValue<bool>("debug")) {
         cout << rot_matrix << endl << endl;
@@ -266,6 +305,7 @@ void RealSenseHandler::get_current_frame(int degree, int timeout_ms, ThreadPool*
     }
 
     cout << "Got frames from all RS at angle " << degree << ", Saving in the background...\n";
+    DebugUtils::logRS("Got frames from all RealSense at angle " + std::to_string(degree) + ", saving in the background...");
 }
 
 void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeout_ms) {
@@ -274,8 +314,10 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
     
     // Get serial number for this camera
     std::string serial_number = pipe.get_active_profile().get_device().get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
+
     cout << "Processing " << camera_names[serial_number] << " at angle " << degree << "...\n";
-    
+    DebugUtils::logRS("Processing " + camera_names[serial_number] + " at angle " + std::to_string(degree) + "...");
+
     // Collect frameset from camera
     rs2::frameset fs;
     try {
@@ -285,9 +327,11 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
         fail_count++;
         std::cerr << camera_names[serial_number] << ": RS error occurred: " << e.what() << std::endl;
         cout << "WARNING: " << camera_names[serial_number] << " did not get frames.\n";
+        DebugUtils::logRS(camera_names[serial_number] + ": RS error occurred: " + std::string(e.what()));
         return;
     } catch (const std::exception& ex) {
         std::cerr << camera_names[serial_number] << ": An error occurred: " << ex.what() << std::endl;
+        DebugUtils::logRS(camera_names[serial_number] + ": An error occurred: " + std::string(ex.what()));
     } catch (...) {
         cout << "ERROR: ????\n";
     }
@@ -295,6 +339,7 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
     // fs = pipe.wait_for_frames(timeout_ms);
     if (fs.size() == 0) {
         cout << "WARNING: " << camera_names[serial_number] << " did not get frames.\n";
+        DebugUtils::logRS(camera_names[serial_number] + ": WARNING: did not get frames.");
         return;
     }
     
