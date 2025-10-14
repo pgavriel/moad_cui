@@ -1,3 +1,6 @@
+#ifndef CONFIGHANDLER_H
+#define CONFIGHANDLER_H
+
 #include <string>
 #include <vector>
 #include <nlohmann/json.hpp>
@@ -50,6 +53,8 @@ public:
         }
 
         *current = value;
+        // TODO: this might save moad_config to the wrong place in some cases
+        saveConfig("moad_config.json");
     };
 
 
@@ -60,3 +65,5 @@ private:
     ~ConfigHandler();
     std::vector<std::string> split(std::string str, char delimiter);
 };
+
+#endif // CONFIGHANDLER_H
