@@ -55,7 +55,8 @@ int CanonHandler::camera_check() {
             return count;
             // exit(EXIT_FAILURE);
         }
-        std::cout << count << " cameras detected." << std::endl;
+        // yellow text via ANSI escape codes
+        std::cout << "\033[1;33m" << count << " cameras detected.\033[0m" << std::endl;
     }
 
     //Acquisition of camera at the head of the list
@@ -107,7 +108,7 @@ void CanonHandler::initialize() {
     if (err == EDS_ERR_OK)
 	{
 		isSDKLoaded = true;
-        std::cout << "SDK Initialized...\n";
+        // std::cout << "SDK Initialized...\n";
 	}
     
     cameras_found = camera_check();
