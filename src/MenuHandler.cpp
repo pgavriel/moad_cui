@@ -20,6 +20,10 @@ Regarding this class:
 
     - menu runs in do-while loop until 'r' is pressed    
     - execution occurs in SelectMenu function via "bool is_submenu = menu_action[item]();"
+        note that this is a function pointer call ------------------------------------^
+        thus all you have to do is send the list of function pointers mapped to keyboard options
+        in other words, to add more options, define them before instantiating the MenuHandler object, 
+            then send them in the constructor
 */
 
 
