@@ -95,6 +95,12 @@ void RealSenseHandler::initialize() {
     std::string transform_dir = config.getValue<std::string>("realsense.transform_path");
     // std::cout << "Loading Realsense camera transforms...\n";
     std::string transform_file = config.getValue<std::string>("realsense.transform_file");
+    
+    // Print transform strings for debugging
+    std::cout << "Realsense transform_dir: \"" << transform_dir << "\"" << std::endl;
+    std::cout << "Realsense transform_file: \"" << transform_file << "\"" << std::endl;
+    std::cout << "Full path: \"" << transform_dir + transform_file << "\"" << std::endl;
+    
     std::ifstream realsense_file(transform_dir + transform_file);
     realsense_json = nlohmann::json::parse(realsense_file);
     // std::cout << "Realsense camera transforms loaded.\n";
@@ -197,22 +203,28 @@ void RealSenseHandler::start_device(std::string serial_number) {
 void RealSenseHandler::frame_poll_thread(rs2::pipeline pipe) {
     std::string serial_number = pipe.get_active_profile().get_device().get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
     rs2::frameset fs;
+
     std::chrono::steady_clock::time_point start, end;
     std::chrono::milliseconds duration;
-    start = std::chrono::high_resolution_clock::now();
+    
+    start = std::chrono::steady_clock::now();
+
     while(running) {
         // Poll for frames
         fs = pipe.wait_for_frames();
+        
         // Lock the mutex before accessing the shared variable
         std::unique_lock<std::mutex> lock(framesetMutex);
-        // Update the shared variable with the latest frameset
         frameset_map[serial_number] = fs;
+
         // Release the lock
         lock.unlock();
 
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        end = std::chrono::high_resolution_clock::now();
-        duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+
+        end = std::chrono::steady_clock::now();
+
+        duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);        
         // int seconds = (duration.count() % 60000) / 1000;
         // int ms = duration.count() % 1000;
         // if (duration.count() > 200) {
@@ -392,8 +404,21 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
         cv::cvtColor(color_mat, color_mat, cv::COLOR_RGB2BGR);
         // Generate image name
         out_file.str("");
-        out_file << save_dir << "\\" << camera_names[serial_number] << "_"
+
+
+
+
+
+        // should not be harcoded as "/" - gs 10/29
+        out_file << save_dir << "/" << camera_names[serial_number] << "_"
             << std::setfill('0') << std::setw(3) << turntable_position << "_color.png";
+
+
+
+
+
+
+
 
         // Save the color image
         cv::imwrite(out_file.str(), color_mat);
@@ -409,9 +434,22 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
 
         // Generate image name
         out_file.str("");
-        out_file << save_dir << "\\" << camera_names[serial_number] << "_"
+
+
+
+
+
+        // should not be hardcoded as "/"
+        out_file << save_dir << "/" << camera_names[serial_number] << "_"
             << std::setfill('0') << std::setw(3) << turntable_position << "_depth.png";
         
+
+
+
+
+
+
+
         // Save the depth image
         cv::imwrite(out_file.str(), depth_mat);
     }
@@ -425,7 +463,7 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
 
 
     // this check must be outside of the below if statements and for loop!! - GS 8/22
-    BOOL COLOR_ORDER_BGR = config.getValue<bool>("realsense.collect_color");
+    bool COLOR_ORDER_BGR = config.getValue<bool>("realsense.collect_color");
 
 
     // Check if collecting pointclouds is enabled
@@ -642,7 +680,21 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
         
         // Generate pointcloud name and save
         out_file.str("");
-        out_file << save_dir << "\\" << camera_names[serial_number] << "_"
+
+
+
+
+
+
+        // should not be hardcoded as "/"
+        out_file << save_dir << "/" << camera_names[serial_number] << "_"
+
+
+
+
+
+        
+
             << std::setfill('0') << std::setw(3) << degree << "_cloud.ply";
         std::cout.copyfmt(std::ios(nullptr));
 
