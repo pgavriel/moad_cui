@@ -63,7 +63,17 @@ EdsError downloadImage(EdsDirectoryItemRef  directoryItem, EdsVoid* _bodyID)
 	std::string tmp;
 	std::stringstream out_file;
 	out_file.str("");
-	out_file << "\\cam" << cam_name << "_" 
+
+
+
+
+	// should not be hardcoded to "/"
+	out_file << "/cam" << cam_name << "_" 
+
+
+
+
+
 		<< std::setfill('0') << std::setw(3) << canonhandle.turntable_position << "_img.jpg";
 	tmp = directory_tree + out_file.str();
 	std::cout << "Saving: " << out_file.str() << std::endl;
