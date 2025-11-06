@@ -19,7 +19,6 @@ void ConfigHandler::loadConfig(const std::string& filepath) {
     std::cout << "loading config from " << filepath << std::endl;
     std::cout << "=============================== " << std::endl; // isolate this msg 
     
-
     // NOTE: this debugutils statement actually cant be here, since the function defintion
     //       needs to check the config before writing to the log file and the config
     //       hasnt actually been created yet and the debug utils havent actaully been instantiated

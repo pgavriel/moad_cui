@@ -1,11 +1,11 @@
 #include <CanonHandler.h>
 
 CanonHandler::CanonHandler() {
-    std::cout << "Canon Handle created.\n";
+    std::cout << "\033[1;45m" << "Canon Handle created." << "\033[0m\n";
 }
 
 CanonHandler::~CanonHandler() {
-    std::cout << "Shutting down Canon Handler... ";
+    std::cout << "\033[1;45m" << "Shutting down canonhandler." << "\033[0m\n";
     // Release camera list
 	if (cameraList != NULL) {
 		EdsRelease(cameraList);
@@ -55,8 +55,9 @@ int CanonHandler::camera_check() {
             return count;
             // exit(EXIT_FAILURE);
         }
-        // yellow text via ANSI escape codes
-        std::cout << "\033[1;33m" << count << " cameras detected.\033[0m" << std::endl;
+
+        // magenta text via ANSI escape codes
+        std::cout << "\033[1;45m" << count << " cameras detected." << "\033[0m" << std::endl;
     }
 
     //Acquisition of camera at the head of the list
@@ -72,7 +73,6 @@ int CanonHandler::camera_check() {
             // EdsChar serialNumber[EDS_MAX_NAME];
             // err = EdsGetPropertyData(camera, kEdsPropID_BodyIDEx, 0, sizeof(serialNumber), serialNumber);
             
-            std::cout << err << std::endl;
             // std::cout << serialNumber << std::endl;
             if (err == EDS_ERR_OK && camera == NULL)
             {
@@ -80,8 +80,8 @@ int CanonHandler::camera_check() {
                 // pause_return();
                 exit(EXIT_FAILURE);
             }
-            std::cout << "[" << i + 1 << "]\t" << deviceInfo.szDeviceDescription 
-                << "\t" << "serial" << std::endl;
+            std::cout << "\033[1;45m" << "[" << i + 1 << "]\t" << deviceInfo.szDeviceDescription 
+                << "\t" << "serial" << "\033[0m" << std::endl;
             // Sleep(1000);
             // if  (serial == 3435973836 ) std::cout << "true!\n";
         }else{ std::cout << "SOMETHING WRONG: Error Code "<< err << "\n";}
@@ -90,7 +90,7 @@ int CanonHandler::camera_check() {
 
     //Connect to all available cameras
     if (err == EDS_ERR_OK) {
-        std::cout << "Connecting to all cameras..." << std::endl;
+        std::cout << "\033[1;45m" << "Connecting to all cameras..." << "\033[0m" << std::endl;
         for (int i = 0; i < count; i++)
         {
             err = EdsGetChildAtIndex(cameraList, i, &camera);
@@ -103,6 +103,9 @@ int CanonHandler::camera_check() {
 }
 
 void CanonHandler::initialize() {
+
+	std::cout << "\033[1;45m" << "Entering DSLR Setup..." << "\033[0m" << std::endl;
+
     // Initialize SDK
     err = EdsInitializeSDK();
     if (err == EDS_ERR_OK)

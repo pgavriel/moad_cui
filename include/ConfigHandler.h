@@ -1,3 +1,13 @@
+/*
+Notes: 
+    This uses singleton pattern that tries to guarenteer only one confighandler instance in memory
+    
+    getInstance()
+
+
+*/
+
+
 #ifndef CONFIGHANDLER_H
 #define CONFIGHANDLER_H
 

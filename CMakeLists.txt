@@ -113,7 +113,6 @@ elseif(UNIX AND NOT APPLE)
             ${EDSDK_LDIR}/Library/libEDSDK.so
             ${PCL_LIBRARIES}
             nlohmann_json::nlohmann_json
-            udev
             realsense2
             udev
         PUBLIC

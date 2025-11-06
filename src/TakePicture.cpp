@@ -11,7 +11,7 @@
 #include <thread> // for thread debugging
 
 
-static std::mutex dslr_mutex;
+// static std::mutex dslr_mutex;
 
 // bool WaitForCameraReady1(EdsCameraRef camera, int timeoutMs) {
 //     // std::cout << "inside wait function..." << std::endl;
@@ -177,6 +177,8 @@ bool WaitForCameraReadyStrict(EdsCameraRef camera, int timeoutMs) {
 
 EdsError TakePicture(EdsCameraRef const& camera, std::string const& bodyID) {
 
+    static std::mutex dslr_mutex;
+
     std::cout << "====\ntaking picture " << bodyID << std::endl;
 
     std::lock_guard<std::mutex> lock(dslr_mutex);
@@ -285,13 +287,13 @@ EdsError TakePicture(EdsCameraRef const& camera, std::string const& bodyID) {
 
 
 EdsError TakePictureNoWait(EdsCameraRef const& camera, std::string const& bodyID) {
-    std::lock_guard<std::mutex> lock(dslr_mutex); // ensures exclusive access for this function
-
+    // std::lock_guard<std::mutex> lock(dslr_mutex); // ensures exclusive access for this function
+    std::cout << "\033[1;45m" << "taking picture with no wait" << "\033[0m" << std::endl;
+    
     EdsError err = EDS_ERR_OK;
-    std::cout << "[Thread " << std::this_thread::get_id() << "] Started shooting cam " << bodyID << std::endl;
-
-    DebugUtils::logThread("thread in use, id " + std::to_string(std::hash<std::thread::id>{}(std::this_thread::get_id())));
-    DebugUtils::logCam("started taking picture with camera: " + bodyID);
+    // std::cout << "[Thread " << std::this_thread::get_id() << "] Started shooting cam " << bodyID << std::endl;
+    // DebugUtils::logThread("thread in use, id " + std::to_string(std::hash<std::thread::id>{}(std::this_thread::get_id())));
+    // DebugUtils::logCam("started taking picture with camera: " + bodyID);
 
     // Press shutter completely (Non-AF)
     if(err == EDS_ERR_OK) {
@@ -301,9 +303,14 @@ EdsError TakePictureNoWait(EdsCameraRef const& camera, std::string const& bodyID
         // err = SendCommandWithWait(camera, bodyID, kEdsCameraCommand_PressShutterButton,
         //                         kEdsCameraCommand_ShutterButton_Completely_NonAF);
         
-        DebugUtils::logDebug("shutter pressed successfully, " + std::to_string(err));
+        // DebugUtils::logDebug("shutter pressed successfully, " + std::to_string(err));
     } else {
-        DebugUtils::logWarning("shutter press error, " + std::to_string(err) + " instead of EDS_ERR_OK");
+        std::cout << "(press shutter) err on " << bodyID << ": " << err << std::endl;
+        std::cout << "attempting release and re-press..." << std::endl;
+        EdsSendCommand(camera, kEdsCameraCommand_PressShutterButton, kEdsCameraCommand_ShutterButton_OFF);
+        EdsSendCommand(camera, kEdsCameraCommand_PressShutterButton, kEdsCameraCommand_ShutterButton_Completely_NonAF); // kEdsCameraCommand_ShutterButton_Completely
+        EdsSendCommand(camera, kEdsCameraCommand_PressShutterButton, kEdsCameraCommand_ShutterButton_OFF);
+        // DebugUtils::logWarning("shutter press error, " + std::to_string(err) + " instead of EDS_ERR_OK");
     }
 
     // Release shutter
@@ -314,35 +321,42 @@ EdsError TakePictureNoWait(EdsCameraRef const& camera, std::string const& bodyID
         // err = SendCommandWithWait(camera, bodyID, kEdsCameraCommand_PressShutterButton,
         //                           kEdsCameraCommand_ShutterButton_OFF);
 
-        DebugUtils::logDebug("shutter released successfully, " + std::to_string(err));
+        // DebugUtils::logDebug("shutter released successfully, " + std::to_string(err));
     } else {
-        DebugUtils::logWarning("shutter release error, " + std::to_string(err) + " instead of EDS_ERR_OK");
+        std::cout << "(release shutter) err on " << bodyID << ": " << err << std::endl;
+        std::cout << "attempting release and re-press..." << std::endl;
+        EdsSendCommand(camera, kEdsCameraCommand_PressShutterButton, kEdsCameraCommand_ShutterButton_Completely_NonAF); // kEdsCameraCommand_ShutterButton_Completely
+        EdsSendCommand(camera, kEdsCameraCommand_PressShutterButton, kEdsCameraCommand_ShutterButton_OFF);
+
+        // random stoppage occurs: err = EDS_ERR_TAKE_PICTURE_NO_LENS_NG or 36107
+
+
+        // DebugUtils::logWarning("shutter release error, " + std::to_string(err) + " instead of EDS_ERR_OK");
     }
     
     // #define EDS_ERR_COMM_DISCONNECTED 0x000000C1L
     std::cout << "[Thread " << std::this_thread::get_id() << "] Finished shooting cam " << bodyID << std::endl;
-
-    DebugUtils::logThread("thread finished, id " + std::to_string(std::hash<std::thread::id>{}(std::this_thread::get_id())));
-    DebugUtils::logCam("finished taking picture with camera: " + bodyID);
+    // DebugUtils::logThread("thread finished, id " + std::to_string(std::hash<std::thread::id>{}(std::this_thread::get_id())));
+    // DebugUtils::logCam("finished taking picture with camera: " + bodyID);
 
     return err;
 }
 
 
 
-EdsError TakePicture(std::vector<EdsCameraRef> const& cameraArray, std::map<EdsCameraRef, std::string> const& bodyID) {
+// EdsError TakePicture(std::vector<EdsCameraRef> const& cameraArray, std::map<EdsCameraRef, std::string> const& bodyID) {
 	
-	std::cout << "multi cam shooting" << std::endl;
+// 	std::cout << "multi cam shooting" << std::endl;
 	
-	EdsError err = EDS_ERR_OK;
+// 	EdsError err = EDS_ERR_OK;
 	
-	// For each camera in the array, take a picture
-	for (auto& camera : cameraArray) {
-		TakePicture(camera, bodyID.at(camera));
-	}
+// 	// For each camera in the array, take a picture
+// 	for (auto& camera : cameraArray) {
+// 		TakePicture(camera, bodyID.at(camera));
+// 	}
 
-	return err;
-}
+// 	return err;
+// }
 
 
 
