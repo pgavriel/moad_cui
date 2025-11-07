@@ -1,3 +1,27 @@
+/*
+11/7 GS:
+	this file is meant to enable live viewing of the DSLR cameras
+	it uses filestreaming with opencv to give almost fully realtime rendering
+
+	in the past couple weeks, i have been porting this entire codebase to linux. for this file, the only thing
+		needed was a waitKey() call in liveview loop which causes the OS to query the buffer where the images
+		are waiting everytime the loop runs INSTEAD of not this. the windows version automatically does this
+		consistent buffer check under the hood which is why it works there.
+
+	the opencv window would sometimes get stuck open for one of the cameras. the fix i did was just to reorder
+		the closures so the stream ends THEN the window attempts closing AND i added an extra waitKey(1) 
+		afterwards to attempt a final read to remove the empty buffer. otherwise the state of the dslr cams
+		gets messed up and breaks the next time live view is triggered
+
+	also useful:
+		this file creates folders with the camera names inside wherever ./MultiCamCui (build) occurs. this 
+		is the location of the file stream
+
+*/
+
+
+
+
 #include <thread>
 #include <vector>
 #include <iostream>
@@ -114,12 +138,13 @@ EdsError DownloadEvfCommand(EdsCameraRef const& camera, std::string const& camer
 	// create folder  ex) cam1
 	// TODO: This part should be deleted 
 	std::string directory_tree = cameraName;
+
 	if (fs::exists(directory_tree) == FALSE) {
 		std::filesystem::create_directories(directory_tree);
 	}
 
 	std::string tmp;
-	tmp = directory_tree + "\\evf.jpg";
+	tmp = directory_tree + "/evf.jpg";
 	char* filename = new char[tmp.size() + 1];
 	strcpy(filename, tmp.c_str());
 
@@ -184,10 +209,13 @@ EdsError DownloadEvfCommand(EdsCameraRef const& camera, std::string const& camer
 			std::cout << "Third" << std::endl;
 			throwCameraException(err);
 		}
+
+		
 		// Display Image
 		cv::Mat frame;
-		frame = cv::imread(directory_tree + "\\evf.jpg");
+		frame = cv::imread(directory_tree + "/evf.jpg");
 		if (frame.empty()) {
+			std::cout << "failed to load evf\n";
 			break;
 		}
 	
@@ -198,12 +226,25 @@ EdsError DownloadEvfCommand(EdsCameraRef const& camera, std::string const& camer
 
 		int i = cameraName[cameraName.size() - 1] - '0' - 1;
 		cv::moveWindow(directory_tree, 600 * (i % 3), 430 * (i / 3));
+
+		// process GUI events so window stays responsive
+		if (cv::waitKey(1) == 27)  // ESC to exit
+			break;
 	}
 
-	cv::destroyWindow(cameraName);
 
-	// Close the Liveview Stream
+	// 11/7 GS
+	// - reorderd this so stream closes before window attempts closure
+	// - added a waitKey() afterwards for an extra attempt at closure\
+	// (these are meant to fix the bug where a window stays open and messes up
+	//	state for the next time liveview is triggered) 
+
 	ReleaseStream(stream, evfImage);
+
+	cv::destroyWindow(cameraName);
+	cv::waitKey(1);
+
+
 
 	return true;
 }
@@ -318,7 +359,7 @@ EdsError DownloadEvfCommand(std::vector<EdsCameraRef> const& cameraArray, std::v
 		}
 
 		std::string tmp;
-		tmp = directory_tree + "\\evf.jpg";
+		tmp = directory_tree + "/evf.jpg";
 		char* filename = new char[tmp.size() + 1];
 		strcpy(filename, tmp.c_str());
 
@@ -388,7 +429,7 @@ EdsError DownloadEvfCommand(std::vector<EdsCameraRef> const& cameraArray, std::v
 
 			// Display Image
 			cv::Mat frame;
-			frame = cv::imread(directory_tree + "\\evf.jpg");
+			frame = cv::imread(directory_tree + "/evf.jpg");
 			if (frame.empty()) {
 				break;
 			}
