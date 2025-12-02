@@ -1,0 +1,90 @@
+{
+    "debug": false,
+    "degree_inc": 5,
+    "dslr": {
+        "camera_ids": {
+            "CAMERA_1": "352074022019",
+            "CAMERA_2": "352074022024",
+            "CAMERA_3": "352074022025",
+            "CAMERA_4": "602075011474",
+            "CAMERA_5": "602075011361"
+        },
+        "collect_dslr": true,
+        "dslr_timeout_sec": 20,
+        "safe_take_picture": false
+    },
+    "filecount_testing": {
+        "check_all": false,
+        "check_single_object": true,
+        "count": true,
+        "create": true,
+        "delay": true,
+        "enabled": false,
+        "manual_check": false
+    },
+    "log_debug": true,
+    "num_moves": 72,
+    "object_name": "test32",
+    "output_dir": "/home/csrobot/data-mount/TESTING",
+    "prev_state": {
+        "current_move": 72,
+        "current_object": "",
+        "current_pose": 97,
+        "turntable_pos": 360
+    },
+    "realsense": {
+        "align_to_color": false,
+        "collect_color": false,
+        "collect_depth": false,
+        "collect_pointcloud": true,
+        "collect_realsense": true,
+        "compute_normals": true,
+        "filter": {
+            "sor": {
+                "apply": true,
+                "k": 6,
+                "stddev": 1
+            },
+            "voxel": {
+                "apply": false,
+                "leaf_size": 0.01
+            },
+            "xpass": {
+                "apply": true,
+                "max": 0.3,
+                "min": -0.3
+            },
+            "ypass": {
+                "apply": true,
+                "max": 0.3,
+                "min": -0.3
+            },
+            "zpass": {
+                "apply": true,
+                "max": 0.5,
+                "min": 0
+            }
+        },
+        "high_res": true,
+        "normalize_depth_image": false,
+        "normals_threads": 1,
+        "raw_pointcloud": false,
+        "realsense_timeout_sec": 9,
+        "transform_file": "transform.json",
+        "transform_path": "/home/csrobot/moad_cui_linux-port/moad_cui/calibration/realsense/"
+    },
+    "serial_com_port": "/dev/ttyACM0",
+    "thread_num": 5,
+    "transform_generator": {
+        "calibration_dir_linux": "home/csrobot/moad_cui_linux/moad_cui/calibration",
+        "calibration_dir_windows": "../calibration",
+        "calibration_mode": "55mm",
+        "degree_angle": 5,
+        "dir_linux": "home/csrobot/ns-data",
+        "dir_windows": "/home/csrobot/data-mount/TESTING",
+        "force": true,
+        "scan_range": 360,
+        "visualize": false
+    },
+    "turntable_delay_ms": 10000
+}
