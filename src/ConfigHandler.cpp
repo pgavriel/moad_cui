@@ -38,8 +38,8 @@ void ConfigHandler::saveConfig(const std::string& filepath) const {
         file << config.dump(4); // Pretty print with 4 spaces indentation
         file.close();
 
-        std::cout << "Camera configuration saved to " << filepath << std::endl;
-        DebugUtils::logConfig("Camera configuration saved to " + filepath);
+        std::cout << "ConfigHandler saving to: " << filepath << std::endl;
+        DebugUtils::logConfig("ConfigHandler saving to: "  + filepath);
 
     } else {
         std::cerr << "Failed to open file for writing: " << filepath << std::endl;
