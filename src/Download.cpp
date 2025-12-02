@@ -1,3 +1,13 @@
+/* Download.cpp
+
+	meant for downloading the DSLR images off the physical devices
+	
+	the execution flow is:
+	main in MOADCui.cpp instantiates PreSetting in Presetting.cpp which 
+		sets up EDS-related CameraEvents which call downloadImage in Download.cpp (here)
+		when the event is triggered back in main
+*/
+
 #include <vector>
 #include <cstring>
 #include <sstream>
@@ -69,14 +79,13 @@ EdsError downloadImage(EdsDirectoryItemRef  directoryItem, EdsVoid* _bodyID)
 
 	// should not be hardcoded to "/"
 	out_file << "/cam" << cam_name << "_" 
-
-
-
-
-
 		<< std::setfill('0') << std::setw(3) << canonhandle.turntable_position << "_img.jpg";
+		
+
+
+
 	tmp = directory_tree + out_file.str();
-	std::cout << "Saving: " << out_file.str() << std::endl;
+	std::cout << "\033[1;45m" << "Saving: " << out_file.str() << "\033[0m" << std::endl;
 	char* filename = new char[tmp.size() + 1];
 	strcpy(filename, tmp.c_str());
 
