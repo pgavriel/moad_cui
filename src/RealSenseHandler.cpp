@@ -86,42 +86,139 @@ RealSenseHandler::~RealSenseHandler() {
     TODO: Clear up some of the console spam on startup via verbose flag?
 */
 
-void RealSenseHandler::initialize() {
+void RealSenseHandler::initialize(std::string config_path) {
 
-
-    std::cout << "\033[1;46m" << "Initializing RealSense Handler..." << "\033[0m\n"; 
-
-
+    std::cout << "\033[1;46m" << "Initializing RealSense Handler..." << "\033[0m\n";
+    std::cout << "\033[1;46m" << "Searching for rs_info in " + config_path << "\033[0m\n"; 
 
     ConfigHandler& config = ConfigHandler::getInstance();
 
     // Get Realsense camera transforms from JSON file
     nlohmann::json realsense_json;
-    std::string transform_dir = config.getValue<std::string>("realsense.transform_path");
-    // std::cout << "Loading Realsense camera transforms...\n";
-    std::string transform_file = config.getValue<std::string>("realsense.transform_file");
-    
-    // Print transform strings for debugging
-    std::cout << "\033[1;46m" << "Realsense transform_dir: \"" << transform_dir << "\"" << "\033[0m\n";
-    std::cout << "\033[1;46m" << "Realsense transform_file: \"" << transform_file << "\"" << "\033[0m\n";
-    std::cout << "\033[1;46m" << "Full path: \"" << transform_dir + transform_file << "\"" << "\033[0m\n";
-    
-    std::ifstream realsense_file(transform_dir + transform_file);
-    realsense_json = nlohmann::json::parse(realsense_file);
-    // std::cout << "Realsense camera transforms loaded.\n";
 
-    // Load camera names and transforms from JSON
-    for (auto& [key, value] : realsense_json.items()) {
-        Eigen::Matrix4f transform_matrix = Eigen::Matrix4f::Identity();
-        for (int i = 0; i < 4; ++i) {
-            for (int j = 0; j < 4; ++j) {
-                transform_matrix(i, j) = value["transform_matrix"][i][j].get<float>();
-            }
+    std::ifstream realsense_file(config_path);
+
+    realsense_json = nlohmann::json::parse(realsense_file);
+
+    // If the file wraps the camera entries under a "realsense" object, descend into it.
+    // After this, realsense_json will reference the object that contains "rs1", "rs2", ...
+    // Descend into realsense.rs_info.rs1, rs2 ...
+    if (realsense_json.contains("realsense") && realsense_json["realsense"].is_object()) {
+        auto &rs_root = realsense_json["realsense"];
+        if (rs_root.contains("rs_info") && rs_root["rs_info"].is_object()) {
+            realsense_json = rs_root["rs_info"];
+            std::cout << "Using nested 'realsense.rs_info' object from JSON.\n";
+        } else {
+            // Fallback to older structure realsense->{ "rs1":..., ... }
+            realsense_json = rs_root;
+            std::cout << "Using nested 'realsense' object from JSON (no rs_info child).\n";
         }
-        camera_names[key] = value["name"].get<std::string>();
-        camera_transforms[key] = transform_matrix;
+    }
+    else {
+        std::cout << "Warning, no realsense ids were found in " + config_path << std::endl;
     }
 
+    // Quick sanity check: warn if no device-like keys were found (keys starting with "rs")
+    bool found_rs_entry = false;
+    for (auto it = realsense_json.begin(); it != realsense_json.end(); ++it) {
+        if (!it.key().empty() && it.key().rfind("rs", 0) == 0) { // starts with "rs"
+            found_rs_entry = true;
+            break;
+        }
+    }
+    if (!found_rs_entry) {
+        std::cerr << "Warning: no 'rs*' entries found in realsense JSON. Check file structure: expected realsense.rs_info->{\"rs1\":..., ...} or realsense->{\"rs1\":..., ...}.\n";
+    }
+
+
+    // create map of id -> (serial, transform_matrix)
+    // Example JSON entry expected:
+    // "rs1": {
+    //   "serial": "215122257111",
+    //   "transform_matrix": [[...],[...],[...],[...]]
+    // }
+    std::map<std::string, std::pair<std::string, Eigen::Matrix4f>> camera_info_map;
+    for (auto it = realsense_json.begin(); it != realsense_json.end(); ++it) {
+
+        const std::string id = it.key(); // will be "rs1/2/3 ..."
+        const auto &val = it.value(); // used for iterating "serial" and "transform_matrix"
+
+        std::cout << "id " << id << std::endl;
+
+        // read serial, should be string but checks incase not
+        std::string serial;
+        if (val.contains("serial")) {
+            if (val["serial"].is_string()) {
+                serial = val["serial"].get<std::string>();
+            } else if (val["serial"].is_number_integer()) {
+                serial = std::to_string(val["serial"].get<long long>());
+            } else {
+                serial = val["serial"].dump();
+            }
+        }
+
+        // must populate camera_names with serial:id
+        camera_names[serial] = id; 
+
+        // read transform matrix, default to identity
+        Eigen::Matrix4f transform = Eigen::Matrix4f::Identity();
+        if (val.contains("transform_matrix")) {
+            try {
+                for (int r = 0; r < 4; ++r) {
+                    for (int c = 0; c < 4; ++c) {
+                        transform(r, c) = val["transform_matrix"][r][c].get<float>();
+                    }
+                }
+            } catch (...) {
+                // keep identity on parse error
+            }
+        }
+
+        // must populate camera_transforms with serial:matrix
+        camera_transforms[serial] = transform;
+
+        // reminder, this map is mainly to consolidate all info together
+        // TODO: definitely swap everything to use subslices of this map rather
+        //      than the two camera_names/camera_transforms maps
+        camera_info_map[id] = std::make_pair(serial, transform);
+    }
+
+
+    // Pretty-print maps for debugging
+    std::cout << "\033[1;46m" << "Camera info map contents:" << "\033[0m\n";
+    for (const auto& kv : camera_info_map) {
+        const auto& id = kv.first;
+        const auto& serial = kv.second.first;
+        const auto& mat = kv.second.second;
+        std::cout << "ID: " << id << "  Serial: " << serial << "\n";
+        std::cout << "Transform:\n";
+        for (int r = 0; r < 4; ++r) {
+            for (int c = 0; c < 4; ++c) {
+                std::cout << std::setw(10) << std::fixed << std::setprecision(4) << mat(r, c) << " ";
+            }
+            std::cout << "\n";
+        }
+        std::cout << "----\n";
+    }
+
+    std::cout << "\033[1;46m" << "Serial -> id (camera_names) map:" << "\033[0m\n";
+    for (const auto& p : camera_names) {
+        std::cout << "  \"" << p.first << "\" -> \"" << p.second << "\"\n";
+    }
+
+    std::cout << "\033[1;46m" << "camera_transforms (by serial):" << "\033[0m\n";
+    for (const auto& p : camera_transforms) {
+        std::cout << "Serial: " << p.first << "\n";
+        const auto& mat = p.second;
+        for (int r = 0; r < 4; ++r) {
+            for (int c = 0; c < 4; ++c) {
+                std::cout << std::setw(10) << std::fixed << std::setprecision(4) << mat(r, c) << " ";
+            }
+            std::cout << "\n";
+        }
+        std::cout << "----\n";
+    }
+    
     // Check if the device is returning frames
     try {
         device_check();
@@ -138,34 +235,54 @@ int RealSenseHandler::device_check() {
     // Get the list of connected devices
     auto devices_list = ctx.query_devices();
     device_count = devices_list.size();
-    cout << device_count << " RealSense detected.\n";
-    
-    // Display device information
+
+    // check physical devices detected versus devices listed in moad_config.json
+    std::cout << "\033[1;46m" << device_count << " physical realsense devices detected with ids:\n";
     for (auto&& dev : devices_list) {
         std::string serial = dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
         // TODO: add to verbose flagging
-        // cout << "[" << camera_names[serial] << "] " << serial << endl;
+        std::cout << serial << " ";
+
+        // check if this matches with one of the serial numbers in the moad_config 
+        auto it = camera_names.find(serial);
+        if (it != camera_names.end()) {
+            std::cout << "matches with [" << it->second << "]:[" << it->first << "] from moad_config.json" << std::endl;
+            start_device(serial);
+        } else {
+            std::cout << "(no matching config id!!) " << std::endl;
+        }
     }
 
-    // temporarily moving the "high resolution" console statement to here to
-    //  clean up console output
-    // TODO: verbose flag in console
-    if (ConfigHandler::getInstance().getValue<bool>("realsense.high_res")) {
-        std::cout << "\033[1;46m" << "High resolution mode enabled for all RealSense cameras." << "\033[0m\n";
-    } else {
-        std::cout << "\033[1;46m" << "Low resolution mode enabled for all RealSense cameras." << "\033[0m\n";
-    }
+    std::cout << "\033[0m\n" << std::endl;
 
-    for (auto&& dev : devices_list) {
-        // Print Device Information
-        bool print_available_streams = false;
-        // TODO: add to verbose flagging
-        // print_device(dev,print_available_streams);
 
-        // Start device data streams
-        std::string serial = dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
-        start_device(serial);
-    }
+
+
+
+    // // temporarily moving the "high resolution" console statement to here to
+    // //  clean up console output
+    // // TODO: verbose flag in console
+    // if (ConfigHandler::getInstance().getValue<bool>("realsense.high_res")) {
+    //     std::cout << "\033[1;46m" << "High resolution mode enabled for all RealSense cameras." << "\033[0m\n";
+    // } else {
+    //     std::cout << "\033[1;46m" << "Low resolution mode enabled for all RealSense cameras." << "\033[0m\n";
+    // }
+
+    // for (auto&& dev : devices_list) {
+    //     // Print Device Information
+    //     bool print_available_streams = false;
+    //     // TODO: add to verbose flagging
+    //     // print_device(dev,print_available_streams);
+
+
+    //     // list all config ones
+
+    //     // list all physical
+
+
+    //     // Start device data streams
+    //     std::string serial = dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
+    // }
 
     return device_count;
 }
