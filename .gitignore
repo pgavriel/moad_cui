@@ -3,3 +3,6 @@ build/
 
 # Exclude the moad_config.json file
 # moad_config.json
+
+# DSLR cameras streams from liveview
+live_view_filestream/
