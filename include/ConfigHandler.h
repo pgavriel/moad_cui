@@ -47,7 +47,7 @@ public:
     };
     
     template <typename T>
-    void setValue(const std::string& key, const T& value) {
+    void setValue(const std::string& key, const T& value, const std::string& config_dir) {
         // This also needs to deal with nested JSON objects
         // For example: config["camera"]["resolution"]
         // Split the key by '.' to access nested values
@@ -64,7 +64,7 @@ public:
 
         *current = value;
         // TODO: this might save moad_config to the wrong place in some cases
-        saveConfig("moad_config.json");
+        saveConfig(config_dir);
     };
 
 
