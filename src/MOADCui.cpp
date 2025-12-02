@@ -36,18 +36,18 @@
 #include "SimpleSerial.h"
 #include "CameraException.h"
 
-#define CAMERA_1 "352074022019"
-#define CAMERA_2 "352074022024"
-#define CAMERA_3 "352074022025"
-#define CAMERA_4 "602075011474" // "352074022005" // old cam (shutter broke)
-#define CAMERA_5 "602075011361" // "352074022021" // old cam (shutter broke again)
+// #define CAMERA_1 "352074022019"
+// #define CAMERA_2 "352074022024"
+// #define CAMERA_3 "352074022025"
+// #define CAMERA_4 "602075011474" // "352074022005" // old cam (shutter broke)
+// #define CAMERA_5 "602075011361" // "352074022021" // old cam (shutter broke again)
 
 
 // MACRO for cross platform file seperator
 // THIS SHOULD BE CHANGED TO USE std::filesystem (i think)
 // 	the reason I am NOT doing this as of 10/30/2025 is because a lot of the paths in here are
-//	hardcoded and built as strings in-function. tldr, i need to centralize, restructure and 
-//	clean before implenting new libraries
+//	hardcoded and built as strings in-function. id prefer to centralize, restructure and 
+//	clean before implementing new libraries
 //
 // example usage: std::string debug_log_dir = scan_folder + PATH_SEP + "debug_log.txt";
 
@@ -55,12 +55,8 @@
 	const char PATH_SEP = '\\';
 #else
 	const char PATH_SEP = '/';
+	const bool OS_LINUX = true;
 #endif
-
-
-
-
-
 
 
 using namespace std::chrono_literals;
@@ -95,6 +91,7 @@ MenuHandler* curr_menu;
 // TXT Config 
 std::map<std::string, std::string> object_info;
 std::string json_path;
+std::string moad_dir;
 
 
 // Initialize some functions
@@ -112,7 +109,6 @@ void rotate_turntable(int degree_inc);
 //	   TODO: make file path configurable
 bool run_filecount_check();
 
-// declaration was missing before 10/29 - GS
 int create_folder(std::string path, bool quiet = false);
 
 
@@ -298,7 +294,7 @@ void loadJsonConfig(std::string path) {
 
 void saveCameraConfig(std::string path) {
 
-std::cout << "path in saveCamConfig: " + path << std::endl;
+std::cout << "path in saveCamConfig: " + path << std::endl;// declaration was missing before 10/29 - GS
 
 	std::vector<std::tuple<EdsPropertyID, std::map<EdsUInt32, const char*>>> propertyIDs = {
 		std::tuple<EdsPropertyID, std::map<EdsUInt32, const char*>> (kEdsPropID_ISOSpeed, iso_table),
@@ -320,13 +316,9 @@ std::cout << "path in saveCamConfig: " + path << std::endl;
 	// Get the model and focal length for each camera
 	for (auto& camera : canonhandle.cameraArray) {
 
-
-
-// segfaults since camera is empty
-std::string cam = camera_name[camera];
-std::cout << "camera " + cam << std::endl;
-
-
+		// segfaults since camera is empty
+		std::string cam = camera_name[camera];
+		std::cout << "camera " + cam << std::endl;
 
 		EdsDeviceInfo deviceInfo;
 		EdsGetDeviceInfo(camera, &deviceInfo);
@@ -367,9 +359,9 @@ void saveScanTime(std::chrono::milliseconds duration, std::string path) {
 	std::string seconds = std::to_string((duration.count() % 60000) / 1000);
 
 	// Open the JSON file for writing
-	std::ifstream file(path + "/camera_config.json");
+	std::ifstream file(path + PATH_SEP + "camera_config.json");
 	if (!file.is_open()) {
-		std::cerr << "Failed to open file for writing: " << path + "/camera_config.json" << std::endl;
+		std::cerr << "Failed to open file for writing: " << path + PATH_SEP + "camera_config.json" << std::endl;
 		return;
 	}
 	nlohmann::json json_data;
@@ -379,13 +371,13 @@ void saveScanTime(std::chrono::milliseconds duration, std::string path) {
 	json_data["Scan Time"] = minutes + ":" + seconds;
 
 	// Save the updated JSON data back to the file
-	std::ofstream output_file(path + "/camera_config.json");
+	std::ofstream output_file(path + PATH_SEP + "/camera_config.json");
 	if (output_file.is_open()) {
 		output_file << json_data.dump(4); // Pretty print with 4 spaces indentation
 		output_file.close();
 		std::cout << "Scan time saved to camera_config.json" << std::endl;
 	} else {
-		std::cerr << "Failed to open file for writing: " << path + "/camera_config.json" << std::endl;
+		std::cerr << "Failed to open file for writing: " << path + PATH_SEP +"camera_config.json" << std::endl;
 	}
 
 	// Close the file
@@ -422,9 +414,6 @@ int create_folder(std::string path, bool quiet = false) {
 
 	// yellow colored text to notify of folder creations:
     std::cout << "\033[1;33m" << "creating folder: " << path << "\033[0m" << std::endl;
-	
-//temp
-quiet = false;
 
 	if (!fs::exists(path)) {
         // Create the folder and any necessary higher level folders
@@ -487,7 +476,7 @@ char get_last_pose() {
 	ConfigHandler& config = ConfigHandler::getInstance();
 	std::string object_name = config.getValue<std::string>("object_name");
 	std::string output_dir = config.getValue<std::string>("output_dir");
-	std::string path = output_dir + "/" + object_name;
+	std::string path = output_dir + PATH_SEP + object_name;
 	char last_pose = 'a'; // First Pose
 	
 	// Check if the directory exists
@@ -518,12 +507,12 @@ char get_last_pose() {
 				char letter = name[length - 1];
 
 				// Check if the folder is empty
-				if (fs::is_empty(path + "/pose-" + letter + "/")) {
+				if (fs::is_empty(path + PATH_SEP + "pose-" + letter + PATH_SEP)) {
 					return letter; // Current pose
 				}
 				else {
 					// If is not empty, check if the subfolder is empty
-					for (const auto& sub_entry : fs::directory_iterator(path + "/pose-" + letter)) {
+					for (const auto& sub_entry : fs::directory_iterator(path + PATH_SEP + "pose-" + letter)) {
 						if (fs::is_directory(entry) && fs::is_empty(sub_entry)) {
 							return letter; // Current pose
 						}
@@ -544,43 +533,12 @@ char get_last_pose() {
 }
 
 
-// bool WaitForCameraReady(EdsCameraRef camera, int timeoutMs = 5000) {
-//     auto start = std::chrono::steady_clock::now();
-
-// 	std::cout << "waiting for cam " << camera << std::endl;
-
-//     while (true) {
-//         EdsError err = EdsSendStatusCommand(camera, kEdsCameraStatusCommand_UILock, 0);
-//         if (err == EDS_ERR_OK) {
-//             // Unlock immediately if we successfully locked
-//             EdsSendStatusCommand(camera, kEdsCameraStatusCommand_UIUnLock, 0);
-//             return true; // Ready
-//         }
-//         else if (err != EDS_ERR_DEVICE_BUSY) {
-//             // Some other error — not just busy
-//             std::cerr << "Camera returned error: " << err << std::endl;
-//             return false;
-//         } else {
-// 			std::cout << "error: " << err << std::endl;
-// 			std::cout << "Camera " << camera << " is busy, waiting..." << std::endl;
-// 		}
-
-//         // // Still busy, check timeout
-//         // auto now = std::chrono::steady_clock::now();
-//         // if (std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count() >= timeoutMs) {
-//         //     std::cerr << "Camera still busy after timeout." << std::endl;
-//         //     return false;
-//         // }
-
-//         std::this_thread::sleep_for(std::chrono::milliseconds(50));
-//     }
-// }
 
 bool scan(ThreadPool* pool = nullptr) {
 	ConfigHandler& config = ConfigHandler::getInstance();
 	std::string object_name = config.getValue<std::string>("object_name");
 	std::string output_dir = config.getValue<std::string>("output_dir");
-	scan_folder = output_dir + "/" + object_name;
+	scan_folder = output_dir + PATH_SEP + object_name;
 
 
 	// thread locking and timings to discern every piece of thread usage
@@ -594,8 +552,8 @@ bool scan(ThreadPool* pool = nullptr) {
 
 	// Collect RealSense Data
 	if(config.getValue<bool>("realsense.collect_realsense")) {
+
 		// Create RS Scan Folder
-		// should not be hardcoded with "/"
 		rshandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "realsense";
 
 
@@ -886,6 +844,7 @@ bool generateTransform(int degree_inc, int num_moves) {
 
 bool fullScan() {
 	ConfigHandler& config = ConfigHandler::getInstance();
+
 	if (liveview_active){
 		std::cout << "Liveview is active, please stop it before scanning." << std::endl;
 		return false;
@@ -895,8 +854,18 @@ bool fullScan() {
 	DebugUtils::logInfo("\n\tcurrent pose: " + std::to_string(curr_pose));
 
 	// Create thread pool
+	// currently unsafe i think, we also use another set of threads inside the scan() function itself
+	//	that is DIFFERENT from the ThreadPool created here.
+	// note quite sure the original purpose of ThreadPool tbh - gs 11/7
 	int thread_num = config.getValue<int>("thread_num");
 	ThreadPool pool(thread_num);
+
+
+	// zero the degree_tracker since we are starting a new scan...
+	// ...not entirely sure if this is necessary, should only affect the naming scheme for the files?
+	//	- gs 11/7
+	degree_tracker = 0;
+
 
 	int degree_inc = config.getValue<int>("degree_inc");
 	int num_moves = config.getValue<int>("num_moves");
@@ -960,15 +929,10 @@ bool fullScan() {
 
 		// Save camera configurations in a json file
 	if (config.getValue<bool>("dslr.collect_dslr")) {
-
 		saveCameraConfig(scan_folder + PATH_SEP + "pose-" + curr_pose);
-
-		// saveScanTime(duration, scan_folder + "\\pose-" + curr_pose);
-		// generateTransform(degree_inc, num_moves);
+		saveScanTime(duration, scan_folder + PATH_SEP + "pose-" + curr_pose);
+		generateTransform(degree_inc, num_moves);
 	}
-	
-	// Generate transform
-	generateTransform(degree_inc, num_moves);
 
 	// Recalculate angle
 	degree_tracker = degree_tracker % 360; // why is this needed? - GS 7/24
@@ -982,9 +946,7 @@ bool fullScan() {
 
 	write_pose_to_moadfig(curr_pose); // write pose to moadfig
 	
-	// run_filecount_check();
-
-	std::cout << "after running filecount check" << std::endl;
+	run_filecount_check();
 
 	MenuHandler::WaitUntilKeypress();
 
@@ -1068,8 +1030,8 @@ bool customScan() {
 
 	// Save camera configurations in a json file
 	if (config.getValue<bool>("dslr.collect_dslr")) {
-		saveCameraConfig(scan_folder + "\\pose-" + curr_pose);
-		saveScanTime(duration, scan_folder + "\\pose-" + curr_pose);
+		saveCameraConfig(scan_folder + PATH_SEP + "pose-" + curr_pose);
+		saveScanTime(duration, scan_folder + PATH_SEP + "pose-" + curr_pose);
 		generateTransform(degree_inc, num_moves);
 	}
 
@@ -1252,8 +1214,8 @@ bool scanFromSaveState() {
 
 	// Save camera configurations in a json file
 	if (config.getValue<bool>("dslr.collect_dslr")) {
-		saveCameraConfig(scan_folder + "\\pose-" + curr_pose);
-		saveScanTime(duration, scan_folder + "\\pose-" + curr_pose);
+		saveCameraConfig(scan_folder + PATH_SEP + "pose-" + curr_pose);
+		saveScanTime(duration, scan_folder + PATH_SEP + "pose-" + curr_pose);
 		generateTransform(degree_inc, num_moves);
 	}
 
@@ -1300,17 +1262,25 @@ bool collectSampleData() {
 	return false;
 }
 
+
+
+
+
+
 void setObjectName(std::string object_name) {
 	ConfigHandler& config = ConfigHandler::getInstance();
 
 	DebugUtils::logDebug("Setting object name from: " + config.getValue<std::string>("object_name") + " to: " + object_name);
 
-	// Set the object name in the config 
-	config.setValue<std::string>("object_name", object_name);
+	// this does something weird where templated setValue calls an inner "saveConfig" function that was
+	//	previously hardcoded and saved the config in the wrong location. should be fixed with fs::canonical
+	//	(see comments in main)
+
+	config.setValue<std::string>("object_name", object_name, json_path);
 
 	// Get the scan folder path
 	std::string output_dir = config.getValue<std::string>("output_dir");
-	scan_folder = output_dir + "/" + object_name;
+	scan_folder = output_dir + PATH_SEP + object_name;
 
 
 
@@ -1320,7 +1290,7 @@ void setObjectName(std::string object_name) {
 	// Create Main Folder
 	create_folder(scan_folder);
 
-	scan_folder = output_dir + "/" + object_name;
+	scan_folder = output_dir + PATH_SEP + object_name;
 
 
 
@@ -1328,7 +1298,6 @@ void setObjectName(std::string object_name) {
 
 	// THIS CODE DOESNT WORK THE WAY ITS MEANT TO I THINK - GS 8/7
 	// Create object info.json (template)
-	config.setValue<std::string>("object_name", object_name);
 	object_info["Object Name"] = object_name;
 	create_obj_info_json(config.getValue<std::string>("output_dir"));
 
@@ -1356,9 +1325,9 @@ void setObjectName(std::string object_name) {
 	// std::cout << "scan_folder inside setObjectName doesnt exist?: " << scan_folder << std::endl;
 
 	// Update the save directories for RealSense and DSLR
-	rshandle.save_dir = scan_folder + "/pose-" + curr_pose + "/realsense";
+	rshandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "realsense";
 	create_folder(rshandle.save_dir,true);
-	canonhandle.save_dir = scan_folder + "/pose-" + curr_pose + "/DSLR";
+	canonhandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "DSLR";
 	create_folder(canonhandle.save_dir,true);
 
 }
@@ -1741,6 +1710,12 @@ bool changeCamera() {
 
 bool getLiveView() {
 	ConfigHandler& config = ConfigHandler::getInstance();
+
+	// setup directory for filestream output (otherwise it creates wherever the
+	//	MultiCamCui exec is run out of)
+	std::string liveViewDir = moad_dir + PATH_SEP + "live_view_filestream" + PATH_SEP;
+
+
 	if (!config.getValue<bool>("dslr.collect_dslr")){
 		std::cout << "DSLR option is set to false, Liveview unavaliable" << std::endl;
 		return false;
@@ -1760,7 +1735,7 @@ bool getLiveView() {
 		for (auto& camera : canonhandle.cameraArray) {
 			// Download the image from the camera
 			liveview_th.push_back(std::thread([&]() {
-				DownloadEvfCommand(camera, camera_name[camera], liveview_thread_id);
+				DownloadEvfCommand(camera, liveViewDir + camera_name[camera], liveview_thread_id);
 			}));
 			std::this_thread::sleep_for(.5s);
 			i++;
@@ -1936,27 +1911,9 @@ void initializeRealsense() {
 	if (config.getValue<bool>("realsense.collect_realsense")) {
 		DebugUtils::logRS("Attempting Realsense setup...");
 
-
-
-
-
-
-
-
-		// Create RealSense Handler
-
-		// should not be hardcoded as "/"
 		// scan_folder is not set when this is first intialized TODO
-		rshandle.save_dir = scan_folder + "/pose-" + curr_pose + "/realsense";
+		rshandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "realsense";
 		create_folder(rshandle.save_dir,true);
-
-
-
-
-
-
-
-
 
 		// Get some frames to settle autoexposure.
 		std::cout << "Getting frames..." << std::endl;
@@ -1986,34 +1943,23 @@ void initializeRealsense() {
 
 void initializeCanon() {
 	ConfigHandler& config = ConfigHandler::getInstance();
+
+	// get camera ids from config (previously they were hardcoded) - gs 11/7
+	std::string cam1 = config.getValue<std::string>("dslr.camera_ids.CAMERA_1");
+	std::string cam2 = config.getValue<std::string>("dslr.camera_ids.CAMERA_2");
+	std::string cam3 = config.getValue<std::string>("dslr.camera_ids.CAMERA_3");
+	std::string cam4 = config.getValue<std::string>("dslr.camera_ids.CAMERA_4");
+	std::string cam5 = config.getValue<std::string>("dslr.camera_ids.CAMERA_5");
+
 	
 	if (config.getValue<bool>("dslr.collect_dslr")) {
 
 		// CanonHandler canonhandle;
 		canonhandle.initialize();
 
-
-
-
-
-		// should not be hardcoded with "/"
 		// scan_folder is not set when this is first intialized TODO
-		canonhandle.save_dir = scan_folder + "/pose-" + curr_pose + "/DSLR";
-
-
-
-
-
-
-
+		canonhandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "DSLR";
 		create_folder(canonhandle.save_dir,true);
-
-
-
-
-
-
-
 		PreSetting(canonhandle.cameraArray, canonhandle.bodyID);
 		// Naming of the camera
 		EdsChar serial[13];
@@ -2031,27 +1977,27 @@ void initializeCanon() {
 			std::cout << "\033[1;45m" << "Renaming Camera " << index << " (Serial Number: " << serial_str <<")";
 
 
-			if (serial_str == CAMERA_1) {
+			if (serial_str == cam1) {
 				std::cout << " to 1" << "\033[0m" << std::endl;
 				canonhandle.camera_names[std::to_string(index)] = "1";
 				camera_name[camera] = "Camera 1";
 			}
-			if (serial_str == CAMERA_2) {
+			if (serial_str == cam2) {
 				std::cout << " to 2" << "\033[0m" << std::endl;
 				canonhandle.camera_names[std::to_string(index)] = "2";
 				camera_name[camera] = "Camera 2";
 			}
-			if (serial_str == CAMERA_3) {
+			if (serial_str == cam3) {
 				std::cout << " to 3" << "\033[0m" << std::endl;
 				canonhandle.camera_names[std::to_string(index)] = "3";
 				camera_name[camera] = "Camera 3";
 			}
-			if (serial_str == CAMERA_4) {
+			if (serial_str == cam4) {
 				std::cout << " to 4" << "\033[0m" << std::endl;
 				canonhandle.camera_names[std::to_string(index)] = "4";
 				camera_name[camera] = "Camera 4";
 			}
-			if (serial_str == CAMERA_5) {
+			if (serial_str == cam5) {
 				std::cout << " to 5" << "\033[0m" << std::endl;
 				canonhandle.camera_names[std::to_string(index)] = "5";
 				camera_name[camera] = "Camera 5";
@@ -2101,8 +2047,8 @@ bool run_filecount_check() {
 	// Prepare command to execute scripts/filecount_test.py
 	std::stringstream command_stream;
 	command_stream 
-		<< "python3 " 
-		<< "../moad_cui/scripts/filecount_test.py ";
+		<< "python3 "
+		<< "../scripts/filecount_test.py ";
 		// << "--count "
 
 	if (config.getValue<bool>("filecount_testing.count") == true) {
@@ -2165,8 +2111,8 @@ int temp(int argc, char* argv[]) {
 	//	unless its meant to let the user enter something like ./MultiCamCui <path to config json>
 	//	which we then argparse??
 	std::string moadfig_path = "moad_config.json";
-// TODO: this is bad coding practice
-json_path = moadfig_path; // as of now, 10/30, json_path is a global variable that breaks the code if not set.
+	// TODO: this is bad coding practice
+	json_path = moadfig_path; // as of now, 10/30, json_path is a global variable that breaks the code if not set.
 
 	// call loadJsonConfig with the moadfig path
 	//	should ONLY setup the ConfigHandler class with the info from the moad_config.json
@@ -2187,14 +2133,8 @@ json_path = moadfig_path; // as of now, 10/30, json_path is a global variable th
 	std::string object_name = config.getValue<std::string>("object_name");
 	setObjectName(object_name);
 
-
-	// setup arduino communication for the turntable:
-	//	this should be explained more thorouhgly in a readme perhaps (TODO) but we use
-	//	a seperate serial port communication library
-	// TODO: this should maybe be more robust for different OS' but the principle works
-	//	the same way, we just write a message to a file
-	// NOTE: the linux version uses the file /dev/ttyACM0, im not quite sure what the 
-	//	windows version uses because i did not write it.
+	// serial port communication setup for turntable arduino
+	//	windows and linux version use different ports
 	std::cout << "\033[1;40m" << "attempting serial port connection" << "\033[0m\n"; // todo: macros for cli coloring
 
 	// WINDOWS VERSION
@@ -2308,25 +2248,16 @@ int main(int argc, char* argv[])
 	//		interrupts, it needs to be loaded from config
 	degree_tracker = 0;
 	
-	// why is this here? commented out 10/30 - gs
-    // std::shared_ptr<std::thread> th = std::shared_ptr<std::thread>();
-
-	// why is this here? it seems to do nothing?? prints "./multicamcui" and " " ?????? 10/30 - gs
-	// Get the path of the root directory
-	fs::path executablePath(argv[0]);
-	fs::path projectDir = executablePath.parent_path().parent_path().parent_path();
+	// use "fs::canonical" to get the moad directory FROM THE MultiCamCui EXECUTABLE
+	//	this is meant to avoid direct pathing and get the config from the moad_cui directory
+	// NOTE: this is a global variable...
+	moad_dir = fs::canonical(argv[0]).parent_path().parent_path();
 
 	// Load the JSON Config file
-	json_path = projectDir.string() + "moad_config.json";
-
-
+	// NOTE: this a global variable...
+	json_path = (moad_dir + PATH_SEP + "config" + PATH_SEP + "moad_config.json");
 
 	loadJsonConfig(json_path);
-
-
-
-
-
 
 	ConfigHandler& config = ConfigHandler::getInstance();
 
@@ -2380,16 +2311,24 @@ int main(int argc, char* argv[])
 	// char com_port[] = "\\\\.\\COMX";
 	// com_port[7] = config.getValue<std::string>("serial_com_port").at(0);
 
+
 	// LINUX VERSION
-	char com_port[] = "/dev/ttyACM0";
+	std::string com_port;
+	if(OS_LINUX) {
+		com_port = config.getValue<std::string>("serial_com_port");
+	} else {
+		std::cout << "not on linux naming scheme, serial port connection falure...\n";
+	}
+
 	typedef unsigned long DWORD;
 	DWORD COM_BAUD_RATE = B9600;
 
-	Serial = new SimpleSerial(com_port, COM_BAUD_RATE);
+	Serial = new SimpleSerial(com_port.c_str(), COM_BAUD_RATE); // input must be c string
+
 	if(Serial->connected_) {
 		std::cout << "\033[1;40m" << "serial port connected via " << com_port << "\033[0m\n"; // todo: macros for cli coloring
 	} else {
-		std::cout << "\033[1;31m" << "ERROR in port connection via " << com_port << "\033[0m\n"; // todo: macros for cli coloring
+		std::cout << "\033[1;31m" << "ERROR in port connection, turntable will likely not work. Port received in config: " << com_port << "\033[0m\n"; // todo: macros for cli coloring
 
 	}
 
@@ -2415,10 +2354,9 @@ int main(int argc, char* argv[])
 
 
 
+	
 
 
-
-	// shouldnt be hardcoded with "/"
 	//  apparently scan_folder gets set somewhere before this?
 	std::string debug_log_dir = scan_folder + PATH_SEP + "debug_log.txt";
 	std::cout << debug_log_dir << std::endl;
