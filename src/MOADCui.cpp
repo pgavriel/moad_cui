@@ -32,25 +32,17 @@
 #include "PressShutter.h"
 #include "Property.h"
 #include "TakePicture.h"
-// #include "SimpleSerial.h"
-#include "SimpleSerial.h"
+
+#include "SimpleSerial.h" // TODO: this MIGHT try pointing to windows version header file but only in VSCODE?
 #include "CameraException.h"
 
-// #define CAMERA_1 "352074022019"
-// #define CAMERA_2 "352074022024"
-// #define CAMERA_3 "352074022025"
-// #define CAMERA_4 "602075011474" // "352074022005" // old cam (shutter broke)
-// #define CAMERA_5 "602075011361" // "352074022021" // old cam (shutter broke again)
 
-
-// MACRO for cross platform file seperator
-// THIS SHOULD BE CHANGED TO USE std::filesystem (i think)
-// 	the reason I am NOT doing this as of 10/30/2025 is because a lot of the paths in here are
-//	hardcoded and built as strings in-function. id prefer to centralize, restructure and 
-//	clean before implementing new libraries
-//
-// example usage: std::string debug_log_dir = scan_folder + PATH_SEP + "debug_log.txt";
-
+// MACRO for cross platform file seperator:
+// 	TODO: use std::filesystem that auto handles cross platform? 
+// 	the reason I am NOT doing this as of 10/30/2025:
+//		- many paths are hardcoded and built at runtime via string concats
+//		- i prefer 1 less library to have to worry about and update
+//	example usage: std::string debug_log_dir = scan_folder + PATH_SEP + "debug_log.txt";
 #ifdef _WIN32
 	const char PATH_SEP = '\\';
 #else
@@ -58,12 +50,10 @@
 	const bool OS_LINUX = true;
 #endif
 
-
 using namespace std::chrono_literals;
 namespace fs = std::filesystem;
-using ordered_json = nlohmann::ordered_json; // remove aliasing, was just for quick testing
-using std::cout;
-using std::endl;
+using ordered_json = nlohmann::ordered_json; // TODO: remove aliasing?
+
 
 std::string control_number = "";
 char curr_pose = 'a';
@@ -420,11 +410,11 @@ int create_folder(std::string path, bool quiet = false) {
         if (fs::create_directories(path)) {
              std::cout << "\033[1;33m" << "Folder created: " << path << "\033[0m\n";
         } else {
-            std::cerr << "Failed to create folder: " << path << endl;
+            std::cerr << "Failed to create folder: " << path << std::endl;
             return 1;
         }
     } else { 
-		cout << "\033[1;33m" << "WARNING!: Folder already exists: " << path << endl
+		std::cout << "\033[1;33m" << "WARNING!: Folder already exists: " << path << std::endl
 			<< "\tYou may accidentally overwrite data.\n" << "\033[0m\n";
     }
 	return 0;
@@ -570,7 +560,7 @@ bool scan(ThreadPool* pool = nullptr) {
 		DebugUtils::logDebug("RealSense frame captured successfully.");
 
 		if (rshandle.fail_count > 0) {
-			cout << "RS Failure - " << rshandle.fail_count << endl;
+			std::cout << "RS Failure - " << rshandle.fail_count << std::endl;
 			DebugUtils::logError("RealSense failed to get frames.");
 			return false; // Return false if RealSense failed to get frames
 		}
@@ -585,7 +575,7 @@ bool scan(ThreadPool* pool = nullptr) {
 
 		create_folder(canonhandle.save_dir,true);
 	
-		cout << "Getting DSLR Data...\n";
+		std::cout << "Getting DSLR Data...\n";
 		DebugUtils::logDebug("Getting DSLR Data...");
 		canonhandle.turntable_position = degree_tracker;
 
@@ -691,7 +681,7 @@ bool scan(ThreadPool* pool = nullptr) {
 		// 	c++;
 
 		// }
-		// cout << "DSLR Timeout Count: " << c << "/" << dslr_timeout << endl;
+		// cout << "DSLR Timeout Count: " << c << "/" << dslr_timeout << std::endl;
 		// DebugUtils::logSaveLoop("image save loop DSLR timeout count: " + std::to_string(c) + "/" + std::to_string(dslr_timeout));
 
 		// // check if same number of images were downloaded as their are cameras
@@ -739,12 +729,12 @@ void rotate_turntable(int degree_inc) {
 
 
 		// int wait_time = std::ceil(((abs(degree_inc)*200)+500)/1000) + 5; // faster????
-		int wait_time = 5;
-		cout << "Message sent, moving: " << degree_inc << " degrees, waiting up to " << wait_time << " seconds.\n";
+		int wait_time = 3; // 2 is probably fastest/safest
+		std::cout << "Message sent, moving: " << degree_inc << " degrees, waiting up to " << wait_time << " seconds.\n";
 		
 		
 		std::string incoming = Serial->ReadSerialPort(wait_time, "json");
-		cout << "Incoming: " << incoming;// << endl;
+		std::cout << "Incoming: " << incoming;// << std::endl;
 		
 		// DebugUtils::logTurntable("Message sent, moving: " + std::to_string(degree_inc) + " degrees, waiting up to " + std::to_string(wait_time) + " seconds.");
 		// std::this_thread::sleep_for(250ms);
@@ -753,7 +743,7 @@ void rotate_turntable(int degree_inc) {
 		// std::this_thread::sleep_for(std::chrono::milliseconds(turntable_delay_ms));
 
 	} else {
-		cout << "WARNING: Serial command not sent, something went wrong.\n";
+		std::cout << "WARNING: Serial command not sent, something went wrong.\n";
 		DebugUtils::logTurntable("WARNING: Serial command not sent, something went wrong.");
 	}
 }
@@ -900,7 +890,7 @@ bool fullScan() {
 
 		write_degree_move_to_moadfig(degree_tracker, rots + 1);
 		
-		cout << "Image " << rots+1 << "/" << num_moves << " taken. " << endl;
+		std::cout << "Image " << rots+1 << "/" << num_moves << " taken. " << std::endl;
 		DebugUtils::logDebug("Image " + std::to_string(rots + 1) + "/" + std::to_string(num_moves) + " taken.");
 	}
 
@@ -912,9 +902,9 @@ bool fullScan() {
 	// Convert the duration to minutes, seconds, and milliseconds
 	int minutes = duration.count() / 60000;
 	int seconds = (duration.count() % 60000) / 1000;
-	cout << "Scan Time: " << std::setfill('0') << std::setw(2) << minutes << ":" 
-	<< std::setfill('0') << std::setw(2) << seconds << endl;
-	cout << "RS Fail Count: " << rshandle.fail_count << endl;
+	std::cout << "Scan Time: " << std::setfill('0') << std::setw(2) << minutes << ":" 
+	<< std::setfill('0') << std::setw(2) << seconds << std::endl;
+	std::cout << "RS Fail Count: " << rshandle.fail_count << std::endl;
 
 	DebugUtils::logDebug("Scan Time: " + std::to_string(duration.count()) + " ms");
 	DebugUtils::logDebug("RS Fail Count: " + std::to_string(rshandle.fail_count));
@@ -976,9 +966,9 @@ bool customScan() {
 	int num_moves = 0;
 
 	// Ask for the user to input the degree increment and number of moves
-	cout << "Enter degrees per move: ";
+	std::cout << "Enter degrees per move: ";
 	std::cin >> degree_inc;
-	cout << "Enter number of moves: ";
+	std::cout << "Enter number of moves: ";
 	std::cin >> num_moves;
 	
 	DebugUtils::logDebug("Custom scan with degree increment: " + std::to_string(degree_inc) + 
@@ -1009,7 +999,7 @@ bool customScan() {
 		
 		// Update the degree tracker 
 		degree_tracker += degree_inc;
-		cout << "Image " << rots+1 << "/" << num_moves << " taken. " << endl;
+		std::cout << "Image " << rots+1 << "/" << num_moves << " taken. " << std::endl;
 		DebugUtils::logDebug("Image " + std::to_string(rots + 1) + "/" + std::to_string(num_moves) + " taken.");
 	}
 	// Stop the loop timer
@@ -1019,9 +1009,9 @@ bool customScan() {
 	// Convert the duration to minutes, seconds, and milliseconds
 	int minutes = duration.count() / 60000;
 	int seconds = (duration.count() % 60000) / 1000;
-	cout << "Scan Time: " << std::setfill('0') << std::setw(2) << minutes << ":" 
-		<< std::setfill('0') << std::setw(2) << seconds << endl;
-	cout << "RS Fail Count: " << rshandle.fail_count << endl;
+	std::cout << "Scan Time: " << std::setfill('0') << std::setw(2) << minutes << ":" 
+		<< std::setfill('0') << std::setw(2) << seconds << std::endl;
+	std::cout << "RS Fail Count: " << rshandle.fail_count << std::endl;
 	std::this_thread::sleep_for(3000ms);
 
 	DebugUtils::logDebug("Scan Time: " + std::to_string(duration.count()) + " ms");
@@ -1204,9 +1194,9 @@ bool scanFromSaveState() {
 	// Convert the duration to minutes, seconds, and milliseconds
 	int minutes = duration.count() / 60000;
 	int seconds = (duration.count() % 60000) / 1000;
-	cout << "Scan Time: " << std::setfill('0') << std::setw(2) << minutes << ":" 
-		<< std::setfill('0') << std::setw(2) << seconds << endl;
-	cout << "RS Fail Count: " << rshandle.fail_count << endl;
+	std::cout << "Scan Time: " << std::setfill('0') << std::setw(2) << minutes << ":" 
+		<< std::setfill('0') << std::setw(2) << seconds << std::endl;
+	std::cout << "RS Fail Count: " << rshandle.fail_count << std::endl;
 	std::this_thread::sleep_for(3000ms);
 
 	DebugUtils::logDebug("Scan Time: " + std::to_string(duration.count()) + " ms");
@@ -1337,7 +1327,7 @@ bool setObjectName() {
 	
 	// Prompt for object name 
 	std::string object_name_input;
-	cout << "\n\nEnter Object Name: ";
+	std::cout << "\n\nEnter Object Name: ";
 	std::cin >> object_name_input;
 
 	// Set the object name using the given input
@@ -1414,8 +1404,8 @@ bool setTV() {
 		_getCurrCameraValue(value_arr);
 		
 		std::cout << "WARNING: The modification will be applied to all cameras" << std::endl;
-		cout << "input no. (ex. 54 = 1/250)" << endl;
-		cout << ">";
+		std::cout << "input no. (ex. 54 = 1/250)" << std::endl;
+		std::cout << ">";
 		
 		// Get user input for the new value
 		canonhandle.data = getvalue();
@@ -1435,8 +1425,8 @@ bool setTV() {
 		
 		std::cout << "Modifing " << camera_name[activeCamera] << std::endl;
 		std::cout << "Current Value: " << value << std::endl;
-		cout << "input no. (ex. 54 = 1/250)" << endl;
-		cout << ">";
+		std::cout << "input no. (ex. 54 = 1/250)" << std::endl;
+		std::cout << ">";
 		
 		// Get user input for the new value
 		canonhandle.data = getvalue();
@@ -1464,8 +1454,8 @@ bool setAV() {
 		_getCurrCameraValue(value_arr);
 		
 		std::cout << "WARNING: The modification will be applied to all cameras" << std::endl;
-		cout << "input Av (ex. 21 = 5.6)" << endl;
-		cout << ">";
+		std::cout << "input Av (ex. 21 = 5.6)" << std::endl;
+		std::cout << ">";
 		
 		// Get user input for the new value
 		canonhandle.data = getvalue();
@@ -1488,8 +1478,8 @@ bool setAV() {
 
 		std::cout << "Modifing " << camera_name[activeCamera] << std::endl;
 		std::cout << "Current Value: " << value << std::endl;
-		cout << "input Av (ex. 21 = 5.6)" << endl;
-		cout << ">";
+		std::cout << "input Av (ex. 21 = 5.6)" << std::endl;
+		std::cout << ">";
 
 		// Get user input for the new value
 		canonhandle.data = getvalue();
@@ -1517,7 +1507,7 @@ bool setISO() {
 		_getCurrCameraValue(value_arr);
 
 		std::cout << "WARNING: The modification will be applied to all cameras" << std::endl;
-		cout << "input ISOSpeed > ";
+		std::cout << "input ISOSpeed > ";
 
 		// Get user input for the new value
 		canonhandle.data = getvalue();
@@ -1539,8 +1529,8 @@ bool setISO() {
 		
 		std::cout << "Modifing " << camera_name[activeCamera] << std::endl;
 		std::cout << "Current Value: " << value << std::endl;
-		cout << "input ISOSpeed (ex. 8 = ISO 200)" << endl;
-		cout << ">";
+		std::cout << "input ISOSpeed (ex. 8 = ISO 200)" << std::endl;
+		std::cout << ">";
 
 		// Get user input for the new value
 		canonhandle.data = getvalue();
@@ -1567,8 +1557,8 @@ bool setWhiteBalance() {
 		_getCurrCameraValue(value_arr);
 
 		std::cout << "WARNING: The modification will be applied to all cameras" << std::endl;
-		cout << "input WhiteBalance (ex. 0 = Auto)" << endl;
-		cout << ">";
+		std::cout << "input WhiteBalance (ex. 0 = Auto)" << std::endl;
+		std::cout << ">";
 		
 		// Get user input for the new value
 		canonhandle.data = getvalue();
@@ -1590,8 +1580,8 @@ bool setWhiteBalance() {
 		
 		std::cout << "Modifing " << camera_name[activeCamera] << std::endl;
 		std::cout << "Current Value: " << value << std::endl;
-		cout << "input WhiteBalance (ex. 0 = Auto)" << endl;
-		cout << ">";
+		std::cout << "input WhiteBalance (ex. 0 = Auto)" << std::endl;
+		std::cout << ">";
 		
 		// Get user input for the new value
 		canonhandle.data = getvalue();
@@ -1617,8 +1607,8 @@ bool setDriveMode() {
 		// Display the current camera value
 		_getCurrCameraValue(value_arr);
 		std::cout << "WARNING: The modification will be applied to all cameras" << std::endl;
-		cout << "input Drive Mode (ex. 0 = Single shooting)" << endl;
-		cout << ">";
+		std::cout << "input Drive Mode (ex. 0 = Single shooting)" << std::endl;
+		std::cout << ">";
 		
 		// Get user input for the new value
 		canonhandle.data = getvalue();
@@ -1640,8 +1630,8 @@ bool setDriveMode() {
 		
 		std::cout << "Modifing " << camera_name[activeCamera] << std::endl;
 		std::cout << "Current Value: " << value << std::endl;
-		cout << "input Drive Mode (ex. 0 = Single shooting)" << endl;
-		cout << ">";
+		std::cout << "input Drive Mode (ex. 0 = Single shooting)" << std::endl;
+		std::cout << ">";
 		
 		// Get user input for the new value
 		canonhandle.data = getvalue();
@@ -1785,11 +1775,11 @@ bool liveViewMenu() {
 }
 
 bool turntableControl() {
-	cout << "\n\n\nTURNTABLE CONTROL\n\n";
+	std::cout << "\n\n\nTURNTABLE CONTROL\n\n";
 	std::string degree_inc;
 	while(degree_inc != "r"){
 		// Prompt for degrees to move
-		cout << "Enter degrees to move (r = Return): ";
+		std::cout << "Enter degrees to move (r = Return): ";
 		std::cin >> degree_inc;
 
 		// Check if the input is "r" to return
@@ -1804,11 +1794,11 @@ bool turntableControl() {
 		if (is_sent) {
 			// Calculate wait time based on the degree increment
 			int wait_time = std::ceil(((abs(stoi(degree_inc))*200)+500)/1000)+5;
-			cout << "Message sent, waiting up to " << wait_time << " seconds.\n";
+			std::cout << "Message sent, waiting up to " << wait_time << " seconds.\n";
 			
 			// Check if the message matched the expected format
 			std::string incoming = Serial->ReadSerialPort(wait_time, "json");
-			cout << "Incoming: " << incoming;
+			std::cout << "Incoming: " << incoming;
 		} 
 
 		// Update degree tracker
@@ -1824,7 +1814,7 @@ bool turntableControl() {
 
 bool turntablePosition() {
 	// Prompt for the turntable position
-	cout << "\n\nEnter Turntable Position: ";
+	std::cout << "\n\nEnter Turntable Position: ";
 	std::cin >> degree_tracker;
 
 	// Update the turntable position
@@ -1920,12 +1910,12 @@ void initializeRealsense() {
 		DebugUtils::logRS("Getting frames...");
 
 	
-		rshandle.initialize();
+		rshandle.initialize(json_path);
 		rshandle.get_frames(10); // make 30 later
 		// rshandle.get_current_frame();
 
 	} else {
-		cout << "\nSkipping RealSense setup, 'collect_rs=0'.\n";
+		std::cout << "\nSkipping RealSense setup, 'collect_rs=0'.\n";
 	}
 }
 
@@ -2006,7 +1996,7 @@ void initializeCanon() {
 			index++;
 		}
 	} else {
-		cout << "\nSkipping DSLR setup, 'collect_dslr=0'." << "\033[0m" << std::endl;
+		std::cout << "\nSkipping DSLR setup, 'collect_dslr=0'." << "\033[0m" << std::endl;
 	}
 
 }
