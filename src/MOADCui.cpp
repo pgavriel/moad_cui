@@ -54,12 +54,16 @@ using namespace std::chrono_literals;
 namespace fs = std::filesystem;
 using ordered_json = nlohmann::ordered_json; // TODO: remove aliasing?
 
+// global variables.
+//	TODO: remove.
 
+// used in CheckKey()
 std::string control_number = "";
-char curr_pose = 'a';
 bool keyflag;
-int degree_tracker = 0;
 
+// used in multiple functions, should maybe be *directly* config based?
+char curr_pose = 'a';
+int degree_tracker = 0;
 std::string scan_folder;
 
 // Liveview Threads
@@ -99,13 +103,12 @@ void rotate_turntable(int degree_inc);
 //	   TODO: make file path configurable
 bool run_filecount_check();
 
-int create_folder(std::string path, bool quiet = false);
+int create_folder(std::string path, bool quiet);
+
 
 
 // functions for writing to config.json:
-//   TODO: double check, might need to use current config instance
-//   		probably not though, these should use the instance at the time the functions
-//   		are called
+//   TODO: can be one function? deterministic on args?
 //	 NOTE: REWRITES the config each time, though should only change 1 value each call
 
 void write_obj_to_moadfig(std::string object_name);
@@ -400,7 +403,7 @@ EdsInt32 getvalue()
 // definition
 // takes string of path and bool for printout statements
 // also checks if path already exists before attempting to create
-int create_folder(std::string path, bool quiet = false) {
+int create_folder(std::string path, bool quiet=false) {
 
 	// yellow colored text to notify of folder creations:
     std::cout << "\033[1;33m" << "creating folder: " << path << "\033[0m" << std::endl;
@@ -432,14 +435,14 @@ void create_obj_info_json(std::string path) {
 		std::stringstream command_stream;
 		command_stream 
 			<< "python3 " 
-			<< "../scripts/create_object_info.py "
+			<< "scripts/create_object_info.py "
 			<< object_name << " "
 			<< "-p " << path << " ";
 
 		// Execute command
 		std::string command = command_stream.str(); 
 		const char* c_command = command.c_str();
-		std::cout << "\nExecuting Command: " << command; 
+		// std::cout << "\nExecuting Command: " << command; 
 		system(c_command);
 	}
 	else {
@@ -647,10 +650,12 @@ bool scan(ThreadPool* pool = nullptr) {
 
 
 
-		EdsError err = EDS_ERR_OK;
+		
 
 		while(canonhandle.images_downloaded != canonhandle.cameras_found) {
+			EdsError err = EDS_ERR_OK;
 			err = EdsGetEvent(); // NOTE: this does not save the cmaeras, this just asks for current event
+			std::cout << err; // this line meant to prevent annoying unsed variable error
 			std::this_thread::sleep_for(100ms);
 			// std::cerr << "waiting: " << canonhandle.images_downloaded << "/" << canonhandle.cameras_found << " images downloaded" << std::endl;
 		}
@@ -717,7 +722,6 @@ bool scan(ThreadPool* pool = nullptr) {
 
 void rotate_turntable(int degree_inc) {
 
-	ConfigHandler& config = ConfigHandler::getInstance();
 	std::string degree_inc_str = std::to_string(degree_inc);
 
 	char *send = &degree_inc_str[0];
@@ -757,9 +761,9 @@ bool generateTransform(int degree_inc, int num_moves) {
 	// Collect parameters from config
 	bool force = config.getValue<bool>("transform_generator.force");
 	bool visualize = config.getValue<bool>("transform_generator.visualize");
-	std::string calibration_dir = config.getValue<std::string>("transform_generator.calibration_dir_windows");
+	std::string calibration_dir = config.getValue<std::string>("transform_generator.calibration_dir");
 	std::string calibration = config.getValue<std::string>("transform_generator.calibration_mode");
-	std::string output_dir = config.getValue<std::string>("transform_generator.dir_windows");
+	std::string output_dir = config.getValue<std::string>("output_dir");
 	std::string object_name = config.getValue<std::string>("object_name");
 
 	// Prepare command to execute scripts/transform_generator.py
@@ -767,7 +771,7 @@ bool generateTransform(int degree_inc, int num_moves) {
 	std::stringstream command_stream;
 	command_stream 
 		<< "python3 " 
-		<< "../scripts/transform_generator.py " // relative path
+		<< "scripts/transform_generator.py " // relative path
 		<< object_name << " "
 		<< "-d " << degree_inc << " "
 		<< "-r " << range << " "
@@ -1323,7 +1327,6 @@ void setObjectName(std::string object_name) {
 }
 
 bool setObjectName() {
-	ConfigHandler& config = ConfigHandler::getInstance();
 	
 	// Prompt for object name 
 	std::string object_name_input;
@@ -1408,8 +1411,10 @@ bool setTV() {
 		std::cout << ">";
 		
 		// Get user input for the new value
-		canonhandle.data = getvalue();
-		if (canonhandle.data != -1) {	
+		int validReceivedValue = getvalue(); // NOTE: this is lowercase because theres another function getValue()
+									 // 	i did not write this and am pretty annoyed. TODO: fix.
+		if (validReceivedValue != -1) {	
+			canonhandle.data = validReceivedValue;
 			// Set the new value for all cameras
 			SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Tv, canonhandle.data, out_table);
 		}
@@ -1429,8 +1434,10 @@ bool setTV() {
 		std::cout << ">";
 		
 		// Get user input for the new value
-		canonhandle.data = getvalue();
-		if (canonhandle.data != -1) {
+		int validReceivedValue = getvalue();
+
+		if (validReceivedValue != -1) {
+			canonhandle.data = static_cast<EdsUInt32>(validReceivedValue);
 			// Set the new value for the active camera
 			SetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_Tv, canonhandle.data, out_table);
 		}
@@ -1458,12 +1465,14 @@ bool setAV() {
 		std::cout << ">";
 		
 		// Get user input for the new value
-		canonhandle.data = getvalue();
-		if (canonhandle.data != -1) {
-			// Set the new value for all cameras
+		int validReceivedValue = getvalue();
+
+		if (validReceivedValue != -1) {
+			canonhandle.data = static_cast<EdsUInt32>(validReceivedValue);
+			// Set the new value for the active camera
 			SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_Av, canonhandle.data, out_table);
 		}
-	
+
 		return false;
 	}
 	else {
@@ -1481,12 +1490,16 @@ bool setAV() {
 		std::cout << "input Av (ex. 21 = 5.6)" << std::endl;
 		std::cout << ">";
 
+
 		// Get user input for the new value
-		canonhandle.data = getvalue();
-		if (canonhandle.data != -1) {
+		int validReceivedValue = getvalue();
+
+		if (validReceivedValue != -1) {
+			canonhandle.data = static_cast<EdsUInt32>(validReceivedValue);
 			// Set the new value for the active camera
 			SetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_Av, canonhandle.data, out_table);
 		}
+
 	
 		return false;
 	}
@@ -1509,13 +1522,17 @@ bool setISO() {
 		std::cout << "WARNING: The modification will be applied to all cameras" << std::endl;
 		std::cout << "input ISOSpeed > ";
 
+
 		// Get user input for the new value
-		canonhandle.data = getvalue();
-		if (canonhandle.data != -1) {
-			// Set the new value for all cameras
+		int validReceivedValue = getvalue();
+
+		if (validReceivedValue != -1) {
+			canonhandle.data = static_cast<EdsUInt32>(validReceivedValue);
+			// Set the new value for the active camera
 			err = SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_ISOSpeed, canonhandle.data, out_table);
+			std::cout << "setISO error: " << err << std::endl;
 		}
-		
+
 		return false;
 	}
 	else {
@@ -1532,13 +1549,17 @@ bool setISO() {
 		std::cout << "input ISOSpeed (ex. 8 = ISO 200)" << std::endl;
 		std::cout << ">";
 
+
 		// Get user input for the new value
-		canonhandle.data = getvalue();
-		if (canonhandle.data != -1) {
+		int validReceivedValue = getvalue();
+
+		if (validReceivedValue != -1) {
+			canonhandle.data = static_cast<EdsUInt32>(validReceivedValue);
 			// Set the new value for the active camera
 			SetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_ISOSpeed, canonhandle.data, out_table);
 		}
-		
+
+
 		return false;
 	}
 }
@@ -1560,13 +1581,17 @@ bool setWhiteBalance() {
 		std::cout << "input WhiteBalance (ex. 0 = Auto)" << std::endl;
 		std::cout << ">";
 		
+
 		// Get user input for the new value
-		canonhandle.data = getvalue();
-		if (canonhandle.data != -1)	{
-			// Set the new value for all cameras
+		int validReceivedValue = getvalue();
+
+		if (validReceivedValue != -1) {
+			canonhandle.data = static_cast<EdsUInt32>(validReceivedValue);
+			// Set the new value for the active camera
 			SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_WhiteBalance, canonhandle.data, out_table);
 		}
-		
+
+
 		return false;
 	}
 	else {
@@ -1583,12 +1608,18 @@ bool setWhiteBalance() {
 		std::cout << "input WhiteBalance (ex. 0 = Auto)" << std::endl;
 		std::cout << ">";
 		
+
+
 		// Get user input for the new value
-		canonhandle.data = getvalue();
-		if (canonhandle.data != -1)	{
+		int validReceivedValue = getvalue();
+
+		if (validReceivedValue != -1) {
+			canonhandle.data = static_cast<EdsUInt32>(validReceivedValue);
 			// Set the new value for the active camera
 			SetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_WhiteBalance, canonhandle.data, out_table);
 		}
+
+
 		
 		return false;
 	}
@@ -1610,12 +1641,17 @@ bool setDriveMode() {
 		std::cout << "input Drive Mode (ex. 0 = Single shooting)" << std::endl;
 		std::cout << ">";
 		
+
 		// Get user input for the new value
-		canonhandle.data = getvalue();
-		if (canonhandle.data != -1)	{
-			// Set the new value for all cameras
+		int validReceivedValue = getvalue();
+
+		if (validReceivedValue != -1) {
+			canonhandle.data = static_cast<EdsUInt32>(validReceivedValue);
+			// Set the new value for the active camera
 			SetProperty(canonhandle.cameraArray, canonhandle.bodyID, kEdsPropID_DriveMode, canonhandle.data, out_table);
 		}
+
+
 		
 		return false;
 	}
@@ -1633,13 +1669,18 @@ bool setDriveMode() {
 		std::cout << "input Drive Mode (ex. 0 = Single shooting)" << std::endl;
 		std::cout << ">";
 		
+
+
 		// Get user input for the new value
-		canonhandle.data = getvalue();
-		if (canonhandle.data != -1)	{
+		int validReceivedValue = getvalue();
+
+		if (validReceivedValue != -1) {
+			canonhandle.data = static_cast<EdsUInt32>(validReceivedValue);
 			// Set the new value for the active camera
 			SetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_DriveMode, canonhandle.data, out_table);
 		}
-		
+
+
 		return false;
 	}
 }
@@ -1798,7 +1839,7 @@ bool turntableControl() {
 			
 			// Check if the message matched the expected format
 			std::string incoming = Serial->ReadSerialPort(wait_time, "json");
-			std::cout << "Incoming: " << incoming;
+			std::cout << "Incoming: " << incoming << std::endl;
 		} 
 
 		// Update degree tracker
@@ -1956,8 +1997,17 @@ void initializeCanon() {
 		EdsError err;
 		int index = 1;
 		for (const auto& camera: canonhandle.cameraArray) {
+
+
+
 			// Fetch the serial number
 			err = EdsGetPropertyData(camera, kEdsPropID_BodyIDEx, 0, sizeof(serial), &serial);
+			if (err != 0)  {
+				std::cout << "canon initialization err: " << err << std::endl;
+			}
+
+
+
 			// Convert it into string
 			std::string serial_str = "";
 			for (size_t i = 0; i < sizeof(serial) - 1; i++){
@@ -2038,7 +2088,7 @@ bool run_filecount_check() {
 	std::stringstream command_stream;
 	command_stream 
 		<< "python3 "
-		<< "../scripts/filecount_test.py ";
+		<< "scripts/filecount_test.py ";
 		// << "--count "
 
 	if (config.getValue<bool>("filecount_testing.count") == true) {
