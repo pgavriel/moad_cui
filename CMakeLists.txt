@@ -9,7 +9,9 @@ project(MultiCamCui CXX)
 
 set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
 set(INC_DIR ${PROJECT_SOURCE_DIR}/include)
-set(SER_DIR ${PROJECT_SOURCE_DIR}/../simple_serial_port)
+
+
+set(SER_DIR ${PROJECT_SOURCE_DIR}/../simple_serial_port/linux)
 
 # commented out, these were for windows version, realsense library located with find_package() later in cmake - gs 11/12
 #  set(RS_INCLUDE_DIR "C:\\Program Files (x86)\\Intel RealSense SDK 2.0\\include") # folder where librealsense2 folder is found
@@ -22,6 +24,30 @@ if(NOT REALSENSE2_FOUND)
     message(WARN "Failed to find_library(realsense2)")
 endif()
 
+# Report where the realsense2 library and headers were found
+get_filename_component(REALSENSE2_LIB_DIR ${REALSENSE2_FOUND} DIRECTORY)
+
+message(STATUS "realsense2 library: ${REALSENSE2_FOUND}")
+message(STATUS "realsense2 library directory: ${REALSENSE2_LIB_DIR}")
+
+# Try to locate headers if not set
+find_path(REALSENSE2_INCLUDE_DIR
+    NAMES librealsense2/rs.hpp
+    HINTS ${RS_INCLUDE_DIR} /usr/include /usr/local/include /opt/librealsense/include
+    PATH_SUFFIXES librealsense2
+)
+
+if(REALSENSE2_INCLUDE_DIR)
+    message(STATUS "realsense2 include directory: ${REALSENSE2_INCLUDE_DIR}")
+    set(RS_INCLUDE_DIR ${REALSENSE2_INCLUDE_DIR} CACHE PATH "RealSense include directory" FORCE)
+else()
+    message(WARN "Could not locate librealsense2 headers (librealsense2/rs.hpp).")
+endif()
+
+# Expose library dir too
+if(REALSENSE2_LIB_DIR)
+    set(RS_LIBRARY_DIR ${REALSENSE2_LIB_DIR} CACHE PATH "RealSense library directory" FORCE)
+endif()
 # not needed in linux version
 #  set(OpenCV_DIR "C:/opencv/build")
 
@@ -103,7 +129,7 @@ target_include_directories(MultiCamCui
   )
 
   
-set(EDSDK_LDIR ${CMAKE_CURRENT_SOURCE_DIR}/../EDSDK_64)
+set(EDSDK_LDIR ${CMAKE_CURRENT_SOURCE_DIR}/../EDSDK) # removed _64
 
 if(MSVC)
     target_link_libraries(MultiCamCui
