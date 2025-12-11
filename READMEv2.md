@@ -16,17 +16,17 @@ sudo ./build/MultiCamCui
 
 ## Table of contents
 
-  * [Quick Start](##Quick-Start)
-  * [Pre-Requirements and Suggestions](##pre-requirements-and-suggestions)
-  * [Requirements](#Requirements)
-    * [Third Party Software](####Third-Party-Software)
-    * [System Libraries and Packages](####System-libraries-and-packages)
-  * [Json Config Setup](##Setting-up-the-JSON-Config)
-  * [Transform Matrices](##Transformation-Matrices)
-    * [Links to calibration tutorial docs](####Tutorial-Docs)
-  * [Build and Run](##Build-and-run-the-software)
-  * [Using the program](##Using-the-program)
-    * [Control Menu](###Control-Menu)
+  * [Quick Start](#quick-start)
+  * [Pre-Requirements and Suggestions](#pre-requirements-and-suggestions)
+  * [Requirements](#requirements)
+    * [Third Party Software](#third-party-software)
+    * [System Libraries and Packages](#system-libraries-and-packages)
+  * [Json Config Setup](#setting-up-the-json-config)
+  * [Transform Matrices](#transformation-matrices)
+    * [Links to calibration tutorial docs](#tutorial-docs)
+  * [Build and Run](#build-and-run-the-software)
+  * [Using the program](#using-the-program)
+    * [Control Menu](#control-menu)
 
 
 
@@ -126,7 +126,7 @@ Mount the DSLR and Realsense cameras in the desired configuration and plug them 
 
 In order to reduce the amount of rebuilding code during usage, an effort was made to paramaterize code using the text file `moad_config.json`, which allows the user to specify things like output directory, which data streams to collect, pointcloud filter options, COM port for motor control, delays, and timeouts.
 
-In-depth explanations for each config value is included in `config/config.md`. However, for starting up, I've included a few of the more important ones below:
+In-depth explanations for each config value is included in [config/config_options.md](config/config_options.md). However, for starting up, I've included a few of the more important ones below:
 
 - `dslr.camera_ids.{CAMERA_1 ... CAMERA_5}`: these are the camera serial ID numbers found on the bottom label of the physical device itself. You must enter them manually. They are deterministically renamed and reordered at runtime so Camera 5 might become "cam3" in the command line printouts. For our rig, <u>we set CAMERA_5 to be directly over the object on the vertical axis and CAMERA_1 as the camera closest to side-on view (horizontal axis).</u>
 
