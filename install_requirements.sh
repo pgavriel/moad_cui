@@ -13,7 +13,13 @@
 #     ├── linux/
 #     ...
 
+# note that this might move you outside of moad_cui or into the librealsense directory
+
 echo "Installing required system libraries/packages..."
+
+
+
+
 
 # realsense sdk
 echo "--RealSense SDK--"
@@ -22,16 +28,20 @@ echo "from https://github.com/realsenseai/librealsense/blob/master/doc/installat
 # must clone librealsense2 and run, moving out a directory assuming above directory structure
 cd ..
 
+apt-get update && apt-get upgrade
 
-sudo apt-get update && sudo apt-get upgrade
+apt-get install libssl-dev libusb-1.0-0-dev libudev-dev pkg-config libgtk-3-dev
 
-sudo apt-get install libssl-dev libusb-1.0-0-dev libudev-dev pkg-config libgtk-3-dev
+apt-get install git wget cmake build-essential
 
-sudo apt-get install git wget cmake build-essential
-
-sudo apt-get install libglfw3-dev libgl1-mesa-dev libglu1-mesa-dev at
+apt-get install libglfw3-dev libgl1-mesa-dev libglu1-mesa-dev at
 
 git clone https://github.com/realsenseai/librealsense.git
+
+# possible error running next librealsense script, pre-installing v4l-utils should prevent this
+#   info from if-statement inside setup_udev_rules.sh at 
+#   https://github.com/realsenseai/librealsense/blob/master/scripts/setup_udev_rules.sh
+apt install v4l-utils
 
 cd librealsense
 ./scripts/setup_udev_rules.sh
@@ -40,4 +50,27 @@ mkdir build && cd build
 
 cmake ../
 
-sudo make uninstall && make clean && make && sudo make install
+make uninstall && make clean && make && make install
+
+
+
+
+# opencv
+echo "--OpenCV--"
+
+# make sure pip is installed
+apt install python3-pip  
+
+pip install opencv-python
+
+
+
+# pcl
+echo "--OpenCV--"
+
+apt install libpcl-dev
+
+
+# nlohmann
+# cmakelists autofinds package from github
+
