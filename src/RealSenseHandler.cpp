@@ -91,7 +91,7 @@ void RealSenseHandler::initialize(std::string config_path) {
     std::cout << "\033[1;46m" << "Initializing RealSense Handler..." << "\033[0m\n";
     std::cout << "\033[1;46m" << "Searching for rs_info in " + config_path << "\033[0m\n"; 
 
-    ConfigHandler& config = ConfigHandler::getInstance();
+    // ConfigHandler& config = ConfigHandler::getInstance();
 
     // Get Realsense camera transforms from JSON file
     nlohmann::json realsense_json;
@@ -107,11 +107,11 @@ void RealSenseHandler::initialize(std::string config_path) {
         auto &rs_root = realsense_json["realsense"];
         if (rs_root.contains("rs_info") && rs_root["rs_info"].is_object()) {
             realsense_json = rs_root["rs_info"];
-            std::cout << "Using nested 'realsense.rs_info' object from JSON.\n";
+            // std::cout << "Using nested 'realsense.rs_info' object from JSON.\n";
         } else {
             // Fallback to older structure realsense->{ "rs1":..., ... }
             realsense_json = rs_root;
-            std::cout << "Using nested 'realsense' object from JSON (no rs_info child).\n";
+            // std::cout << "Using nested 'realsense' object from JSON (no rs_info child).\n";
         }
     }
     else {
@@ -143,7 +143,7 @@ void RealSenseHandler::initialize(std::string config_path) {
         const std::string id = it.key(); // will be "rs1/2/3 ..."
         const auto &val = it.value(); // used for iterating "serial" and "transform_matrix"
 
-        std::cout << "id " << id << std::endl;
+        // std::cout << "id " << id << std::endl;
 
         // read serial, should be string but checks incase not
         std::string serial;
@@ -201,23 +201,23 @@ void RealSenseHandler::initialize(std::string config_path) {
         std::cout << "----\n";
     }
 
-    std::cout << "\033[1;46m" << "Serial -> id (camera_names) map:" << "\033[0m\n";
-    for (const auto& p : camera_names) {
-        std::cout << "  \"" << p.first << "\" -> \"" << p.second << "\"\n";
-    }
+    // std::cout << "\033[1;46m" << "Serial -> id (camera_names) map:" << "\033[0m\n";
+    // for (const auto& p : camera_names) {
+    //     std::cout << "  \"" << p.first << "\" -> \"" << p.second << "\"\n";
+    // }
 
-    std::cout << "\033[1;46m" << "camera_transforms (by serial):" << "\033[0m\n";
-    for (const auto& p : camera_transforms) {
-        std::cout << "Serial: " << p.first << "\n";
-        const auto& mat = p.second;
-        for (int r = 0; r < 4; ++r) {
-            for (int c = 0; c < 4; ++c) {
-                std::cout << std::setw(10) << std::fixed << std::setprecision(4) << mat(r, c) << " ";
-            }
-            std::cout << "\n";
-        }
-        std::cout << "----\n";
-    }
+    // std::cout << "\033[1;46m" << "camera_transforms (by serial):" << "\033[0m\n";
+    // for (const auto& p : camera_transforms) {
+    //     std::cout << "Serial: " << p.first << "\n";
+    //     const auto& mat = p.second;
+    //     for (int r = 0; r < 4; ++r) {
+    //         for (int c = 0; c < 4; ++c) {
+    //             std::cout << std::setw(10) << std::fixed << std::setprecision(4) << mat(r, c) << " ";
+    //         }
+    //         std::cout << "\n";
+    //     }
+    //     std::cout << "----\n";
+    // }
     
     // Check if the device is returning frames
     try {
@@ -227,6 +227,9 @@ void RealSenseHandler::initialize(std::string config_path) {
         std::cerr << "RealSense error calling " << e.get_failed_function() << "(" << e.get_failed_args() << "):\n " << e.what() << endl;
     }
 }
+
+
+
 
 
 // Checks for all connected realsense devices, starts a pipeline for each,
@@ -309,7 +312,9 @@ void RealSenseHandler::start_device(std::string serial_number) {
 
     // Start the stream
     auto r = pipe.start(cfg);
-    auto intr = r.get_stream(RS2_STREAM_DEPTH).as<rs2::video_stream_profile>().get_intrinsics();
+
+
+    // auto intr = r.get_stream(RS2_STREAM_DEPTH).as<rs2::video_stream_profile>().get_intrinsics();
     // TODO: add to verbose flagging
     // cout << "Depth Intrinsics: [" << intr.fx << ", " << intr.fy << ", " << intr.ppx << ", " << intr.ppy << ", " << intr.model << "]" << endl;
     // cout << "[" << camera_names[serial_number] << "][DEVICE STARTED]\n" << endl;
