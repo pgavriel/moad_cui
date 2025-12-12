@@ -14,7 +14,7 @@
         "safe_take_picture": false
     },
     "filecount_testing": {
-        "check_all": false,
+        "check_all": true,
         "check_single_object": true,
         "count": true,
         "create": true,
@@ -25,7 +25,7 @@
     "log_debug": true,
     "num_moves": 72,
     "object_name": "test32",
-    "output_dir": "/home/csrobot/data-mount/TESTING",
+    "output_dir": "home/csrobot/data-mount/TESTING",
     "prev_state": {
         "current_move": 72,
         "current_object": "",
@@ -70,20 +70,160 @@
         "normals_threads": 1,
         "raw_pointcloud": false,
         "realsense_timeout_sec": 9,
-        "transform_file": "transform.json",
-        "transform_path": "/home/csrobot/moad_cui_linux-port/moad_cui/calibration/realsense/"
+        "rs_info": {
+            "rs1": {
+                "serial": "215122257111",
+                "transform_matrix": [
+                    [
+                        0.999147,
+                        -0.038156,
+                        0.015767,
+                        -0.065587
+                    ],
+                    [
+                        -0.019141,
+                        -0.08974,
+                        0.995781,
+                        -0.768997
+                    ],
+                    [
+                        -0.03658,
+                        -0.995234,
+                        -0.090394,
+                        0.062987
+                    ],
+                    [
+                        0.0,
+                        0.0,
+                        0.0,
+                        1.0
+                    ]
+                ]
+            },
+            "rs2": {
+                "serial": "239222302632",
+                "transform_matrix": [
+                    [
+                        0.999973,
+                        0.006364,
+                        0.003667,
+                        -0.051927
+                    ],
+                    [
+                        -0.000289,
+                        -0.464743,
+                        0.885445,
+                        -0.729707
+                    ],
+                    [
+                        0.007339,
+                        -0.885423,
+                        -0.464729,
+                        0.378522
+                    ],
+                    [
+                        0.0,
+                        0.0,
+                        0.0,
+                        1.0
+                    ]
+                ]
+            },
+            "rs3": {
+                "serial": "213522251284",
+                "transform_matrix": [
+                    [
+                        0.998911,
+                        -0.042415,
+                        0.019426,
+                        -0.067072
+                    ],
+                    [
+                        -0.044301,
+                        -0.731919,
+                        0.67995,
+                        -0.585464
+                    ],
+                    [
+                        -0.014622,
+                        -0.68007,
+                        -0.733001,
+                        0.63901
+                    ],
+                    [
+                        0.0,
+                        0.0,
+                        0.0,
+                        1.0
+                    ]
+                ]
+            },
+            "rs4": {
+                "serial": "213622251144",
+                "transform_matrix": [
+                    [
+                        0.999262,
+                        -0.023629,
+                        0.030297,
+                        -0.069073
+                    ],
+                    [
+                        -0.031981,
+                        -0.948547,
+                        0.315016,
+                        -0.345242
+                    ],
+                    [
+                        0.021294,
+                        -0.315753,
+                        -0.948603,
+                        0.802384
+                    ],
+                    [
+                        0.0,
+                        0.0,
+                        0.0,
+                        1.0
+                    ]
+                ]
+            },
+            "rs5": {
+                "serial": "215122254603",
+                "transform_matrix": [
+                    [
+                        0.999434,
+                        -0.000964,
+                        0.03362,
+                        -0.075652
+                    ],
+                    [
+                        -0.000969,
+                        -1.0,
+                        0.000134,
+                        -0.046442
+                    ],
+                    [
+                        0.03362,
+                        -0.000167,
+                        -0.999435,
+                        0.857192
+                    ],
+                    [
+                        0.0,
+                        0.0,
+                        0.0,
+                        1.0
+                    ]
+                ]
+            }
+        }
     },
     "serial_com_port": "/dev/ttyACM0",
     "thread_num": 5,
     "transform_generator": {
-        "calibration_dir_linux": "home/csrobot/moad_cui_linux/moad_cui/calibration",
-        "calibration_dir_windows": "../calibration",
+        "calibration_dir": "../calibration",
         "calibration_mode": "55mm",
-        "degree_angle": 5,
-        "dir_linux": "home/csrobot/ns-data",
-        "dir_windows": "/home/csrobot/data-mount/TESTING",
         "force": true,
-        "scan_range": 360,
         "visualize": false
     },
     "turntable_delay_ms": 10000
