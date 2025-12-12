@@ -70,7 +70,7 @@ pip install opencv-python
 # pcl
 echo "--PCL--"
 
-sudo apt install libpcl-dev
+sudo apt -y install libpcl-dev
 
 
 # nlohmann
