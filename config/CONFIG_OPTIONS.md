@@ -32,7 +32,7 @@ ___
     
   `}`
     
-    => **This is where you should put the Canon camera serial numbers**. On the Canon EOS Rebel SL3 cameras, these are found on the bottom of the device itself as well as on the box. They consist of 12 digits. The software is also setup so that `CAMERA_5` refers to the camera directly above the center of the turntable and `CAMERA_1` refers to the camera closest to being on the same horizontal plane as the turntable. This naming is important because otherwise the OS would designate the mapping based on the order the devices were physically plugged in.
+    **This is where you should put the Canon camera serial numbers**. On the Canon EOS Rebel SL3 cameras, these are found on the bottom of the device itself as well as on the box. They consist of 12 digits. The software is also setup so that `CAMERA_5` refers to the camera directly above the center of the turntable and `CAMERA_1` refers to the camera closest to being on the same horizontal plane as the turntable. This naming is important because otherwise the OS would designate the mapping based on the order the devices were physically plugged in.
 
 
   - `"collect_dslr"` : `[true/false]` => Used for toggling whether or not to take DSLR images during any of the scans. Useful if you only needed realsense data for example.
@@ -61,8 +61,6 @@ ___
 
 - `"log_debug"` : `[true/false]` => Toggles detailed logging that gets saved into the file `debug_log.txt` which gets saved into the object folder. This log include things like the date and time of when the program runs as well as when it ends, and information during the scaning process similar to the outputs shown in the CLI. 
 
-*Note: this is incomplete, plans for this included showing thread usages during a scan. The global class `DebugUtils` exists in the codebase and is meant to be called similar to a `std::cout` wherever something needs to be logged, ex: `DebugUtils::logDebug("Current Object Name: " + object_info["Object Name"]);`*.
-
 - `"num_moves"` : `[integer, ex=72]` => Refers to the number of steps that occur during a scan. Should be considered when changing the `degree_inc` field. Ex: for a full 360 degree scan with a degree increment of `5`, the number of moves should be set to `72`. In other words, *"Move the turntable `5` degrees for `72` steps for a total of `5 * 72 = 360` degrees during a scan."*
 
 - `object_name` : `[string, name of object to scan ex="atb3_thin-cable-mount"]` This name will be used to create a folder inside the given `output_dir` to store all the scan data. (Inside will be pose and DSLR folders).
@@ -70,15 +68,17 @@ ___
 - `"output_dir"` : `[string, directory path ex="home/uml_nerve/data-mount/ALL_ITEMS"]"` => Location where object *folders* will be stored. Recommended setup is something like `../ALL_ITEMS/atb1_timing-belt/pose-a...`
 
 
-**[State Saving]**: The following field covers information changed at each step of a scan that are useful if something fails partway through (for example, mechanical shutter failure on the DSLR cameras). If "Scan from Save State" option is selected within the Control Menu option, these subfields will be read and used to run a scan starting at the *previous state* meaning whatever current data that was taken at this step in the process will be overwritten with new data of the exact same locations/rotation of the turntable before moving to the next step. Workflow example: 
+**[State Saving]**: The following field covers information changed at each step of a scan that are useful if something fails partway through (for example, mechanical shutter failure on the DSLR cameras). If "Scan from Save State" option is selected within the Control Menu option, these subfields will be read and used to run a scan starting at the *previous state* meaning whatever current data that was taken at this step in the process will be overwritten with new data of the exact same locations/rotation of the turntable before moving to the next step. 
+
+Workflow example: 
 ```text
-  [scanning on move `44/72`]
+  [scanning on move 44/72]
   > DSLR camera breaks
   > user closes program and fixes camera
   > user restarts software
   > user selects "scan from save state" 
-  [scanning on move `44/72`]
-  [scanning on move `45/72`] 
+  [scanning on move 44/72]
+  [scanning on move 45/72] 
   ...
 ```
 
@@ -111,7 +111,7 @@ ___
       - `k` : `[integer, ex=6]`
       - `stddev` : `[integer, ex=1]`
 
-    `}`
+      `}`
     <br>
 
     Deprecated, meant for downsampling points with their centroid. [<https://pointclouds.org/documentation/classpcl_1_1_voxel_grid.html#details>]
@@ -120,7 +120,7 @@ ___
       - `apply` : `[true/false]`
       - `leaf_size` : `[floating point, ex=0.01]`
 
-    `}`
+      `}`
     <br>
 
     The following filters control cropping of the pointcloud along their respective axes. If misalignment occurs, whether due to the cameras phyisically moving or if possible transformation matrix inaccuracy, the Realsense library might spit out errors that cause the program to crash. To check this, enable `raw_pointcloud`.
@@ -129,9 +129,9 @@ ___
       - `max` : `[floating point, ex=0.3]`
       - `min` : `[floating point, ex=-0.3]`
 
-    `}`
+      `}`
 
-  `}`
+    `}`
 
 
 
@@ -147,11 +147,11 @@ ___
       - `serial` : `[string, 12 digits]`
       - `transform_matrix` : `[4 lists of 4 floating point values, creates a 4x4 matrix]`
 
+      `}`
+
     `}`
 
   `}`
-
-`}`
 
 <br>
 <br>
