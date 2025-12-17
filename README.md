@@ -3,7 +3,7 @@
 #### Official MOAD Website: [<https://www.robot-manipulation.org/nist-moad>]
 
 ## Quick Start
-1. Clone this repo and simple_serial_port into a folder with EDSDK from Canon's website
+1. Clone this repo and simple_serial_port into a folder with EDSDK (For Linux v13.19.10) from Canon's website
 2. Run bash script to auto-install packages.
 3. Configure moad_config.json
 4. Run:
@@ -54,7 +54,7 @@ The CMake file is setup for this structure.
 ## Requirements:
 
 #### This repo
-Latest code is in branch `dev-linux`. Navigate into overall project folder and run:
+Latest code is in branch `dev-linux`. Navigate into overall project folder (in the above directory tree, this is named `moadrig_NERVE_location/` as an example) and run:
 ```
 git clone -b dev-linux https://github.com/pgavriel/moad_cui.git
 ```
@@ -75,18 +75,19 @@ Install instructions found here: [<https://developercommunity.usa.canon.com/s/ar
 9. Click "`---->  Canon Developer Community Downloads  <---`" again.
 10. Click "`EOS & POWERSHOT CAMERAS`" and "`EDSDK FOR LINUX`" again.
 11. As of 12/9/25, the moadrig uses "`EDSDK v13.19.10 for Linux"`. Download by clicking on this version.
-12. Extract wherever, but make sure the repo structure matches the above visual, where `EDSDK/` has direct `Header` and `Library` subdirectories.
+12. Extract into the overall project directory, make sure the repo structure matches the above visual, where `EDSDK/` has direct `Header` and `Library` subdirectories.
 
 
 
 - **`simple_serial_port`:**
 
 Original repo is from  [<https://github.com/dmicha16/simple_serial_port>] though it was made for windows. I have added a linux-capable version in a forked repo at [<https://github.com/grahamstelzer/simple_serial_port.git>].
-1. `cd` into the moadrig project repo (in the above directory tree, this is named `moadrig_NERVE_location/`)
+1. `cd` into the overall project folder if you are not already there
 2. run:
 ```
 git clone https://github.com/grahamstelzer/simple_serial_port.git
 ```
+*(note: the installation script in the next step will also attempt these two steps if the user allows it)*
 
 <br>
 
@@ -120,7 +121,7 @@ However, for the more skeptical and cautious individuals that like to make life 
 
 ## Ok now plug the cameras in...
 
-...but make sure to write down their serial numbers first.
+...but make sure to write down their serial numbers first. These are found all the cameras themselves OR on their packaging. They consist of 12 numbers. They need to be placed in the moad_config.json file BUT INSTRUCTIONS FOR THIS ARE INCLUDED IN THE NEXT STEP AND IN [config/CONFIG_OPTIONS.md](config/CONFIG_OPTIONS.md).
 
 Mount the DSLR and Realsense cameras in the desired configuration and plug them into the PC.
 
@@ -140,9 +141,9 @@ In order to reduce the amount of rebuilding code during usage, an effort was mad
 
 In-depth explanations for each config value is included in [config/CONFIG_OPTIONS.md](config/CONFIG_OPTIONS.md). However, for starting up, I've included a few of the more important ones below:
 
-- `dslr.camera_ids.{CAMERA_1 ... CAMERA_5}`: these are the camera serial ID numbers found on the bottom label of the physical device itself. You must enter them manually. They are deterministically renamed and reordered at runtime so Camera 5 might become "cam3" in the command line printouts. For our rig, <u>we set CAMERA_5 to be directly over the object on the vertical axis and CAMERA_1 as the camera closest to side-on view (horizontal axis).</u>
+- `dslr.camera_ids.{CAMERA_1 ... CAMERA_5}`: these are the camera serial ID numbers found on the bottom label of the physical device itself. You must enter them manually. This provides each camera with a consistent deterministic name based on serial number, such that terminal outputs and output files will reflect the camera with the specified serial number (i.e. CAMERA_1 -> cam1). For our rig, <u>we set CAMERA_5 to be directly over the object on the vertical axis and CAMERA_1 as the camera closest to side-on view (horizontal axis).</u>
 
-- `object_name`: Meant to refer to the object currently being scanned, this will also affect the folder name of the directory that the images are output to. Example: `"bar-4mm"`
+- `object_name`: Meant to refer to the object currently being scanned, this will also affect the folder name of the directory that the images are output to. Example: `"bar-4mm"`. Note that this sets the initial object name when the program starts, but can be modified during runtime to scan new objects (see Control Menu).
 - `output_dir`: Refers to the general output directory of where the named object folders will be. Example: `atb1`
 - `realsense.rs_info.rs1 ... rs5`: This stores vital information that allows the realsense cameras to work and capture correctly oriented pointclouds.
   - `serial`: This number is 12 digits long and found on the Realsense cameras themselves or the box they are packaged in (ours were under the field S/N) and is used by the realsense SDK to send the commands to capture and save a pointcloud. 
@@ -318,6 +319,8 @@ Calibration Menu
 
 - **7  Camera Options...**: A submenu where you can find and change some of the configurations values of the DSLR cameras, such as AV, TV and ISO.
 
+Helpful resource: [<https://www.canon.com.au/get-inspired/understanding-camera-modes-and-settings-for-beginners>] 
+
 *Quick note 1: The menus for each setting are laid out where the number on the left is the option to type into the console, and the numbers/characters on the right refer to the setting being applied to the camera. Ex: under the TV menu, if we want the shutter to stay open for 3.2 seconds, we would locate this in the menu: `11: (3''2)`, type `11` into the console, and press enter.*
 
 *Quick note 2: Open and turn on the Live View while change these settings.*
@@ -369,7 +372,7 @@ Turntable Options
  2  Turntable Position`
  ```
 
-- **8.1  Turntable Control**: Enter the degrees to move. Ex: 90 degrees should move the turntable 1/4th around (since out of 360 degrees). *Currently the wait time is broken, recommended not moving anything more than 10 degrees at a time*
+- **8.1  Turntable Control**: Enter the degrees to move. Ex: 90 degrees should move the turntable 1/4th around (since out of 360 degrees). *Currently the wait time is broken, recommended not moving anything more than 10 degrees at a time. As of 12/17, turntable degrees cannot be something like 360 since this overflows the arduino code (note that it the arduino DOES receive the correct value).*
 - **8.2  Turntable Position**: Changes the turntable position in the runtime config without moving the turntable. 
 
 - **9  Live View...**: A submenu where you can get a live feed of how each DSLR camera is looking at each object.
