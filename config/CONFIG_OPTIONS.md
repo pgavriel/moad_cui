@@ -1,7 +1,6 @@
+## MOAD Data Collection JSON Config
 
-## Moad Config JSON Fields
-
-The moad_config.json fields are currently organized alphabetically so to reflect this, the following descriptions are also as such. 
+The fields within the actual file are currently organized alphabetically so to reflect this, the following descriptions are also as such. 
 
 *Note 1: We are aware this makes things a bit confusing because ideally, priority fields would be at the very top of the readme and the json file. We believe that the json parsing library we use SHOULD be able to handle this and the reason for mixup might be due to some caching inconsistencies with our IDE or version control.*
 
@@ -9,6 +8,11 @@ The moad_config.json fields are currently organized alphabetically so to reflect
 [<https://github.com/nlohmann/json/discussions/4568>]
 
 *Note 2: If any changes are made at runtime (ex., via the `Set Object Name` in the Control Menu), the config is fully rewritten (though only the necessary field will change) and saved.*
+<br>
+
+___
+(config starts here)
+<br>
 
 
 

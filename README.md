@@ -94,7 +94,11 @@ git clone https://github.com/grahamstelzer/simple_serial_port.git
 
 All these have seperate install instructions, but for ease of usage I have consolidated the commands into a single bash script.
 
-1. `cd` into `moad_cui/` and run:   
+1. navigate into `moad_cui/`
+```
+cd moad_cui/
+```
+2. run install script
 
 ```
 ./install_requirements.sh
@@ -134,14 +138,14 @@ Mount the DSLR and Realsense cameras in the desired configuration and plug them 
 
 In order to reduce the amount of rebuilding code during usage, an effort was made to paramaterize code using the text file `moad_config.json`, which allows the user to specify things like output directory, which data streams to collect, pointcloud filter options, COM port for motor control, delays, and timeouts.
 
-In-depth explanations for each config value is included in [config/config_options.md](config/config_options.md). However, for starting up, I've included a few of the more important ones below:
+In-depth explanations for each config value is included in [config/CONFIG_OPTIONS.md](config/CONFIG_OPTIONS.md). However, for starting up, I've included a few of the more important ones below:
 
 - `dslr.camera_ids.{CAMERA_1 ... CAMERA_5}`: these are the camera serial ID numbers found on the bottom label of the physical device itself. You must enter them manually. They are deterministically renamed and reordered at runtime so Camera 5 might become "cam3" in the command line printouts. For our rig, <u>we set CAMERA_5 to be directly over the object on the vertical axis and CAMERA_1 as the camera closest to side-on view (horizontal axis).</u>
 
 - `object_name`: Meant to refer to the object currently being scanned, this will also affect the folder name of the directory that the images are output to. Example: `"bar-4mm"`
 - `output_dir`: Refers to the general output directory of where the named object folders will be. Example: `atb1`
 - `realsense.rs_info.rs1 ... rs5`: This stores vital information that allows the realsense cameras to work and capture correctly oriented pointclouds.
-  - `serial`: This number is found **INSERT WHERE TO FIND** and is used by the realsense SDK to send the commands to capture and save a pointcloud. 
+  - `serial`: This number is 12 digits long and found on the Realsense cameras themselves or the box they are packaged in (ours were under the field S/N) and is used by the realsense SDK to send the commands to capture and save a pointcloud. 
   - `transform_matrix`: The matrix used to align the pointclouds with their real life orientations. **Instructions on how to get these are included in the next section with a short explanation.**
 - `transform_generator`: These fields are meant for Python script that generates a transform matrix that aligns the DSLR cameras with their real life orientations. This is automatically run at the end of full scans.
   - `calibration_dir`: Location of the DSLR `alignment_tf.txt` and `transforms.json` in their respective zoom calibration folders (`55mm/` , `18mm/`). Example: `"../calibration"`
