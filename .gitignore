@@ -6,3 +6,6 @@ build/
 
 # DSLR cameras streams from liveview
 live_view_filestream/
+
+
+_deps/
