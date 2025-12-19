@@ -27,6 +27,9 @@ sudo ./build/MultiCamCui
   * [Build and Run](#Build-and-run-the-software)
   * [Using the program](#Using-the-program)
     * [Control Menu](#Control-Menu)
+  * [Debugging](#Debugging)
+
+
 
 
 
@@ -140,6 +143,27 @@ Mount the DSLR and Realsense cameras in the desired configuration and plug them 
 In order to reduce the amount of rebuilding code during usage, an effort was made to paramaterize code using the text file `moad_config.json`, which allows the user to specify things like output directory, which data streams to collect, pointcloud filter options, COM port for motor control, delays, and timeouts.
 
 In-depth explanations for each config value is included in [config/CONFIG_OPTIONS.md](config/CONFIG_OPTIONS.md). However, for starting up, I've included a few of the more important ones below:
+
+
+- `serial_com_port`: This field is necessary to fill for the turntable and Arduino to work correctly during scanning. Instructions to find what port the Arduino connects to are found here: [<https://kb.plugable.com/serial-adapter/how-to-connect-to-a-serial-device-linux>], but a quick start version is below:
+  1. Open a console
+  2. Plug in Arduino
+  3. Quickly paste or type the following command into the terminal:
+  ```
+  sudo dmesg | tail
+  ```
+
+Result should look something like:
+```
+[871451.375866] usb 1-8: USB disconnect, device number 5
+...
+[871453.790831] usb 1-8: Manufacturer: Arduino (www.arduino.cc)
+[871453.790832] usb 1-8: SerialNumber: ...
+[871453.794009] cdc_acm 1-8:1.0: ttyACM0: USB ACM device
+```
+You can see that the last line has the port `ttyACM0`. Paste this into the `serial_com_port` field, reminder that this is in `/dev/` directory of the linux machine so the field should look something like `"/dev/ttyACM0"`.
+  
+
 
 - `dslr.camera_ids.{CAMERA_1 ... CAMERA_5}`: these are the camera serial ID numbers found on the bottom label of the physical device itself. You must enter them manually. This provides each camera with a consistent deterministic name based on serial number, such that terminal outputs and output files will reflect the camera with the specified serial number (i.e. CAMERA_1 -> cam1). For our rig, <u>we set CAMERA_5 to be directly over the object on the vertical axis and CAMERA_1 as the camera closest to side-on view (horizontal axis).</u>
 
@@ -262,7 +286,7 @@ After this, the next step is to try a full scan. Select `1  Full Scan` and see i
 Finally, if everything runs with no issues, the last recommendation is to look at your DSLR image output, and tweak any settings so that the lighting is not too dark or too washed out. The settings can be altered through the Control Menu and is best accomplished by first selecting option `9  Live View...`, starting up the Live View, then returning to the main screen and selecting `7  Camera Options...`. This will allow you to tweak camera settings while getting a preview of the result. Remember to turn off the Live View before trying to run any of the scans.
 
 
-## Debugging:
+## Debugging
 
 ### Execution flow:
 ![Flowchart PNG](./moadcui_flowchart_v1.png)
