@@ -260,3 +260,13 @@ If this works correctly, try selecting and changing options `4  Set Object Name`
 After this, the next step is to try a full scan. Select `1  Full Scan` and see if it works.
 
 Finally, if everything runs with no issues, the last recommendation is to look at your DSLR image output, and tweak any settings so that the lighting is not too dark or too washed out. The settings can be altered through the Control Menu and is best accomplished by first selecting option `9  Live View...`, starting up the Live View, then returning to the main screen and selecting `7  Camera Options...`. This will allow you to tweak camera settings while getting a preview of the result. Remember to turn off the Live View before trying to run any of the scans.
+
+
+## Debugging:
+
+### Execution flow:
+![Flowchart PNG](./moadcui_flowchart_v1.png)
+
+### DevLog
+
+(needs cleaning)
