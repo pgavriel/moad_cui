@@ -153,17 +153,16 @@ In-depth explanations for each config value is included in [config/CONFIG_OPTION
   sudo dmesg | tail
   ```
 
-Result should look something like:
-```
-[871451.375866] usb 1-8: USB disconnect, device number 5
-...
-[871453.790831] usb 1-8: Manufacturer: Arduino (www.arduino.cc)
-[871453.790832] usb 1-8: SerialNumber: ...
-[871453.794009] cdc_acm 1-8:1.0: ttyACM0: USB ACM device
-```
-You can see that the last line has the port `ttyACM0`. Paste this into the `serial_com_port` field, reminder that this is in `/dev/` directory of the linux machine so the field should look something like `"/dev/ttyACM0"`.
+  Result should look something like:
+  ```
+  [871451.375866] usb 1-8: USB disconnect, device number 5
+  ...
+  [871453.790831] usb 1-8: Manufacturer: Arduino (www.arduino.cc)
+  [871453.790832] usb 1-8: SerialNumber: ...
+  [871453.794009] cdc_acm 1-8:1.0: ttyACM0: USB ACM device
+  ```
+  You can see that the last line has the port `ttyACM0`. Paste this into the `serial_com_port` field, reminder that this is in `/dev/` directory of the linux machine so the field should look something like `"/dev/ttyACM0"`.
   
-
 
 - `dslr.camera_ids.{CAMERA_1 ... CAMERA_5}`: these are the camera serial ID numbers found on the bottom label of the physical device itself. You must enter them manually. This provides each camera with a consistent deterministic name based on serial number, such that terminal outputs and output files will reflect the camera with the specified serial number (i.e. CAMERA_1 -> cam1). For our rig, <u>we set CAMERA_5 to be directly over the object on the vertical axis and CAMERA_1 as the camera closest to side-on view (horizontal axis).</u>
 
