@@ -1,6 +1,6 @@
 # MOAD CUI  
 
-#### Official MOAD Website: [<https://www.robot-manipulation.org/nist-moad>]
+#### Official MOAD Website: [[WEBSITE](https://www.robot-manipulation.org/nist-moad)]
 
 ## Quick Start
 1. Clone this repo and simple_serial_port into a folder with EDSDK (For Linux v13.19.10) from Canon's website
