@@ -40,7 +40,7 @@ To minimize dependency pathing, I suggest cloning this repo into its own directo
 
 **Target Directory Structure:**
 ```
-moadrig_NERVE_location/
+moadrig_control/
 ├── EDSDK/
 ├── moad_cui/ # <-- THIS REPO
 │   ...
