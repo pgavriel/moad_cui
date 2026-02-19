@@ -57,7 +57,7 @@ The CMake file is setup for this structure.
 ## Requirements:
 
 #### This repo
-Latest code is in branch `dev-linux`. Navigate into overall project folder (in the above directory tree, this is named `moadrig_NERVE_location/` as an example) and run:
+Latest code is in branch `dev-linux`. Navigate into overall project folder (in the above directory tree, this is named `moadrig_control/` as an example) and run:
 ```
 git clone -b dev-linux https://github.com/pgavriel/moad_cui.git
 ```
