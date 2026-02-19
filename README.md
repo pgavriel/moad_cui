@@ -217,9 +217,9 @@ using cloudcompare:
 ```
 
 #### Tutorial Docs
-Latest DSLR calibration instructions: [<https://docs.google.com/document/d/1jnYCCUdmyryIeSsuyZUs1_pchJEBfH6QofjJOnQRerQ/edit?usp=sharing>]
+Latest DSLR calibration instructions: [[Document Link](https://docs.google.com/document/d/1jnYCCUdmyryIeSsuyZUs1_pchJEBfH6QofjJOnQRerQ/edit?usp=sharing)]
 
-Realsense calibration: [<https://docs.google.com/document/d/18nGBK1lqk_UkK3qeKK1O4t33_pRx8Umx7rD395rmtt8/edit?usp=sharing>]
+Realsense calibration: [[Document Link](https://docs.google.com/document/d/18nGBK1lqk_UkK3qeKK1O4t33_pRx8Umx7rD395rmtt8/edit?usp=sharing)]
 
 
 
