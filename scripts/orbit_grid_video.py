@@ -45,8 +45,8 @@ def load_meshes(file_list):
     mesh_list = []
     for f in file_list:
         print(f" > Loading \'{f}\'...")
-        mesh_list.append(o3d.io.read_triangle_mesh(f))
-        # mesh_list.append(o3d.io.read_point_cloud(f)) # For pointclouds
+        # mesh_list.append(o3d.io.read_triangle_mesh(f))
+        mesh_list.append(o3d.io.read_point_cloud(f)) # For pointclouds
 
     return mesh_list
 
@@ -176,6 +176,49 @@ def pad_to_size(img, target_width, target_height, color=(0, 0, 0)):
 
     return padded
 
+def extrinsic_from_euler(rx=0.0, ry=0.0, rz=0.0, degrees=True):
+    """
+    Create 4x4 homogeneous transform with rotation only.
+    Angles are intrinsic XYZ (roll, pitch, yaw style).
+    
+    rx, ry, rz : rotation about X, Y, Z
+    degrees    : if True, input is degrees
+    """
+
+    if degrees:
+        rx = np.deg2rad(rx)
+        ry = np.deg2rad(ry)
+        rz = np.deg2rad(rz)
+
+    # Rotation about X
+    Rx = np.array([
+        [1, 0, 0],
+        [0, np.cos(rx), -np.sin(rx)],
+        [0, np.sin(rx),  np.cos(rx)]
+    ])
+
+    # Rotation about Y
+    Ry = np.array([
+        [ np.cos(ry), 0, np.sin(ry)],
+        [ 0,          1, 0         ],
+        [-np.sin(ry), 0, np.cos(ry)]
+    ])
+
+    # Rotation about Z
+    Rz = np.array([
+        [np.cos(rz), -np.sin(rz), 0],
+        [np.sin(rz),  np.cos(rz), 0],
+        [0,           0,          1]
+    ])
+
+    # Intrinsic XYZ
+    R = Rz @ Ry @ Rx
+
+    T = np.eye(4)
+    T[:3, :3] = R
+
+    return T
+
 
 running = True
 def on_quit(vis):
@@ -189,6 +232,8 @@ def animate_scene(
     rotation,
     cam_z_start=3.0,
     cam_z_end=25.0,
+    cam_xy = [0,0],
+    cam_rot=[0,0,0],
     save_path=None,
     apply_rotation=True,
     duration_s = 4.0,
@@ -196,7 +241,10 @@ def animate_scene(
     width=1920,
     height=1080
 ):
-
+    # TESTING
+    origin_sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.25)
+    origin_sphere.compute_vertex_normals()
+    
     # ---- apply grid translations ONCE ----
     rot_fix = axis_angle_rotation([1,0,0], 90)
     for mesh, pos in zip(meshes, positions):
@@ -210,6 +258,7 @@ def animate_scene(
     
     for m in meshes:
         vis.add_geometry(m)
+    # vis.add_geometry(origin_sphere)
 
     # SETUP RENDER OPTIONS
     ro = vis.get_render_option()
@@ -219,12 +268,19 @@ def animate_scene(
     ro.background_color = np.asarray([0.7,0.7,0.7])
     ro.background_color = np.asarray([0,0,0])
     ro.show_coordinate_frame = False
-    ro.point_size = 1.0
+    ro.point_size = 2.0
     ro.point_show_normal = False # Adds an arrow indicating normal direction
 
     ctr = vis.get_view_control()
     params = ctr.convert_to_pinhole_camera_parameters()
-    ctr.set_lookat([0,0,0])
+    # params.extrinsic = np.array([
+    #                 [1, 0, 0, cam_xy[0]],
+    #                 [0, 1, 0, cam_xy[1]],
+    #                 [0, 0, 1, cam_z_start],
+    #                 [0, 0, 0, 1],
+    #             ])
+    # lookat = np.array([0.0, 0.0, 0.0])
+    # ctr.set_lookat([0,0,0])
 
     if save_path:
         writer = cv2.VideoWriter(
@@ -239,15 +295,17 @@ def animate_scene(
     # n_loops = 5
     # n = len(rotations)# * n_loops
     # n = int(duration_s * fps)
-    deg_per_frame = 0.5
-    loops = 3
+    deg_per_frame = 1.0
+    loops = 2
     n = int(loops*360//deg_per_frame)
     last_animation_frame = int((loops-1)*(n/loops))
+    last_animation_frame = int((loops)*(n/loops))
     print(f"Animating over {n} frames...")
     print(f"Last animation frame: {last_animation_frame}")
 
     # R_step = incremental_rotation(degrees_per_frame=2.0)  # slow & smooth
 
+    
     while running:   # loop animation
         for i in range(n):
             if not running:
@@ -265,17 +323,23 @@ def animate_scene(
                 t = i / (last_animation_frame - 1)
                 # print(f"N={n},T={t}")
                 # t = t*t*(3 - 2*t)   # smoothstep
+                T = extrinsic_from_euler(rx=cam_rot[0], ry=cam_rot[1], rz=cam_rot[2])
                 z = cam_z_start + t * (cam_z_end - cam_z_start)
+                T[0, 3] = cam_xy[0]
+                T[1, 3] = cam_xy[1]
+                T[2, 3] = z
+                params.extrinsic = T
+                
+                # eye = np.array([cam_xy[0], cam_xy[1], z])
+                # front, up = look_at(eye, np.array([0,0,0]))
+                # ctr.set_front(front)
+                # ctr.set_up(up)
+                # ctr.set_lookat([0,0,0])
 
-                params.extrinsic = np.array([
-                    [1, 0, 0, 0],
-                    [0, 1, 0, 0],
-                    [0, 0, 1, z],
-                    [0, 0, 0, 1],
-                ])
+                # ctr.set_lookat([0,0,0])
 
             ctr.convert_from_pinhole_camera_parameters(params)
-
+            # ctr.set_lookat([0,0,0])
             vis.update_geometry(None)
             vis.poll_events()
             vis.update_renderer()
@@ -286,7 +350,7 @@ def animate_scene(
                 img = (img * 255).astype(np.uint8)
                 img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
                 img = pad_to_size(img,width,height)
-                print(f"Writing {img.shape}")
+                # print(f"Writing {img.shape}")
                 writer.write(img)
 
         if not writer:
@@ -315,48 +379,59 @@ def move_obj_to_center(paths, pattern, center_idx):
     return paths
 
 # Setup output video parameters
-OUT_FPS=24
-DURATION_S = 2
-TOTAL_FRAMES = OUT_FPS * DURATION_S
-SAVE_OUTPUT = False
+# OUT_FPS=24
+# DURATION_S = 2
+# TOTAL_FRAMES = OUT_FPS * DURATION_S
+# SAVE_OUTPUT = False
+if __name__ == "__main__":
+    # Gather model files
+    root_dir = "/home/csrobot/Omniverse/Models/MOAD2_test"
+    root_dir = "/home/csrobot/Desktop/atb1_conn-wp/pose-b/exports"
+    mesh_files = find_files(root_dir, "center.ply",5)
+    print(f"Found {len(mesh_files)} meshes.")
+    # print(mesh_files)
+    # mesh_files = mesh_files[:9]
+    num_meshes = len(mesh_files)
 
-# Gather model files
-root_dir = "/home/csrobot/Omniverse/Models/MOAD2_test"
-mesh_files = find_files(root_dir, "clean.ply",5)
-print(f"Found {len(mesh_files)} meshes.")
-# print(mesh_files)
-# mesh_files = mesh_files[:9]
-num_meshes = len(mesh_files)
+    # Compute object grid positions
+    n_objects = num_meshes #76
+    rows, cols = compute_grid_dims(n_objects, 16/9)#6/9)
+    positions = generate_grid_positions(n_objects, rows, cols, spacing=0.15)
+    print(positions[0], positions[len(positions)//2])
+    # print(positions)
 
-# Compute object grid positions
-n_objects = num_meshes #76
-rows, cols = compute_grid_dims(n_objects, 16/9)#6/9)
-positions = generate_grid_positions(n_objects, rows, cols, spacing=0.15)
-print(positions[0], positions[len(positions)//2])
-# print(positions)
-
-# Compute sequence of rotation matrices
-# rotation_frames = 240#TOTAL_FRAMES
-# rotations = generate_rotation_matrices(rotation_frames)
-# print(f"Generated {len(rotations)} rotation matrices.")
-# print(rotations[0], rotations[-1])
-rotation = incremental_rotation(axis=(-1,-1,-0.5),degrees_per_frame=0.5)  # slow & smooth
+    # Compute sequence of rotation matrices
+    # rotation_frames = 240#TOTAL_FRAMES
+    # rotations = generate_rotation_matrices(rotation_frames)
+    # print(f"Generated {len(rotations)} rotation matrices.")
+    # print(rotations[0], rotations[-1])
+    rotation = incremental_rotation(axis=(0,-1,0),degrees_per_frame=1)  # slow & smooth
 
 
-# Adjust specific model to the middle of the grid
-random.shuffle(mesh_files) # Optional Shuffle
-# mesh_files = sorted(mesh_files)
-center_index = (rows // 2) * cols + (cols // 2)
-mesh_files = move_obj_to_center(mesh_files, "conn-wp/", center_index)
-meshes = load_meshes(mesh_files)
-print(f"Loaded {num_meshes} meshes.")
+    # Adjust specific model to the middle of the grid
+    random.shuffle(mesh_files) # Optional Shuffle
+    # mesh_files = sorted(mesh_files)
+    center_index = (rows // 2) * cols + (cols // 2)
+    mesh_files = move_obj_to_center(mesh_files, "conn-wp/", center_index)
+    meshes = load_meshes(mesh_files)
+    print(f"Loaded {num_meshes} meshes.")
 
-# Animate scene
-animate_scene(
-    meshes,
-    positions,
-    rotation,
-    cam_z_start=0.1,
-    cam_z_end=1,
-    save_path="/home/csrobot/Videos/moadv2_grid/test4.mp4"#"grid_spin.mp4"   # set None for preview only
-)
+    # Animate scene
+    # animate_scene(
+    #     meshes,
+    #     positions,
+    #     rotation,
+    #     cam_z_start=0.1,
+    #     cam_z_end=1,
+    #     save_path="/home/csrobot/Videos/moadv2_grid/test5.mp4"#"grid_spin.mp4"   # set None for preview only
+    # )
+    animate_scene(
+        meshes,
+        positions,
+        rotation,
+        cam_z_start=0.35,
+        cam_z_end=0.35,
+        cam_xy=[0,0.05],
+        cam_rot=[30,0,0],
+        save_path="/home/csrobot/Videos/moadv2_grid/nerf-pose-b-2.mp4"#"grid_spin.mp4"   # set None for preview only
+    )
