@@ -15,8 +15,7 @@ ConfigHandler::~ConfigHandler() {
 
 void ConfigHandler::loadConfig(const std::string& filepath) {
 
-    std::cout << "=============================== " << std::endl; // isolate this msg 
-    std::cout << "loading config from " << filepath << std::endl;
+    std::cout << "Loading Config File: " << filepath << std::endl;
     std::cout << "=============================== " << std::endl; // isolate this msg 
     
     // NOTE: this debugutils statement actually cant be here, since the function defintion

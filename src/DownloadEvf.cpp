@@ -33,6 +33,7 @@
 #include "EDSDK.h"
 #include "EDSDKTypes.h"
 #include "CameraException.h"
+#include "DebugUtils.h" 
 
 namespace fs = std::filesystem;
 using namespace std::chrono_literals;
@@ -126,10 +127,14 @@ EdsError DownloadEvfCommand(EdsCameraRef const& camera, std::string const& camer
 	EdsEvfImageRef evfImage = NULL;
 	EdsStreamRef stream = NULL;
 	EdsUInt32 device = 0;
-	EdsUInt32 retry = 0;
+	// EdsUInt32 retry = 0;
 
 	// Get the device property
 	err = EdsGetPropertyData(camera, kEdsPropID_Evf_OutputDevice, 0, sizeof(device), &device);
+	if (err != EDS_ERR_OK) {
+		std::cout << "Error thrown after EdsGetPropertyData/kEdsPropID_Evf_OutputDevice: " << err << std::endl;
+		throwCameraException(err);
+	}
 	// Exit unless during live view.
 	if ((device & kEdsEvfOutputDevice_PC) == 0) {	
 		return true;
@@ -150,22 +155,25 @@ EdsError DownloadEvfCommand(EdsCameraRef const& camera, std::string const& camer
 
 	// When creating to a file.
 	err = EdsCreateFileStream(filename, kEdsFileCreateDisposition_CreateAlways, kEdsAccess_ReadWrite, &stream);
+	if (err != EDS_ERR_OK) {
+		std::cout << "Error thrown after EdsCreateFileStream: " << err << std::endl;
+		throwCameraException(err);
+	}
 
 	// Create EvfImageRef.
 	if (err == EDS_ERR_OK) {
 		err = EdsCreateEvfImageRef(stream, &evfImage);
 	}
-
-	//Notification of error
 	if (err != EDS_ERR_OK) {
-		std::cout << "Second" << std::endl;
+		DebugUtils::logError("Error thrown after EdsCreateEvfImageRef: " + err);
+		std::cout << "Error thrown after EdsCreateEvfImageRef: " << err << std::endl;
 		throwCameraException(err);
 	}
 
-	if (retry >= 3) {
-		ReleaseStream(stream, evfImage);
-		throw std::runtime_error("The camera is not ready. Try again");
-	}
+	// if (retry >= 3) {
+	// 	ReleaseStream(stream, evfImage);
+	// 	throw std::runtime_error("The camera is not ready. Try again");
+	// }
 
 	std::this_thread::sleep_for(100ms);
 
@@ -177,6 +185,11 @@ EdsError DownloadEvfCommand(EdsCameraRef const& camera, std::string const& camer
 		{
 			err = EdsDownloadEvfImage(camera, evfImage);
 			std::this_thread::sleep_for(50ms);
+		}
+		if (err != EDS_ERR_OK) {
+			ReleaseStream(stream, evfImage);
+			std::cout << "Error thrown after EdsDownloadEvfImage: " << err << std::endl;
+			throwCameraException(err);
 		}
 
 		// Get meta data for live view image data.
@@ -206,7 +219,7 @@ EdsError DownloadEvfCommand(EdsCameraRef const& camera, std::string const& camer
 		if (err != EDS_ERR_OK)
 		{
 			ReleaseStream(stream, evfImage);
-			std::cout << "Third" << std::endl;
+			std::cout << "Error thrown after getting Metadata: " << err << std::endl;
 			throwCameraException(err);
 		}
 

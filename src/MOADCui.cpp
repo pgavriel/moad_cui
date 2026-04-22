@@ -247,7 +247,7 @@ void loadJsonConfig(std::string path) {
 		previous_RS = config.getValue<bool>("realsense.collect_realsense");
 	}
 
-	std::cout << "path in ljc: " << path << std::endl;
+	std::cout << "Path in loadJsonConfig(): " << path << std::endl;
 
 	config.loadConfig(path);
 
@@ -925,7 +925,8 @@ bool fullScan() {
 	if (config.getValue<bool>("dslr.collect_dslr")) {
 		saveCameraConfig(scan_folder + PATH_SEP + "pose-" + curr_pose);
 		saveScanTime(duration, scan_folder + PATH_SEP + "pose-" + curr_pose);
-		generateTransform(degree_inc, num_moves);
+		if (config.getValue<bool>("transform_generator.enabled"))
+			generateTransform(degree_inc, num_moves);
 	}
 
 	// Recalculate angle
@@ -1026,7 +1027,8 @@ bool customScan() {
 	if (config.getValue<bool>("dslr.collect_dslr")) {
 		saveCameraConfig(scan_folder + PATH_SEP + "pose-" + curr_pose);
 		saveScanTime(duration, scan_folder + PATH_SEP + "pose-" + curr_pose);
-		generateTransform(degree_inc, num_moves);
+		if (config.getValue<bool>("transform_generator.enabled"))
+			generateTransform(degree_inc, num_moves);
 	}
 
 	// Generate transform
@@ -1210,7 +1212,8 @@ bool scanFromSaveState() {
 	if (config.getValue<bool>("dslr.collect_dslr")) {
 		saveCameraConfig(scan_folder + PATH_SEP + "pose-" + curr_pose);
 		saveScanTime(duration, scan_folder + PATH_SEP + "pose-" + curr_pose);
-		generateTransform(degree_inc, num_moves);
+		if (config.getValue<bool>("transform_generator.enabled"))
+			generateTransform(degree_inc, num_moves);
 	}
 
 	// Generate transform
@@ -2267,20 +2270,9 @@ int temp(int argc, char* argv[]) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
 int main(int argc, char* argv[]) 
 {	
-	std::cout << "\033[1;44m" << "start of main" << "\033[0m\n";	
+	std::cout << "\033[1;44m" << "[ start of main ]" << "\033[0m\n";	
 	// SETUP ----------------------------------------------------------------------------------------------
 	
 	// NOTE: degree_tracker is a global variable so that every function can use it
@@ -2345,7 +2337,7 @@ int main(int argc, char* argv[])
 
 	
 	// Setup Arduino serial port connection
-	std::cout << "\033[1;40m" << "attempting serial port connection" << "\033[0m\n"; // todo: macros for cli coloring
+	std::cout << "\033[1;40m" << "Attempting serial port connection..." << "\033[0m\n"; // todo: macros for cli coloring
 
 	// WINDOWS VERSION
 	// char com_port[] = "\\\\.\\COMX";
@@ -2399,7 +2391,7 @@ int main(int argc, char* argv[])
 
 	//  apparently scan_folder gets set somewhere before this?
 	std::string debug_log_dir = scan_folder + PATH_SEP + "debug_log.txt";
-	std::cout << debug_log_dir << std::endl;
+	std::cout << std::endl << "DEBUG LOG\nDebug Log Path: " << debug_log_dir << std::endl;
 
 	// init log file and begin logging:
 	DebugUtils::initLogFile(debug_log_dir);

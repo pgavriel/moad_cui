@@ -1,5 +1,6 @@
 {
     "debug": false,
+    "debug_verbosity": 3,
     "degree_inc": 5,
     "dslr": {
         "camera_ids": {
@@ -24,8 +25,8 @@
     },
     "log_debug": true,
     "num_moves": 72,
-    "object_name": "test32",
-    "output_dir": "home/csrobot/data-mount/TESTING",
+    "object_name": "test2",
+    "output_dir": "/home/csrobot/MOAD_DATA",
     "prev_state": {
         "current_move": 72,
         "current_object": "",
@@ -37,7 +38,7 @@
         "collect_color": false,
         "collect_depth": false,
         "collect_pointcloud": true,
-        "collect_realsense": true,
+        "collect_realsense": false,
         "compute_normals": true,
         "filter": {
             "sor": {
@@ -223,6 +224,7 @@
     "transform_generator": {
         "calibration_dir": "../calibration",
         "calibration_mode": "55mm",
+        "enabled": false,
         "force": true,
         "visualize": false
     },
