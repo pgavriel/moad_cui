@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # this file assumes Canon's EDSDK was succesfully downloaded and simple_serial_port with
 #   necessary linux version was cloned correctly and the directory structure looks lie
 #   the following
@@ -16,7 +18,7 @@
 # note 1: this might move you outside of moad_cui or into the librealsense directory
 # note 2: all the apt-get commands are with -y to skip dialogue [y/n] yes/no options for taking x mb of space 
 #         the point of this is so you can just run the script and go get a coffee or something 
-
+# note 3: may need to be run with sudo to successfully complete the Realsense build process
 echo "Installing required system libraries/packages..."
 
 
@@ -74,7 +76,9 @@ sudo apt -y install v4l-utils
 cd librealsense
 ./scripts/setup_udev_rules.sh
 
-mkdir build && cd build
+mkdir build 
+
+cd build
 
 cmake ../
 
