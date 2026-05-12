@@ -1,7 +1,9 @@
+
 #include "DebugUtils.h"
-
-// these need to be here to make sure memory is allocated for static variables (i think) - GS 8/12
-
+ 
+// Static member definitions — required so the linker finds storage for these.
+// (One definition per TU; do not move these into the header.)
+ 
 std::chrono::time_point<std::chrono::high_resolution_clock> DebugUtils::start_time;
 std::chrono::time_point<std::chrono::high_resolution_clock> DebugUtils::end_time;
 std::ofstream DebugUtils::log_file;

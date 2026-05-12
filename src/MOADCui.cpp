@@ -68,7 +68,8 @@ std::string scan_folder;
 
 // Liveview Threads
 std::vector<std::thread> liveview_th;
-bool liveview_active = false;
+// bool liveview_active = false;
+std::atomic<bool> liveview_active = false;
 std::thread::id liveview_thread_id;
 
 // Camera
@@ -1353,6 +1354,9 @@ bool setPose() {
 	return false;
 }
 
+/*
+	CAMERA BUTTON CONTROL
+*/
 bool pressHalfway() {
 	PressShutter(canonhandle.cameraArray, canonhandle.bodyID, kEdsCameraCommand_ShutterButton_Halfway);
 
@@ -1371,6 +1375,9 @@ bool pressOff() {
 	return false;
 }
 
+/*
+	CAMERA SETTINGS MENUS
+*/
 void _getCurrCameraValue(const std::vector<std::string>& value_arr) {
 	tabulate::Table table;
 	table.add_row({"Current Value:"});
@@ -1742,6 +1749,9 @@ bool changeCamera() {
 	return false;
 }
 
+/*
+	LIVE VIEW MENUS
+*/
 bool getLiveView() {
 	ConfigHandler& config = ConfigHandler::getInstance();
 
@@ -1757,12 +1767,14 @@ bool getLiveView() {
 
 	if (!liveview_active) {
 		// Start Live View configuration
-		liveview_active = true;
+		DebugUtils::logDebug("Starting Live View...");
+		// liveview_active = true;
 		liveview_thread_id = std::this_thread::get_id();
 
 		// Change camera configuration to liveview
 		StartEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
 		std::this_thread::sleep_for(.5s);
+		liveview_active = true;
 		
 		// Download and display Image from camera 
 		int i = 0;
@@ -1774,6 +1786,7 @@ bool getLiveView() {
 			std::this_thread::sleep_for(.5s);
 			i++;
 		}
+		DebugUtils::logDebug("Live View Threads Created...");
 	}
 	else {
 		std::cout << "The liveview is active" << std::endl;
@@ -1789,7 +1802,7 @@ bool endLiveView() {
 		std::cout << "DSLR option is set to false, Liveview unavaliable" << std::endl;
 		return false;
 	}
-
+	DebugUtils::logDebug("Ending Live View...");
 	std::cout << "Ending Liveview..." << std::endl;
 	// Join all liveview threads
 	liveview_active = false;
@@ -1798,6 +1811,8 @@ bool endLiveView() {
 			th.join();
 		}
 	}
+	// Clear the thread vector
+	liveview_th.clear();
 
 	// Revert camera configuration to normal mode
 	EndEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
@@ -2129,7 +2144,34 @@ bool run_filecount_check() {
 	return true;
 }
 
+bool detect_anchor_tags() {
 
+	//TESTING:
+	ConfigHandler& config = ConfigHandler::getInstance();
+	std::string curr_obj = config.getValue<std::string>("object_name");
+	std::cout << "Current object:" << curr_obj.c_str() << std::endl;
+	// Prepare command to execute scripts/filecount_test.py
+	std::stringstream command_stream;
+	command_stream 
+		<< "python3 "
+		<< "scripts/detect_ar_tags.py "
+		<< "artag_test " 	// Object Name
+		<< "a " 			// Pose
+		<< "0"; 			// Position 
+
+	command_stream 
+		<< "which python3"; 
+
+	// Execute command
+	// convert to string for output debug message
+	std::string command = command_stream.str(); 
+	std::cout << "\nExecuting Command: " << command; 
+	
+	// system requires c string
+	const char* c_command = command.c_str();
+	system(c_command);
+	return true;
+}
 
 
 
@@ -2339,11 +2381,6 @@ int main(int argc, char* argv[])
 	// Setup Arduino serial port connection
 	std::cout << "\033[1;40m" << "Attempting serial port connection..." << "\033[0m\n"; // todo: macros for cli coloring
 
-	// WINDOWS VERSION
-	// char com_port[] = "\\\\.\\COMX";
-	// com_port[7] = config.getValue<std::string>("serial_com_port").at(0);
-
-
 	// LINUX VERSION
 	std::string com_port;
 	if(OS_LINUX) {
@@ -2443,7 +2480,8 @@ int main(int argc, char* argv[])
 		{"9", "Live View..."},
 		{"p", "Scan from saved state"},
 		{"0", "Reload Config"},
-		{"f", "Run Filecount Check Script"}
+		{"f", "Run Filecount Check Script"},
+		{"d", "Detect AR Anchor Tags"}
 	},
 	{
 		{"1", fullScan},
@@ -2457,7 +2495,8 @@ int main(int argc, char* argv[])
 		{"9", liveViewMenu},
 		{"p", scanFromSaveState}, // TODO: "10" seemed to not work??
 		{"0", reloadConfig},
-		{"f", run_filecount_check}
+		{"f", run_filecount_check},
+		{"d", detect_anchor_tags}
 	}, object_info);
 	menu_handler.setTitle("MOAD - CLI Menu");
 	menu_handler.ClearScreen();

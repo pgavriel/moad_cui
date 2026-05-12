@@ -1,6 +1,8 @@
 {
-    "debug": false,
-    "debug_verbosity": 3,
+    "debug": {
+        "debug_verbosity": 3,
+        "log": true
+    },
     "degree_inc": 5,
     "dslr": {
         "camera_ids": {
@@ -11,6 +13,7 @@
             "CAMERA_5": "602075011361"
         },
         "collect_dslr": true,
+        "display_liveview_windows": false,
         "dslr_timeout_sec": 20,
         "safe_take_picture": false
     },
@@ -23,9 +26,8 @@
         "enabled": false,
         "manual_check": false
     },
-    "log_debug": true,
     "num_moves": 72,
-    "object_name": "test2",
+    "object_name": "liveview_testing",
     "output_dir": "/home/csrobot/MOAD_DATA",
     "prev_state": {
         "current_move": 72,
@@ -218,6 +220,17 @@
                 ]
             }
         }
+    },
+    "scene_replication": {
+        "intrinsics_file": "dslr_intrinsics_55mm.json",
+        "out_file": "scene_anchors.json",
+        "tag_family": "tag36h11",
+        "tag_global_offset": [
+            0.0,
+            0.0,
+            0.0
+        ],
+        "tag_size_cm": 0.12
     },
     "serial_com_port": "/dev/ttyACM0",
     "thread_num": 5,

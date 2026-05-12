@@ -52,7 +52,7 @@ public:
 
     static void initLogFile(const std::string& file_path) {
         ConfigHandler& config = ConfigHandler::getInstance();
-        if (!config.getValue<bool>("log_debug")) {
+        if (!config.getValue<bool>("debug.log")) {
             return;
         }
 
@@ -91,12 +91,12 @@ public:
     {
         ConfigHandler& config = ConfigHandler::getInstance();
 
-        const bool file_enabled = always_log || config.getValue<bool>("log_debug");
+        const bool file_enabled = always_log || config.getValue<bool>("debug.log");
         if (file_enabled && log_file.is_open()) {
             log_file << "[" << tag << "] " << message << std::endl;
         }
 
-        const int verbosity = config.getValue<int>("debug_verbosity");
+        const int verbosity = config.getValue<int>("debug.debug_verbosity");
         if (verbosity >= debug_level) {
             // Use cerr for error-class tags so they surface even when stdout is
             // redirected, otherwise use cout.
@@ -167,6 +167,7 @@ public:
 
 
     // -------------------------------------------------------------------------
+    // OLD: DONT USE THESE IN NEW CODE
     // Print-only wrappers (terminal output, no file write)
     // Preserved from original; these check the "debug" config flag, not
     // "log_debug", so they are kept separate from log() rather than folded in.

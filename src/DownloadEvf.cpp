@@ -18,7 +18,13 @@
 		is the location of the file stream
 
 */
+/*
 
+5/8/26 PG:
+	Apparently EVF stands for Electronic View Finder, it's Canon's terminology for the live view feed.
+	The more you know.
+
+*/
 
 
 
@@ -34,6 +40,7 @@
 #include "EDSDKTypes.h"
 #include "CameraException.h"
 #include "DebugUtils.h" 
+#include "ConfigHandler.h"
 
 namespace fs = std::filesystem;
 using namespace std::chrono_literals;
@@ -82,185 +89,229 @@ void ReleaseStream(EdsStreamRef& stream, EdsEvfImageRef& image) {
 
 // Function to start the EVF command, setting the EVF mode and output device
 EdsError StartEvfCommand(EdsCameraRef const& camera, EdsUInt64 const& bodyID) {
-	EdsError err = EDS_ERR_OK;
-	EdsUInt32 evfMode = 0;
-	
-	// Get EVF Mode Properties 
-	err = EdsGetPropertyData(camera, kEdsPropID_Evf_Mode, 0, sizeof(evfMode), &evfMode);
+    const int    MAX_RETRIES  = 5;
+    const auto   RETRY_DELAY  = 1000ms;
 
-	// Set EVF Mode Property to 1 if is 0
-	if (evfMode == 0) {
-		evfMode = 1;
-		err = EdsSetPropertyData(camera, kEdsPropID_Evf_Mode, 0, sizeof(evfMode), &evfMode);
-	}
+    EdsError     err          = EDS_ERR_OK;
+    EdsUInt32    evfMode      = 0;
 
-	if (err == EDS_ERR_OK)
-	{
-		// Get the current output device.
-		EdsUInt32 device = 0;
-		err = EdsGetPropertyData(camera, kEdsPropID_Evf_OutputDevice, 0, sizeof(device), &device);
+    // Retry loop — camera may not be ready immediately on first connect
+    for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        err = EdsGetPropertyData(camera, kEdsPropID_Evf_Mode, 0, sizeof(evfMode), &evfMode);
 
-		// Set the PC as the current output device.
-		device |= kEdsEvfOutputDevice_PC;
+        if (err == EDS_ERR_OBJECT_NOTREADY) {
+            std::cout << "[StartEvf] Camera not ready, attempt " << attempt
+                      << "/" << MAX_RETRIES << ", retrying in "
+                      << RETRY_DELAY.count() << "ms..." << std::endl;
+            std::this_thread::sleep_for(RETRY_DELAY);
+            continue;
+        }
 
-		// Set the output device
-		if (err == EDS_ERR_OK)
-		{
-			err = EdsSetPropertyData(camera, kEdsPropID_Evf_OutputDevice, 0, sizeof(device), &device);
-		}
-	}
+        if (err != EDS_ERR_OK) {
+            throwCameraException(err, "StartEvfCommand: EdsGetPropertyData failed");
+        }
 
-	//Notification of error
-	if (err != EDS_ERR_OK) {
-		std::cout << "First" << std::endl;
-		throwCameraException(err);
-	}
+        // Camera responded — proceed with EVF setup
+        if (evfMode == 0) {
+            evfMode = 1;
+            err = EdsSetPropertyData(camera, kEdsPropID_Evf_Mode, 0, sizeof(evfMode), &evfMode);
+            if (err != EDS_ERR_OK) {
+                throwCameraException(err, "StartEvfCommand: failed to set EVF mode");
+            }
+        }
 
-	return true;
+        EdsUInt32 device = 0;
+        err = EdsGetPropertyData(camera, kEdsPropID_Evf_OutputDevice, 0, sizeof(device), &device);
+        if (err != EDS_ERR_OK) {
+            throwCameraException(err, "StartEvfCommand: failed to get output device");
+        }
+
+        device |= kEdsEvfOutputDevice_PC;
+        err = EdsSetPropertyData(camera, kEdsPropID_Evf_OutputDevice, 0, sizeof(device), &device);
+        if (err != EDS_ERR_OK) {
+            throwCameraException(err, "StartEvfCommand: failed to set output device");
+        }
+
+        std::cout << "[StartEvf] Camera ready after attempt " << attempt << std::endl;
+        return EDS_ERR_OK;
+    }
+
+    // Exhausted retries
+    throwCameraException(EDS_ERR_OBJECT_NOTREADY,
+        "StartEvfCommand: camera not ready after max retries");
+    return EDS_ERR_OBJECT_NOTREADY;  // unreachable, but satisfies the compiler
 }
+
 
 // Function to download the EVF image from the camera and display it using OpenCV
 EdsError DownloadEvfCommand(EdsCameraRef const& camera, std::string const& cameraName, std::thread::id const& parentThreadID)
 {
-	EdsError err = EDS_ERR_OK;
+    std::string cam_name_short = fs::path(cameraName).filename().string();
+	const std::string TAG = "[DownloadEvf] (" + cam_name_short + ") ";
+    DebugUtils::logDebug(TAG + "Thread started.");
 
-	EdsEvfImageRef evfImage = NULL;
-	EdsStreamRef stream = NULL;
-	EdsUInt32 device = 0;
-	// EdsUInt32 retry = 0;
+    EdsError      err      = EDS_ERR_OK;
+    EdsEvfImageRef evfImage = NULL;
+    EdsStreamRef   stream   = NULL;
+    EdsUInt32      device   = 0;
 
-	// Get the device property
-	err = EdsGetPropertyData(camera, kEdsPropID_Evf_OutputDevice, 0, sizeof(device), &device);
-	if (err != EDS_ERR_OK) {
-		std::cout << "Error thrown after EdsGetPropertyData/kEdsPropID_Evf_OutputDevice: " << err << std::endl;
-		throwCameraException(err);
-	}
-	// Exit unless during live view.
-	if ((device & kEdsEvfOutputDevice_PC) == 0) {	
-		return true;
-	}
+	std::string sdk_path  = cameraName + "/evf.jpg";         // SDK writes here
+	std::string temp_path = cameraName + "/evf_tmp.jpg";     // our intermediate copy
+	std::string live_path = cameraName + "/evf_live.jpg";    // Safe readable version for Python script
+	std::string lock_path = cameraName + "/evf.lock";        // write sentinel
 
-	// create folder  ex) cam1
-	// TODO: This part should be deleted 
-	std::string directory_tree = cameraName;
+	ConfigHandler& config = ConfigHandler::getInstance();	// MOAD CONFIG
 
-	if (fs::exists(directory_tree) == FALSE) {
-		std::filesystem::create_directories(directory_tree);
-	}
+    // ── Check output device ───────────────────────────────────────────────
+    err = EdsGetPropertyData(camera, kEdsPropID_Evf_OutputDevice, 0, sizeof(device), &device);
+    if (err != EDS_ERR_OK) {
+        DebugUtils::logError(TAG + "Failed to get output device. err=" + std::to_string(err));
+        throwCameraException(err, (TAG + "EdsGetPropertyData failed").c_str());
+    }
+    if ((device & kEdsEvfOutputDevice_PC) == 0) {
+        DebugUtils::logWarning(TAG + "PC is not the output device — exiting early.");
+        return EDS_ERR_OK;
+    }
+    DebugUtils::logDebug(TAG + "Output device confirmed as PC.");
 
-	std::string tmp;
-	tmp = directory_tree + "/evf.jpg";
-	char* filename = new char[tmp.size() + 1];
-	strcpy(filename, tmp.c_str());
+    // ── Create directory ──────────────────────────────────────────────────
+    if (!fs::exists(cameraName)) {
+        DebugUtils::logDebug(TAG + "Creating directory: " + cameraName);
+        fs::create_directories(cameraName);
+    }
 
-	// When creating to a file.
-	err = EdsCreateFileStream(filename, kEdsFileCreateDisposition_CreateAlways, kEdsAccess_ReadWrite, &stream);
-	if (err != EDS_ERR_OK) {
-		std::cout << "Error thrown after EdsCreateFileStream: " << err << std::endl;
-		throwCameraException(err);
-	}
+    // std::string filepath = cameraName + "/evf.jpg";
+    DebugUtils::logDebug(TAG + "File stream path: " + sdk_path);
 
-	// Create EvfImageRef.
-	if (err == EDS_ERR_OK) {
-		err = EdsCreateEvfImageRef(stream, &evfImage);
-	}
-	if (err != EDS_ERR_OK) {
-		DebugUtils::logError("Error thrown after EdsCreateEvfImageRef: " + err);
-		std::cout << "Error thrown after EdsCreateEvfImageRef: " << err << std::endl;
-		throwCameraException(err);
-	}
+    // ── Create file stream ────────────────────────────────────────────────
+    err = EdsCreateFileStream(sdk_path.c_str(), kEdsFileCreateDisposition_CreateAlways,
+                              kEdsAccess_ReadWrite, &stream);
+    if (err != EDS_ERR_OK) {
+        DebugUtils::logError(TAG + "EdsCreateFileStream failed. err=" + std::to_string(err));
+        throwCameraException(err, (TAG + "EdsCreateFileStream failed").c_str());
+    }
+    DebugUtils::logDebug(TAG + "File stream created.");
 
-	// if (retry >= 3) {
-	// 	ReleaseStream(stream, evfImage);
-	// 	throw std::runtime_error("The camera is not ready. Try again");
-	// }
+    // ── Create EvfImageRef ────────────────────────────────────────────────
+    err = EdsCreateEvfImageRef(stream, &evfImage);
+    if (err != EDS_ERR_OK) {
+        DebugUtils::logError(TAG + "EdsCreateEvfImageRef failed. err=" + std::to_string(err));
+        ReleaseStream(stream, evfImage);
+        throwCameraException(err, (TAG + "EdsCreateEvfImageRef failed").c_str());
+    }
+    DebugUtils::logDebug(TAG + "EvfImageRef created. Entering liveview loop.");
 
-	std::this_thread::sleep_for(100ms);
+    std::this_thread::sleep_for(100ms);
 
-	// Show Liveview Image
-	while (liveview_active) {
-		// Download live view image data.
-		// TODO: This should be converted into cv::Mat instead
-		if (err == EDS_ERR_OK)
-		{
-			err = EdsDownloadEvfImage(camera, evfImage);
-			std::this_thread::sleep_for(50ms);
-		}
-		if (err != EDS_ERR_OK) {
-			ReleaseStream(stream, evfImage);
-			std::cout << "Error thrown after EdsDownloadEvfImage: " << err << std::endl;
-			throwCameraException(err);
-		}
+    // ── Liveview loop ─────────────────────────────────────────────────────
+    int frame_count = 0;
+    while (liveview_active) {
 
-		// Get meta data for live view image data.
-		if (err == EDS_ERR_OK)
-		{
-			EVF_DATASET dataSet = { 0 };
-			dataSet.stream = stream;
+        // Download with retry
+        const int  MAX_DL_RETRIES = 5;
+        const auto DL_RETRY_DELAY = 300ms;
+        for (int attempt = 1; attempt <= MAX_DL_RETRIES; attempt++) {
+            err = EdsDownloadEvfImage(camera, evfImage);
+            if (err == EDS_ERR_OK) {
+                break;
+            } else if (err == EDS_ERR_OBJECT_NOTREADY) {
+                DebugUtils::logWarning(TAG + "Image not ready, attempt "
+                    + std::to_string(attempt) + "/" + std::to_string(MAX_DL_RETRIES)
+                    + ", retrying in " + std::to_string(DL_RETRY_DELAY.count()) + "ms...");
+                std::this_thread::sleep_for(DL_RETRY_DELAY);
+            } else {
+                // Any other error is not worth retrying
+                DebugUtils::logError(TAG + "EdsDownloadEvfImage failed with unexpected err="
+                    + std::to_string(err) + " on attempt " + std::to_string(attempt));
+                break;
+            }
+        }
 
-			// Get magnification ratio (x1, x5, or x10).
-			EdsGetPropertyData(evfImage, kEdsPropID_Evf_Zoom, 0, sizeof(dataSet.zoom), &dataSet.zoom);
+        if (err != EDS_ERR_OK) {
+            DebugUtils::logError(TAG + "EdsDownloadEvfImage failed after all retries. err="
+                + std::to_string(err) + " — exiting liveview loop.");
+            ReleaseStream(stream, evfImage);
+            throwCameraException(err, (TAG + "EdsDownloadEvfImage failed").c_str());
+        }
 
-			// Get position of image data. (when enlarging)
-			// Upper left coordinate using JPEG Large size as a reference.
-			EdsGetPropertyData(evfImage, kEdsPropID_Evf_ImagePosition, 0, sizeof(dataSet.imagePosition), &dataSet.imagePosition);
+        std::this_thread::sleep_for(50ms);
 
-			// Get histogram (RGBY).
-			EdsGetPropertyData(evfImage, kEdsPropID_Evf_Histogram, 0, sizeof(dataSet.histogram), dataSet.histogram);
-
-			// Get rectangle of the focus border.
-			EdsGetPropertyData(evfImage, kEdsPropID_Evf_ZoomRect, 0, sizeof(dataSet.zoomRect), &dataSet.zoomRect);
-
-			// Get the size as a reference of the coordinates of rectangle of the focus border.
-			EdsGetPropertyData(evfImage, kEdsPropID_Evf_CoordinateSystem, 0, sizeof(dataSet.sizeJpegLarge), &dataSet.sizeJpegLarge);
-		}
-
-		//Notification of error
-		if (err != EDS_ERR_OK)
-		{
-			ReleaseStream(stream, evfImage);
-			std::cout << "Error thrown after getting Metadata: " << err << std::endl;
-			throwCameraException(err);
-		}
-
+        // ── Metadata ──────────────────────────────────────────────────────
+        EVF_DATASET dataSet = { 0 };
+        dataSet.stream = stream;
+        EdsGetPropertyData(evfImage, kEdsPropID_Evf_Zoom, 0, sizeof(dataSet.zoom), &dataSet.zoom);
+        EdsGetPropertyData(evfImage, kEdsPropID_Evf_ImagePosition, 0, sizeof(dataSet.imagePosition), &dataSet.imagePosition);
+        EdsGetPropertyData(evfImage, kEdsPropID_Evf_Histogram, 0, sizeof(dataSet.histogram), dataSet.histogram);
+        EdsGetPropertyData(evfImage, kEdsPropID_Evf_ZoomRect, 0, sizeof(dataSet.zoomRect), &dataSet.zoomRect);
+        EdsGetPropertyData(evfImage, kEdsPropID_Evf_CoordinateSystem, 0, sizeof(dataSet.sizeJpegLarge), &dataSet.sizeJpegLarge);
 		
-		// Display Image
-		cv::Mat frame;
-		frame = cv::imread(directory_tree + "/evf.jpg");
-		if (frame.empty()) {
-			std::cout << "failed to load evf\n";
-			break;
-		}
+		// ── Safe file publish ─────────────────────────────────────────────
+        // SDK has written to sdk_path. Copy → temp, then atomic rename → live.
+        // Lock file signals to Python that a write is in progress.
+        {
+            // 1. Acquire lock
+            std::ofstream lock(lock_path);
+        }
+
+        // 2. Copy SDK output to temp path
+        //    (can't rename sdk_path itself — the SDK still holds it open)
+        try {
+            fs::copy_file(sdk_path, temp_path, fs::copy_options::overwrite_existing);
+        } catch (const fs::filesystem_error& e) {
+            DebugUtils::logWarning(TAG + "copy_file failed: " + e.what());
+            fs::remove(lock_path);
+            continue;
+        }
+
+        // 3. Atomic rename temp → live
+        fs::rename(temp_path, live_path);
+
+        // 4. Release lock
+        fs::remove(lock_path);
+
+        // ── Display ───────────────────────────────────────────────────────
+		if(config.getValue<bool>("dslr.display_liveview_windows")) {
+			cv::Mat frame = cv::imread(live_path);
+			if (frame.empty()) {
+				DebugUtils::logWarning(TAG + "cv::imread returned empty frame — skipping display.");
+				continue;
+			}
+
+			if (frame_count == 0) {
+				DebugUtils::logDebug(TAG + "First frame displayed successfully.");
+			}
+			frame_count++;
+
+			cv::namedWindow(cam_name_short, cv::WINDOW_NORMAL);
+			cv::setWindowProperty(cam_name_short, cv::WND_PROP_TOPMOST, 1);
+			cv::resizeWindow(cam_name_short, 600, 400);
+			cv::imshow(cam_name_short, frame);
+
+			int i = cameraName[cameraName.size() - 1] - '0' - 1;
+			cv::moveWindow(cam_name_short, 600 * (i % 3), 430 * (i / 3));
+
+			if (cv::waitKey(1) == 27)
+				break;
+		}      
+    }
+
+    DebugUtils::logDebug(TAG + "Liveview loop exited. Frames displayed: "
+        + std::to_string(frame_count) + ". Releasing resources.");
+
+    // ── Cleanup ───────────────────────────────────────────────────────────
+    ReleaseStream(stream, evfImage);
+    DebugUtils::logDebug(TAG + "Stream released.");
 	
-		cv::namedWindow(directory_tree, cv::WINDOW_NORMAL);
-		cv::setWindowProperty(directory_tree, cv::WND_PROP_TOPMOST, 1);
-		cv::resizeWindow(directory_tree, 600, 400);
-		cv::imshow(directory_tree, frame);
-
-		int i = cameraName[cameraName.size() - 1] - '0' - 1;
-		cv::moveWindow(directory_tree, 600 * (i % 3), 430 * (i / 3));
-
-		// process GUI events so window stays responsive
-		if (cv::waitKey(1) == 27)  // ESC to exit
-			break;
+	if(config.getValue<bool>("dslr.display_liveview_windows")) {
+		cv::destroyWindow(cam_name_short);
+		DebugUtils::logDebug(TAG + "CV Window Destroyed.");
+		cv::waitKey(1);
 	}
 
-
-	// 11/7 GS
-	// - reorderd this so stream closes before window attempts closure
-	// - added a waitKey() afterwards for an extra attempt at closure\
-	// (these are meant to fix the bug where a window stays open and messes up
-	//	state for the next time liveview is triggered) 
-
-	ReleaseStream(stream, evfImage);
-
-	cv::destroyWindow(cameraName);
-	cv::waitKey(1);
-
-
-
-	return true;
+    DebugUtils::logDebug(TAG + "Thread exiting cleanly.");
+    return EDS_ERR_OK;
 }
+
 
 // Function to end the EVF command, stopping the live view and releasing resources
 EdsError EndEvfCommand(EdsCameraRef const& camera, EdsUInt64 const& bodyID)
@@ -330,147 +381,148 @@ EdsError EndEvfCommand(EdsCameraRef const& camera, EdsUInt64 const& bodyID)
 // Function to start the EVF command for multiple cameras
 EdsError StartEvfCommand(std::vector<EdsCameraRef> const& cameraArray, std::vector<EdsUInt64> const& bodyID)
 {
-	int i;
-	bool result;
-	for (i = 0; i < cameraArray.size(); i++)
-	{
-		result = StartEvfCommand(cameraArray[i], bodyID[i]);
-		if (!result) {
-			return result;
-		}
-	}
-	return true;
+    for (size_t i = 0; i < cameraArray.size(); i++)
+    {
+        EdsError err = StartEvfCommand(cameraArray[i], bodyID[i]);
+        if (err != EDS_ERR_OK) {
+            DebugUtils::logError("[StartEvf] Failed on camera index " + std::to_string(i)
+                + " err=" + std::to_string(err));
+            return err;
+        }
+        DebugUtils::logDebug("[StartEvf] Camera index " + std::to_string(i) + " configured successfully.");
+    }
+    return EDS_ERR_OK;
 }
 
 // (DEPRICATED) Function to download the image of each camera and then display it using OpenCV.
-EdsError DownloadEvfCommand(std::vector<EdsCameraRef> const& cameraArray, std::vector<EdsUInt64> const& _bodyID)
-{
+// EdsError DownloadEvfCommand(std::vector<EdsCameraRef> const& cameraArray, std::vector<EdsUInt64> const& _bodyID)
+// {
 
-	EdsError err = EDS_ERR_OK;
+// 	EdsError err = EDS_ERR_OK;
 
-	std::vector<EdsEvfImageRef> evfImage(5, NULL);
-	std::vector<EdsStreamRef> stream(5, NULL);
-	EdsUInt32 device = 0;
-	int i;
+// 	std::vector<EdsEvfImageRef> evfImage(5, NULL);
+// 	std::vector<EdsStreamRef> stream(5, NULL);
+// 	EdsUInt32 device = 0;
+// 	int i;
 
-	for (i = 0; i < cameraArray.size(); i++)
-	{
-		err = EdsGetPropertyData(cameraArray[i], kEdsPropID_Evf_OutputDevice, 0, sizeof(device), &device);
-		// Exit unless during live view.
-		if ((device & kEdsEvfOutputDevice_PC) == 0)
-		{	
-			return true;
-		}
+// 	for (i = 0; i < cameraArray.size(); i++)
+// 	{
+// 		err = EdsGetPropertyData(cameraArray[i], kEdsPropID_Evf_OutputDevice, 0, sizeof(device), &device);
+// 		// Exit unless during live view.
+// 		if ((device & kEdsEvfOutputDevice_PC) == 0)
+// 		{	
+// 			return true;
+// 		}
 
-		// create folder  ex) cam1
-		EdsUInt32 camid;
-		camid = (EdsUInt32)_bodyID[i];
-		std::string directory_tree = "cam" + std::to_string(camid);
-		if (fs::exists(directory_tree) == FALSE)
-		{
-			std::filesystem::create_directories(directory_tree);
-		}
+// 		// create folder  ex) cam1
+// 		EdsUInt32 camid;
+// 		camid = (EdsUInt32)_bodyID[i];
+// 		std::string directory_tree = "cam" + std::to_string(camid);
+// 		if (fs::exists(directory_tree) == FALSE)
+// 		{
+// 			std::filesystem::create_directories(directory_tree);
+// 		}
 
-		std::string tmp;
-		tmp = directory_tree + "/evf.jpg";
-		char* filename = new char[tmp.size() + 1];
-		strcpy(filename, tmp.c_str());
+// 		std::string tmp;
+// 		tmp = directory_tree + "/evf.jpg";
+// 		char* filename = new char[tmp.size() + 1];
+// 		strcpy(filename, tmp.c_str());
 
-		// When creating to a file.
-		err = EdsCreateFileStream(filename, kEdsFileCreateDisposition_CreateAlways, kEdsAccess_ReadWrite, &stream[i]);
+// 		// When creating to a file.
+// 		err = EdsCreateFileStream(filename, kEdsFileCreateDisposition_CreateAlways, kEdsAccess_ReadWrite, &stream[i]);
 
-		// Create EvfImageRef.
-		if (err == EDS_ERR_OK)
-		{
-			err = EdsCreateEvfImageRef(stream[i], &evfImage[i]);
-		}
+// 		// Create EvfImageRef.
+// 		if (err == EDS_ERR_OK)
+// 		{
+// 			err = EdsCreateEvfImageRef(stream[i], &evfImage[i]);
+// 		}
 
-		//Notification of error
-		if (err != EDS_ERR_OK)
-		{
-			std::cout << "Error: " << err << std::endl;
-			ReleaseStream(stream[i], evfImage[i]);
-			std::cout << "Fifth" << std::endl;
-			throwCameraException(err);
-		}
-	}
+// 		//Notification of error
+// 		if (err != EDS_ERR_OK)
+// 		{
+// 			std::cout << "Error: " << err << std::endl;
+// 			ReleaseStream(stream[i], evfImage[i]);
+// 			std::cout << "Fifth" << std::endl;
+// 			throwCameraException(err);
+// 		}
+// 	}
 
-	while (cv::waitKey(1) != 'r') {
-		for (i = 0; i < cameraArray.size(); i++) {
-			EdsUInt32 camid;
-			camid = (EdsUInt32)_bodyID[i];
-			std::string directory_tree = "cam" + std::to_string(camid);
-			// Download live view image data.
-			if (err == EDS_ERR_OK)
-			{
-				err = EdsDownloadEvfImage(cameraArray[i], evfImage[i]);
-				std::this_thread::sleep_for(50ms);
-			}
+// 	while (cv::waitKey(1) != 'r') {
+// 		for (i = 0; i < cameraArray.size(); i++) {
+// 			EdsUInt32 camid;
+// 			camid = (EdsUInt32)_bodyID[i];
+// 			std::string directory_tree = "cam" + std::to_string(camid);
+// 			// Download live view image data.
+// 			if (err == EDS_ERR_OK)
+// 			{
+// 				err = EdsDownloadEvfImage(cameraArray[i], evfImage[i]);
+// 				std::this_thread::sleep_for(50ms);
+// 			}
 	
-			// Get meta data for live view image data.
-			if (err == EDS_ERR_OK)
-			{
-				EVF_DATASET dataSet = { 0 };
+// 			// Get meta data for live view image data.
+// 			if (err == EDS_ERR_OK)
+// 			{
+// 				EVF_DATASET dataSet = { 0 };
 	
-				dataSet.stream = stream[i];
+// 				dataSet.stream = stream[i];
 	
-				// Get magnification ratio (x1, x5, or x10).
-				EdsGetPropertyData(evfImage[i], kEdsPropID_Evf_Zoom, 0, sizeof(dataSet.zoom), &dataSet.zoom);
+// 				// Get magnification ratio (x1, x5, or x10).
+// 				EdsGetPropertyData(evfImage[i], kEdsPropID_Evf_Zoom, 0, sizeof(dataSet.zoom), &dataSet.zoom);
 	
-				// Get position of image data. (when enlarging)
-				// Upper left coordinate using JPEG Large size as a reference.
-				EdsGetPropertyData(evfImage[i], kEdsPropID_Evf_ImagePosition, 0, sizeof(dataSet.imagePosition), &dataSet.imagePosition);
+// 				// Get position of image data. (when enlarging)
+// 				// Upper left coordinate using JPEG Large size as a reference.
+// 				EdsGetPropertyData(evfImage[i], kEdsPropID_Evf_ImagePosition, 0, sizeof(dataSet.imagePosition), &dataSet.imagePosition);
 	
-				// Get histogram (RGBY).
-				EdsGetPropertyData(evfImage[i], kEdsPropID_Evf_Histogram, 0, sizeof(dataSet.histogram), dataSet.histogram);
+// 				// Get histogram (RGBY).
+// 				EdsGetPropertyData(evfImage[i], kEdsPropID_Evf_Histogram, 0, sizeof(dataSet.histogram), dataSet.histogram);
 	
-				// Get rectangle of the focus border.
-				EdsGetPropertyData(evfImage[i], kEdsPropID_Evf_ZoomRect, 0, sizeof(dataSet.zoomRect), &dataSet.zoomRect);
+// 				// Get rectangle of the focus border.
+// 				EdsGetPropertyData(evfImage[i], kEdsPropID_Evf_ZoomRect, 0, sizeof(dataSet.zoomRect), &dataSet.zoomRect);
 	
-				// Get the size as a reference of the coordinates of rectangle of the focus border.
-				EdsGetPropertyData(evfImage[i], kEdsPropID_Evf_CoordinateSystem, 0, sizeof(dataSet.sizeJpegLarge), &dataSet.sizeJpegLarge);
-			}
+// 				// Get the size as a reference of the coordinates of rectangle of the focus border.
+// 				EdsGetPropertyData(evfImage[i], kEdsPropID_Evf_CoordinateSystem, 0, sizeof(dataSet.sizeJpegLarge), &dataSet.sizeJpegLarge);
+// 			}
 
-			//Notification of error
-			if (err != EDS_ERR_OK)
-			{
-				std::cout << "Error: " << err << std::endl;
-				ReleaseStream(stream[i], evfImage[i]);
-				std::cout << "Sixth" << std::endl;
-				throwCameraException(err, "Something 1");
-			}
+// 			//Notification of error
+// 			if (err != EDS_ERR_OK)
+// 			{
+// 				std::cout << "Error: " << err << std::endl;
+// 				ReleaseStream(stream[i], evfImage[i]);
+// 				std::cout << "Sixth" << std::endl;
+// 				throwCameraException(err, "Something 1");
+// 			}
 
-			// Display Image
-			cv::Mat frame;
-			frame = cv::imread(directory_tree + "/evf.jpg");
-			if (frame.empty()) {
-				break;
-			}
+// 			// Display Image
+// 			cv::Mat frame;
+// 			frame = cv::imread(directory_tree + "/evf.jpg");
+// 			if (frame.empty()) {
+// 				break;
+// 			}
 		
-			cv::namedWindow(directory_tree, cv::WINDOW_NORMAL);
-			cv::setWindowProperty(directory_tree, cv::WND_PROP_TOPMOST, 1);
-			cv::resizeWindow(directory_tree, 600, 400);
-			cv::imshow(directory_tree, frame);
-			cv::moveWindow(directory_tree, 600 * (i % 3), 430 * (i / 3));
-		}
-	}
+// 			cv::namedWindow(directory_tree, cv::WINDOW_NORMAL);
+// 			cv::setWindowProperty(directory_tree, cv::WND_PROP_TOPMOST, 1);
+// 			cv::resizeWindow(directory_tree, 600, 400);
+// 			cv::imshow(directory_tree, frame);
+// 			cv::moveWindow(directory_tree, 600 * (i % 3), 430 * (i / 3));
+// 		}
+// 	}
 
-	cv::waitKey(0);
-	cv::destroyAllWindows();
+// 	cv::waitKey(0);
+// 	cv::destroyAllWindows();
 
-	std::cout << "End" << std::endl;
-	for (i = 0; i < cameraArray.size(); i++) {
-		ReleaseStream(stream[i], evfImage[i]);
-	}
+// 	std::cout << "End" << std::endl;
+// 	for (i = 0; i < cameraArray.size(); i++) {
+// 		ReleaseStream(stream[i], evfImage[i]);
+// 	}
 
-	return true;
-}
+// 	return true;
+// }
 
 // Function to end the EVF command for multiple cameras
 EdsError EndEvfCommand(std::vector<EdsCameraRef> const& cameraArray, std::vector<EdsUInt64> const& bodyID)
 {
 	bool result;
-	for (int i = 0; i < cameraArray.size(); i++) {
+	for (size_t i = 0; i < cameraArray.size(); i++) {
 		result = EndEvfCommand(cameraArray[i], bodyID[i]);
 		if (!result) {
 			return false;
