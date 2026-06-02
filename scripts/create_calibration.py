@@ -313,17 +313,29 @@ def main():
     required_files = {
         "alignment_tf.txt": os.path.join(in_dir, "alignment_tf.txt"),
         "scaling.yaml":     os.path.join(in_dir, "scaling.yaml"),
-        "cameras.txt":      os.path.join(in_dir, "sparse", "0", "cameras.txt"),
-        "images.txt":       os.path.join(in_dir, "sparse", "0", "images.txt"),
+        "cameras.txt":      [os.path.join(in_dir, "sparse", "0", "cameras.txt"),os.path.join(in_dir, "cameras.txt")],
+        "images.txt":       [os.path.join(in_dir, "sparse", "0", "images.txt"),os.path.join(in_dir, "images.txt")],
     }
 
     all_found = True
     for label, fpath in required_files.items():
-        if os.path.isfile(fpath):
-            ok(f"{label}  →  {fpath}")
+        # This branch allows the generation of new calibrations from the file structure of copied base_files
+        # This means you could make an adjustment to one of the base files (alignment, scale, etc) and generate a fresh calibration file from them.
+        if isinstance(fpath, list): # Check if one of the paths exists
+            found = False
+            for p in fpath:
+                if os.path.isfile(p):
+                    ok(f"{label}  →  {p}")
+                    required_files[label] = p
+                    found = True
+            if not found:
+                all_found = False
         else:
-            fail(f"{label}  →  {fpath}")
-            all_found = False
+            if os.path.isfile(fpath):
+                ok(f"{label}  →  {fpath}")
+            else:
+                fail(f"{label}  →  {fpath}")
+                all_found = False
 
     if not all_found:
         print("\n  ✗  One or more required files are missing. Aborting.\n")
