@@ -51,7 +51,8 @@ if [ -n "$most_recent_folder" ]; then
     file_count=$(find "$output_dir" -maxdepth 1 -type f | wc -l)
 
     name_mod=$([[ $normal_method == "model_output" ]] && echo "-normals" || echo "")
-    file_name="$object-cloud-$file_count$name_mod.ply"
+    object_slug="${object//\//-}"
+    file_name="$object_slug-cloud-$file_count$name_mod.ply"
     echo "Rename File To: $file_name"
     old_cloud_file="$output_dir/point_cloud.ply"
     new_cloud_file="$output_dir/$file_name"

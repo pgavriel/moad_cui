@@ -27,12 +27,12 @@
         "manual_check": false
     },
     "num_moves": 72,
-    "object_name": "liveview_testing",
+    "object_name": "gear_replica",
     "output_dir": "/home/csrobot/MOAD_DATA",
     "prev_state": {
         "current_move": 72,
         "current_object": "",
-        "current_pose": 97,
+        "current_pose": 98,
         "turntable_pos": 360
     },
     "realsense": {

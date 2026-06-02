@@ -296,8 +296,8 @@ def main():
     if len(sys.argv) != 3:
         print("Usage: python3 create_calibration.py <output_name> <input_folder>")
         print("\tRunning with defaults...")
-        out_dir = os.path.join(script_dir,"../calibration/test")
-        in_dir  = "/home/csrobot/MOAD_DATA/calib-18mm-5-4-26"
+        out_dir = os.path.join(script_dir,"../calibration/test_55")
+        in_dir  = "/home/csrobot/MOAD_DATA/calib-55mm-5-7-26"
         # sys.exit(1)
     else:
         out_dir = os.path.join(script_dir,"../calibration",sys.argv[1])
@@ -415,7 +415,7 @@ def main():
 
         info(f"  Processing image: {img_name}  →  key='{cam_key}'")
         t = c2w_aligned[:3, 3]
-        info(f"    Aligned position: ({t[0]:.4f}, {t[1]:.4f}, {t[2]:.4f})")
+        info(f"    Aligned position: ({t[0]:.3f}, {t[1]:.3f}, {t[2]:.3f})\n")
 
         cameras_out[cam_key] = {
             "source_file":  img_name,
@@ -427,7 +427,7 @@ def main():
             },
         }
 
-    info(f"\n  Total cameras in output: {len(cameras_out)}")
+    info(f" Total cameras in output: {len(cameras_out)}")
 
     # --- Assemble final JSON
     output = {

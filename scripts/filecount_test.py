@@ -50,7 +50,7 @@ import time
 NUM_IMAGES = 360  # Expected number of images in each pose folder
 
 
-DEFAULT_DIR = "g:\\MOAD_V2"
+DEFAULT_DIR = "/home/csrobot/MOAD_DATA"
 
 
 def check_num_images_in_folder(folder_path=DEFAULT_DIR, expected_count=NUM_IMAGES, images_folder=False):

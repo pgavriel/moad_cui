@@ -54,9 +54,17 @@ else
         --skip-colmap   
 fi
 
+# Establish training output directory -- this can be tricky to get right, but it should work as is.
+#       We want the "nerfacto" folder to be created inside the specified pose folder when training starts.
+if [[ "$object" == */* ]]; then
+    target_dir="$base_dir/$(dirname "$object")"
+else
+    target_dir="$base_dir"
+fi
+echo "Training Output Dir: $target_dir"
 # Start Training
 ns-train nerfacto --data $target_directory \
-    --output-dir $base_dir/ \
+    --output-dir $target_dir \
     --viewer.quit-on-train-completion $stop_after_training \
     --pipeline.model.predict-normals $predict_normals \
     --pipeline.model.camera-optimizer.mode $camera_optimizer \
