@@ -18,16 +18,16 @@
         "safe_take_picture": false
     },
     "filecount_testing": {
-        "check_all": true,
+        "check_all": false,
         "check_single_object": true,
         "count": true,
         "create": true,
         "delay": true,
-        "enabled": false,
+        "enabled": true,
         "manual_check": false
     },
     "num_moves": 72,
-    "object_name": "gear_replica",
+    "object_name": "batch1_001",
     "output_dir": "/home/csrobot/MOAD_DATA",
     "prev_state": {
         "current_move": 72,
@@ -237,9 +237,9 @@
     "transform_generator": {
         "calibration_dir": "../calibration",
         "calibration_mode": "55mm",
-        "enabled": false,
+        "enabled": true,
         "force": true,
-        "visualize": false
+        "visualize": true
     },
     "turntable_delay_ms": 10000
 }
