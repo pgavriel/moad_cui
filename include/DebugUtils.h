@@ -30,8 +30,23 @@
 #include <string>
 #include <chrono>
 #include <fstream>
+#include <ctime>
+#include <cstdio>
+#include <mutex>
 
 #include "ConfigHandler.h"
+
+// ANSI terminal color codes — only ever applied to terminal output, never logged to file
+namespace LogColor {
+    constexpr const char* RESET   = "\033[0m";
+    constexpr const char* RED     = "\033[31m";
+    constexpr const char* YELLOW  = "\033[33m";
+    constexpr const char* GREEN   = "\033[32m";
+    constexpr const char* CYAN    = "\033[36m";
+    constexpr const char* MAGENTA = "\033[35m";
+    constexpr const char* BLUE    = "\033[34m";
+    constexpr const char* WHITE   = "\033[37m";
+}
 
 class DebugUtils {
 private:
@@ -43,6 +58,8 @@ private:
     static std::chrono::time_point<std::chrono::high_resolution_clock> start_time;
     static std::chrono::time_point<std::chrono::high_resolution_clock> end_time;
     static std::ofstream log_file;
+    static std::mutex log_mutex;
+    static std::unordered_map<std::string, const char*> tag_colors;
 
 public:
 
@@ -60,15 +77,35 @@ public:
         if (!log_file.is_open()) {
             std::cerr << "[ERROR] Failed to open log file: " << file_path << std::endl;
         } else {
-            std::cout << "Opened Debug Log File: " << file_path << std::endl;
+            // Build a timestamp string for the opening log entry
+            auto now = std::chrono::system_clock::now();
+            std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+            std::tm local_tm;
+            localtime_r(&now_time, &local_tm);
+            char date_buf[32], time_buf[32];
+            std::strftime(date_buf, sizeof(date_buf), "%Y-%m-%d", &local_tm);
+            std::strftime(time_buf, sizeof(time_buf), "%H:%M:%S", &local_tm);
+
+            log("DEBUG", std::string("\n\n[START] Debug logging started,"
+                "\n\tlog:  ") + file_path +
+                "\n\tdate: " + date_buf +
+                "\n\ttime: " + time_buf, 0);
         }
     }
 
     static void closeLogFile() {
-        if (log_file.is_open()) {
-            log_file.close();
-        }
+    if (log_file.is_open()) {
+        auto now = std::chrono::system_clock::now();
+        std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+        std::tm local_tm;
+        localtime_r(&now_time, &local_tm);
+        char time_buf[32];
+        std::strftime(time_buf, sizeof(time_buf), "%H:%M:%S", &local_tm);
+
+        log("END", std::string("Debug logging ended at ") + time_buf + "\n\n\n", 0);
+        log_file.close();
     }
+}
 
 
     // -------------------------------------------------------------------------
@@ -82,6 +119,7 @@ public:
     //   always_log  - when true, write to the file even if "log_debug" is false
     //                 (used by logInfo, logWarning, logConfig to preserve their
     //                  original bypass behaviour)
+    //   TODO: Implement text color choices for more organized printing
     // -------------------------------------------------------------------------
 
     static void log(const std::string& tag,
@@ -89,21 +127,40 @@ public:
                     int  debug_level = 0,
                     bool always_log  = false)
     {
+        // Mutex lock for threadsafe logging/printing
+        std::lock_guard<std::mutex> lock(log_mutex);
+
+        // Obtain global config
         ConfigHandler& config = ConfigHandler::getInstance();
 
+        // Fixed width formatting for debug tags:
+        static constexpr int TAG_WIDTH = 9; // SET MAX TAG WIDTH
+        char tag_buf[TAG_WIDTH + 1];
+        int tag_len = static_cast<int>(tag.size());
+        int total_pad = TAG_WIDTH - tag_len;
+        int pad_left  = total_pad / 2;
+        int pad_right = total_pad - pad_left;  // takes the extra space if odd
+        std::snprintf(tag_buf, sizeof(tag_buf), "%*s%s%*s",
+                    pad_left, "", tag.c_str(), pad_right, "");
+
+        // WRITE TO LOG FILE            
         const bool file_enabled = always_log || config.getValue<bool>("debug.log");
         if (file_enabled && log_file.is_open()) {
-            log_file << "[" << tag << "] " << message << std::endl;
+            log_file << "[" << tag_buf << "][" << debug_level << "] " << message << std::endl;
         }
 
+        // PRINT LOG ITEMS TO TERMINAL
         const int verbosity = config.getValue<int>("debug.debug_verbosity");
         if (verbosity >= debug_level) {
+            auto it = tag_colors.find(tag);
+            const char* color = (it != tag_colors.end()) ? it->second : "";
+            const char* reset = (it != tag_colors.end()) ? LogColor::RESET : "";
             // Use cerr for error-class tags so they surface even when stdout is
             // redirected, otherwise use cout.
             if (tag == "ERROR") {
-                std::cerr << "[" << tag << "] " << message << std::endl;
+                fprintf(stderr, "%s[%s][%d] %s%s\n", color, tag_buf, debug_level, message.c_str(), reset);
             } else {
-                std::cout << "[" << tag << "] " << message << std::endl;
+                fprintf(stdout, "%s[%s][%d] %s%s\n", color, tag_buf, debug_level, message.c_str(), reset);
             }
         }
     }
@@ -130,6 +187,10 @@ public:
 
     static void logCam(const std::string& message) {
         log("CAMERA", message, 0);
+    }
+
+    static void logFileSys(const std::string& message){
+        log("FILESYS", message, 0);
     }
 
     static void logRS(const std::string& message) {
@@ -165,6 +226,17 @@ public:
         log("WARNING", message, 0, /*always_log=*/true);
     }
 
+    static void logSerial(const std::string& message) {
+        log("SERIAL", message, 0);
+    }
+
+    static void logWhitespace(int n = 1) {
+    std::lock_guard<std::mutex> lock(log_mutex);
+    for (int i = 0; i < n; i++) {
+        fprintf(stdout, "\n");
+    }
+}
+
 
     // -------------------------------------------------------------------------
     // OLD: DONT USE THESE IN NEW CODE
@@ -173,25 +245,25 @@ public:
     // "log_debug", so they are kept separate from log() rather than folded in.
     // -------------------------------------------------------------------------
 
-    static void printDebug(const std::string& message) {
-        if (!_debugEnabled()) return;
-        std::cout << "[DEBUG] " << message << std::endl;
-    }
+    // static void printDebug(const std::string& message) {
+    //     if (!_debugEnabled()) return;
+    //     std::cout << "[DEBUG] " << message << std::endl;
+    // }
 
-    static void printError(const std::string& message) {
-        if (!_debugEnabled()) return;
-        std::cerr << "[ERROR] " << message << std::endl;
-    }
+    // static void printError(const std::string& message) {
+    //     if (!_debugEnabled()) return;
+    //     std::cerr << "[ERROR] " << message << std::endl;
+    // }
 
-    static void printInfo(const std::string& message) {
-        if (!_debugEnabled()) return;
-        std::cout << "[INFO] " << message << std::endl;
-    }
+    // static void printInfo(const std::string& message) {
+    //     if (!_debugEnabled()) return;
+    //     std::cout << "[INFO] " << message << std::endl;
+    // }
 
-    static void printWarning(const std::string& message) {
-        if (!_debugEnabled()) return;
-        std::cout << "[WARNING] " << message << std::endl;
-    }
+    // static void printWarning(const std::string& message) {
+    //     if (!_debugEnabled()) return;
+    //     std::cout << "[WARNING] " << message << std::endl;
+    // }
 
 
     // -------------------------------------------------------------------------

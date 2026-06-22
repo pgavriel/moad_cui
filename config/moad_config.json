@@ -1,4 +1,7 @@
 {
+    "num_moves": 72,
+    "object_name": "test_object",
+    "output_dir": "/home/csrobot/MOAD_DATA",
     "debug": {
         "debug_verbosity": 3,
         "log": true
@@ -26,14 +29,11 @@
         "enabled": true,
         "manual_check": false
     },
-    "num_moves": 72,
-    "object_name": "batch1_001",
-    "output_dir": "/home/csrobot/MOAD_DATA",
     "prev_state": {
-        "current_move": 72,
+        "current_move": 27,
         "current_object": "",
         "current_pose": 98,
-        "turntable_pos": 360
+        "turntable_pos": 135
     },
     "realsense": {
         "align_to_color": false,
@@ -235,7 +235,7 @@
     "serial_com_port": "/dev/ttyACM0",
     "thread_num": 5,
     "transform_generator": {
-        "calibration_dir": "../calibration",
+        "calibration_dir": "/home/csrobot/moad_control/moad_cui/calibration",
         "calibration_mode": "55mm",
         "enabled": true,
         "force": true,

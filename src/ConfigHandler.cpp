@@ -6,7 +6,8 @@
 
 ConfigHandler::ConfigHandler() {
     // Constructor
-    std::cout << "Instance Created: ConfigHandler" << std::endl;
+    DebugUtils::logInfo("Initializing ConfigHandler...");
+    // std::cout << "Instance Created: ConfigHandler" << std::endl;
 }
 
 ConfigHandler::~ConfigHandler() {
@@ -15,7 +16,8 @@ ConfigHandler::~ConfigHandler() {
 
 void ConfigHandler::loadConfig(const std::string& filepath) {
 
-    std::cout << "Loading Config File: " << filepath << std::endl;
+    DebugUtils::logDebug("Loading Config File: " + filepath);
+    // std::cout << "Loading Config File: " << filepath << std::endl;
     std::cout << "=============================== " << std::endl; // isolate this msg 
     
     // NOTE: this debugutils statement actually cant be here, since the function defintion
@@ -37,11 +39,11 @@ void ConfigHandler::saveConfig(const std::string& filepath) const {
         file << config.dump(4); // Pretty print with 4 spaces indentation
         file.close();
 
-        std::cout << "ConfigHandler saving to: " << filepath << std::endl;
+        // std::cout << "ConfigHandler saving to: " << filepath << std::endl;
         DebugUtils::logConfig("ConfigHandler saving to: "  + filepath);
 
     } else {
-        std::cerr << "Failed to open file for writing: " << filepath << std::endl;
+        // std::cerr << "Failed to open file for writing: " << filepath << std::endl;
         DebugUtils::logConfig("Failed to open file for writing: " + filepath);
 	}
 }

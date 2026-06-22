@@ -130,7 +130,7 @@ EdsError GetProperty(std::vector<EdsCameraRef> const& cameraArray, std::vector<E
 }
 
 // Function to get the property description and create a table with the possible values for the given property ID.
-EdsError GetPropertyDesc(EdsCameraRef const& camera, EdsUInt64 const& bodyID, EdsPropertyID propertyID, std::map<EdsUInt32, const char*> prop_table, std::map<EdsUInt32, const char*>& out_table)
+EdsError GetPropertyDesc(EdsCameraRef const& camera, EdsUInt64 const& bodyID, EdsPropertyID propertyID, std::map<EdsUInt32, const char*> prop_table, std::map<EdsUInt32, const char*>& out_table, bool print_table = true)
 {
 	EdsError	 err = EDS_ERR_OK;
 	EdsPropertyDesc	 propertyDesc = { 0 };
@@ -195,18 +195,20 @@ EdsError GetPropertyDesc(EdsCameraRef const& camera, EdsUInt64 const& bodyID, Ed
 		optionRow.add_row(options);
 		table.add_row({optionRow});
 
-		std::cout << table << std::endl;
+		if (print_table) {
+			std::cout << table << std::endl;
+		}
 	}
 	return err;
 }
 
 // Function to get the property description and create a table with the possible values for the given property ID from multiple cameras.
-EdsError GetPropertyDesc(std::vector<EdsCameraRef> const& cameraArray, std::vector<EdsUInt64> const& bodyID, EdsPropertyID propertyID, std::map<EdsUInt32, const char*> prop_table, std::map<EdsUInt32, const char*>& out_table)
+EdsError GetPropertyDesc(std::vector<EdsCameraRef> const& cameraArray, std::vector<EdsUInt64> const& bodyID, EdsPropertyID propertyID, std::map<EdsUInt32, const char*> prop_table, std::map<EdsUInt32, const char*>& out_table, bool print_table = true)
 {
 	EdsError	 err = EDS_ERR_OK;
 	EdsPropertyDesc	 propertyDesc = { 0 };
 	int i = 0;
-	err = GetPropertyDesc(cameraArray[i], bodyID[i], propertyID, prop_table, out_table);
+	err = GetPropertyDesc(cameraArray[i], bodyID[i], propertyID, prop_table, out_table, print_table);
 	return err;
 }
 

@@ -16,6 +16,7 @@
 #include "EDSDK.h"
 #include "EDSDKTypes.h"
 #include "CanonHandler.h"
+#include "DebugUtils.h"
 
 namespace fs = std::filesystem;
 
@@ -75,17 +76,14 @@ EdsError downloadImage(EdsDirectoryItemRef  directoryItem, EdsVoid* _bodyID)
 	out_file.str("");
 
 
-
-
 	// should not be hardcoded to "/"
 	out_file << "/cam" << cam_name << "_" 
 		<< std::setfill('0') << std::setw(3) << canonhandle.turntable_position << "_img.jpg";
 		
-
-
-
 	tmp = directory_tree + out_file.str();
-	std::cout << "\033[1;45m" << "Saving: " << out_file.str() << "\033[0m" << std::endl;
+	DebugUtils::logSaveLoop("Saving: " + out_file.str());
+	// std::cout << "\033[1;45m" << "Saving: " << out_file.str() << "\033[0m" << std::endl;
+
 	char* filename = new char[tmp.size() + 1];
 	strcpy(filename, tmp.c_str());
 
@@ -266,7 +264,7 @@ EdsError CountDirectory(EdsBaseRef _volume, EdsDirectoryItemRef* directoryItem, 
 
 EdsError DownloadImageAll(std::vector<EdsCameraRef> const& cameraArray, std::vector<EdsUInt64> const& bodyID)
 {
-	int i;
+	unsigned int i;
 	EdsUInt32 volume_count = 0;
 	EdsBaseRef volumes[2] = {};
 	EdsError				err = EDS_ERR_OK;

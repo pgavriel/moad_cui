@@ -37,7 +37,7 @@
 #include "CameraException.h"
 
 
-// MACRO for cross platform file seperator:
+// MACRO for cross platform file seperator: (Can be deprecated since we're solely supporting linux moving forward)
 // 	TODO: use std::filesystem that auto handles cross platform? 
 // 	the reason I am NOT doing this as of 10/30/2025:
 //		- many paths are hardcoded and built at runtime via string concats
@@ -54,12 +54,12 @@ using namespace std::chrono_literals;
 namespace fs = std::filesystem;
 using ordered_json = nlohmann::ordered_json; // TODO: remove aliasing?
 
-// global variables.
-//	TODO: remove.
+// GLOBAL VARIABLE DEFINITIONS ================================================================
+//	TODO: Cleanup / remove need for globals
 
 // used in CheckKey()
-std::string control_number = "";
-bool keyflag;
+std::string control_number = ""; // Stores user input for menu selection
+bool keyflag;					 // Flags user input has been stored
 
 // used in multiple functions, should maybe be *directly* config based?
 char curr_pose = 'a';
@@ -68,7 +68,6 @@ std::string scan_folder;
 
 // Liveview Threads
 std::vector<std::thread> liveview_th;
-// bool liveview_active = false;
 std::atomic<bool> liveview_active = false;
 std::thread::id liveview_thread_id;
 
@@ -80,7 +79,7 @@ EdsCameraRef activeCamera;
 RealSenseHandler rshandle;
 SimpleSerial* Serial;
 
-// Menu
+// Menu pointer
 MenuHandler* curr_menu;
 
 // TXT Config 
@@ -95,28 +94,21 @@ void initializeCanon();
 void initializeRealsense();
 bool WaitForCameraReady(EdsCameraRef camera, int timeoutMs);
 void rotate_turntable(int degree_inc);
-
-
-// function to run file count check below
-//     definition and implementation are in ./scripts/filecount_test.py
-//	   currently set to run at the end of various scans WITH A HARDCODED FILEPATH
-//     TODO: add flag in config
-//	   TODO: make file path configurable
-bool run_filecount_check();
-
+bool run_filecount_check(); // Calls ./scripts/filecount_test.py (Copying/downscaling images for NeRF)
 int create_folder(std::string path, bool quiet);
 
 
 
-// functions for writing to config.json:
+// functions for writing to config.json ==========================================================================================================
 //   TODO: can be one function? deterministic on args?
 //	 NOTE: REWRITES the config each time, though should only change 1 value each call
 
-void write_obj_to_moadfig(std::string object_name);
+// void write_obj_to_moadfig(std::string object_name);
 void write_obj_to_moadfig(std::string object_name) {
 	std::ifstream config_file(json_path);
 
-	std::cout << "Writing object to moadfig, path is " << json_path << std::endl;
+	// std::cout << "Writing object to moadfig, path is " << json_path << std::endl;
+	DebugUtils::logConfig("Updating Object Name: " + json_path);
 
 	ordered_json config_json;
 
@@ -124,7 +116,8 @@ void write_obj_to_moadfig(std::string object_name) {
 		config_file >> config_json;
 		config_file.close();
 	} else {
-		std::cerr << "Failed to open config file: " << json_path << std::endl;
+		// std::cerr << "Failed to open config file: " << json_path << std::endl;
+		DebugUtils::logError("Failed to open config file: " + json_path);
 		return;
 	}
 
@@ -136,54 +129,61 @@ void write_obj_to_moadfig(std::string object_name) {
 	if (out_file.is_open()) {
 		out_file << config_json.dump(4);
 		out_file.close();
-		std::cout << "Updated object_name in moad_config.json" << std::endl;
+		// std::cout << "Updated object_name in moad_config.json" << std::endl;
+		DebugUtils::logConfig("Updated Object Name: " + object_name);
 	} else {
-		std::cerr << "Failed to write to config file: " << json_path << std::endl;
+		// std::cerr << "Failed to write to config file: " << json_path << std::endl;
+		DebugUtils::logError("Failed to write to config file: " + json_path);
 	}
 }
 
-void write_pose_to_moadfig(char pose);
+// void write_pose_to_moadfig(char pose);
 void write_pose_to_moadfig(char pose) {
 	std::ifstream config_file(json_path);
 
-	std::cout << "Writing pose to moadfig, path is " << json_path << std::endl;
+	// std::cout << "Writing pose to moadfig, path is " << json_path << std::endl;
+	DebugUtils::logConfig("Updating Previous Pose: " + json_path);
 
 	ordered_json config_json;
 	if (config_file.is_open()) {
 		config_file >> config_json;
 		config_file.close();
 	} else {
-		std::cerr << "Failed to open config file: " << json_path << std::endl;
+		// std::cerr << "Failed to open config file: " << json_path << std::endl;
+		DebugUtils::logError("Failed to open config file: " + json_path);
 		return;
 	}
 
 	// set object name
 	config_json["prev_state"]["current_pose"] = pose;
+	std::string pose_str{pose};
 
 	// write out
 	std::ofstream out_file(json_path);
 	if (out_file.is_open()) {
 		out_file << config_json.dump(4);
 		out_file.close();
-		std::cout << "Updated prev_state.current_pose in moad_config.json" << std::endl;
+		// std::cout << "Updated prev_state.current_pose in moad_config.json" << std::endl;
+		DebugUtils::logConfig("Updated prev_state.current_pose in moad_config.json: " + pose_str);
 	} else {
-		std::cerr << "Failed to write to config file: " << json_path << std::endl;
+		// std::cerr << "Failed to write to config file: " << json_path << std::endl;
+		DebugUtils::logError("Failed to write to config file: " + json_path);
 	}
 }
 
-void write_degree_move_to_moadfig(int degree, int current_move); // template this later for int item
+// void write_degree_move_to_moadfig(int degree, int current_move); // template this later for int item
 void write_degree_move_to_moadfig(int degree, int current_move) {
 	
 	std::ifstream config_file(json_path);
 
-	std::cout << "path is " << json_path << std::endl;
+	DebugUtils::logConfig("Updating Previous Turntable Position: " + json_path);
 
 	ordered_json config_json;
 	if (config_file.is_open()) {
 		config_file >> config_json;
 		config_file.close();
 	} else {
-		std::cerr << "Failed to open config file: " << json_path << std::endl;
+		DebugUtils::logError("Failed to open config file: " + json_path);
 		return;
 	}
 
@@ -198,47 +198,30 @@ void write_degree_move_to_moadfig(int degree, int current_move) {
 	if (out_file.is_open()) {
 		out_file << config_json.dump(4);
 		out_file.close();
-		std::cout << "Updated prev_state.turntable_pos in moad_config.json" << std::endl;
+		// std::cout << "Updated prev_state.turntable_pos in moad_config.json" << std::endl;
+		DebugUtils::logConfig("Updated prev_state.turntable_pos/current_move in moad_config.json:: " + std::to_string(degree) + " / " + std::to_string(current_move));
 	} else {
-		std::cerr << "Failed to write to config file: " << json_path << std::endl;
+		// std::cerr << "Failed to write to config file: " << json_path << std::endl;
+		DebugUtils::logError("Failed to write to config file: " + json_path);
 	}
 
 }
 
 
 
+/* 	
+Handles loading/re-loading the moadconfig. If it's called during runtime after the config
+has already been loaded, it checks whether DSLR/RS collection has been enabled and if so,
+initializes the objects responsible for handling their data collection. 
 
-
-
-int get_rs_timeout() {
-	ConfigHandler& config = ConfigHandler::getInstance();
-	int rs_timeout = config.getValue<int>("realsense.realsense_timeout_sec") * 1000;
-	return rs_timeout;
-}
-
-int get_dslr_timeout() {
-	ConfigHandler& config = ConfigHandler::getInstance();
-	int dslr_timeout = config.getValue<int>("dslr.dslr_timeout_sec") * 20;
-	return dslr_timeout;
-}
-
-
-
-/* 	dispatcher function that just communicates with json file at the given path - GS 10/29
 	calls:
-		- loadconfig()
-		- initializeCanon()
-		- initializeRealsense()
+		- loadConfig()
+		- initializeCanon() - if it's been enabled
+		- initializeRealsense() - if it's been enabled
 		- setObjectName()
 */
 void loadJsonConfig(std::string path) {
-
-
-	// this function seems to need a rework, why do we initialize config values and then
-	//	call loadConfig? - GS 10/29
-	// ...the answer could be global variables/singleton pattern + the config variable
-	//	and the moadconfig data existing as two different things (still not quite sure)
-
+	// If config was already loaded, save current state of collect DSLR/RS.
 	ConfigHandler& config = ConfigHandler::getInstance();
 	std::optional<bool> previous_DSLR;
 	std::optional<bool> previous_RS;
@@ -248,16 +231,12 @@ void loadJsonConfig(std::string path) {
 		previous_RS = config.getValue<bool>("realsense.collect_realsense");
 	}
 
+	// Reload the config .json file to update all setting values
 	std::cout << "Path in loadJsonConfig(): " << path << std::endl;
-
 	config.loadConfig(path);
 
 
-
-
-
-
-	// Check if the configuration has changed for DSLR
+	// Check if the configuration has changed for DSLR, if so, initialize Canon Handler
 	if (!previous_DSLR.has_value() || previous_DSLR != config.getValue<bool>("dslr.collect_dslr")) {
 		std::cout << "Initializing CanonHandler" << std::endl;
 		if (config.getValue<bool>("dslr.collect_dslr") && !canonhandle.isSDKLoaded) {
@@ -265,7 +244,7 @@ void loadJsonConfig(std::string path) {
 		}
 	}
 	
-	// Check if the configuration has changed for RealSense
+	// Check if the configuration has changed for RealSense, if so, initialize RS handler
 	if (!previous_RS.has_value() || previous_RS != config.getValue<bool>("realsense.collect_realsense")) {
 		std::cout << "Initializing RealSenseHandler" << std::endl;
 		if (config.getValue<bool>("realsense.collect_realsense")) {
@@ -274,21 +253,25 @@ void loadJsonConfig(std::string path) {
 	}
 
 
-
-
-
-	// // Set the object name from the configuration
+	// Set the object name from the configuration
 	std::string object_name = config.getValue<std::string>("object_name");
 	setObjectName(object_name);
 }
 
+bool reloadConfig() {
+	if (liveview_active) {
+		std::cout << "Liveview is active, please stop it before reloading the config." << std::endl;
+		return false;
+	}
 
-
+	loadJsonConfig(json_path);
+	return false;
+}
 
 
 void saveCameraConfig(std::string path) {
-
-std::cout << "path in saveCamConfig: " + path << std::endl;// declaration was missing before 10/29 - GS
+DebugUtils::logFileSys("Saving camera_config.json to : " + path);
+// std::cout << "path in saveCamConfig: " + path << std::endl;// declaration was missing before 10/29 - GS
 
 	std::vector<std::tuple<EdsPropertyID, std::map<EdsUInt32, const char*>>> propertyIDs = {
 		std::tuple<EdsPropertyID, std::map<EdsUInt32, const char*>> (kEdsPropID_ISOSpeed, iso_table),
@@ -312,7 +295,8 @@ std::cout << "path in saveCamConfig: " + path << std::endl;// declaration was mi
 
 		// segfaults since camera is empty
 		std::string cam = camera_name[camera];
-		std::cout << "camera " + cam << std::endl;
+		DebugUtils::logDebug("Getting config for " + cam);
+		// std::cout << "camera " + cam << std::endl;
 
 		EdsDeviceInfo deviceInfo;
 		EdsGetDeviceInfo(camera, &deviceInfo);
@@ -325,7 +309,7 @@ std::cout << "path in saveCamConfig: " + path << std::endl;// declaration was mi
 	for (auto propertyID : propertyIDs) {
 		std::string name = std::get<0>(getPropertyString(std::get<0>(propertyID)));
 		std::map<EdsUInt32, const char*> out_table;
-		GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, std::get<0>(propertyID), std::get<1>(propertyID), out_table);
+		GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, std::get<0>(propertyID), std::get<1>(propertyID), out_table, false);
 		std::vector<std::string> value_arr;
 		GetProperty(canonhandle.cameraArray, canonhandle.bodyID, std::get<0>(propertyID), out_table, value_arr);
 		
@@ -341,9 +325,11 @@ std::cout << "path in saveCamConfig: " + path << std::endl;// declaration was mi
     if (file.is_open()) {
         file << json_data.dump(4); // Pretty print with 4 spaces indentation
         file.close();
-        std::cout << "Camera configuration saved to " << output_file << std::endl;
+		DebugUtils::logDebug("Camera configuration saved to " + output_file);
+        // std::cout << "Camera configuration saved to " << output_file << std::endl;
     } else {
-        std::cerr << "Failed to open file for writing: " << output_file << std::endl;
+		DebugUtils::logError("Failed to open file for writing: " + output_file);
+        // std::cerr << "Failed to open file for writing: " << output_file << std::endl;
 	}
 }
 
@@ -353,9 +339,11 @@ void saveScanTime(std::chrono::milliseconds duration, std::string path) {
 	std::string seconds = std::to_string((duration.count() % 60000) / 1000);
 
 	// Open the JSON file for writing
-	std::ifstream file(path + PATH_SEP + "camera_config.json");
+	std::string full_path = path + PATH_SEP + "camera_config.json";
+	std::ifstream file(full_path);
 	if (!file.is_open()) {
-		std::cerr << "Failed to open file for writing: " << path + PATH_SEP + "camera_config.json" << std::endl;
+		// std::cerr << "Failed to open file for writing: " << full_path << std::endl;
+		DebugUtils::logError("Failed to open file for writing: " + full_path);
 		return;
 	}
 	nlohmann::json json_data;
@@ -365,13 +353,15 @@ void saveScanTime(std::chrono::milliseconds duration, std::string path) {
 	json_data["Scan Time"] = minutes + ":" + seconds;
 
 	// Save the updated JSON data back to the file
-	std::ofstream output_file(path + PATH_SEP + "/camera_config.json");
+	std::ofstream output_file(full_path);
 	if (output_file.is_open()) {
 		output_file << json_data.dump(4); // Pretty print with 4 spaces indentation
 		output_file.close();
-		std::cout << "Scan time saved to camera_config.json" << std::endl;
+		DebugUtils::logDebug("Scan time saved to camera_config.json");
+		// std::cout << "Scan time saved to camera_config.json" << std::endl;
 	} else {
-		std::cerr << "Failed to open file for writing: " << path + PATH_SEP +"camera_config.json" << std::endl;
+		DebugUtils::logError("Failed to open file for writing: " + full_path);
+		// std::cerr << "Failed to open file for writing: " << full_path << std::endl;
 	}
 
 	// Close the file
@@ -407,19 +397,24 @@ EdsInt32 getvalue()
 int create_folder(std::string path, bool quiet=false) {
 
 	// yellow colored text to notify of folder creations:
-    std::cout << "\033[1;33m" << "creating folder: " << path << "\033[0m" << std::endl;
+    // std::cout << "\033[1;33m" << "creating folder: " << path << "\033[0m" << std::endl;
+	DebugUtils::logFileSys("Creating Folder: " + path);
 
 	if (!fs::exists(path)) {
         // Create the folder and any necessary higher level folders
         if (fs::create_directories(path)) {
-             std::cout << "\033[1;33m" << "Folder created: " << path << "\033[0m\n";
+			DebugUtils::logFileSys("Folder created: " + path);
+            //  std::cout << "\033[1;33m" << "Folder created: " << path << "\033[0m\n";
         } else {
-            std::cerr << "Failed to create folder: " << path << std::endl;
+			DebugUtils::logError("Failed to create folder: " + path);
+            // std::cerr << "Failed to create folder: " << path << std::endl;
             return 1;
         }
     } else { 
-		std::cout << "\033[1;33m" << "WARNING!: Folder already exists: " << path << std::endl
-			<< "\tYou may accidentally overwrite data.\n" << "\033[0m\n";
+		DebugUtils::logFileSys("Folder already exists: " + path);
+		DebugUtils::logWarning("You may accidentally overwrite data.");
+		// std::cout << "\033[1;33m" << "WARNING!: Folder already exists: " << path << std::endl
+		// 	<< "\tYou may accidentally overwrite data.\n" << "\033[0m\n";
     }
 	return 0;
 }
@@ -527,18 +522,23 @@ char get_last_pose() {
 }
 
 
-
+/*
+Master scan function which is called by other scan functions (full,custom,from state)
+	- Creates necessary output folders depending on the data being collected
+	- Collects a single data frame from each enabled sensor
+*/
 bool scan(ThreadPool* pool = nullptr) {
+	// Get current config and setup local variables
 	ConfigHandler& config = ConfigHandler::getInstance();
 	std::string object_name = config.getValue<std::string>("object_name");
 	std::string output_dir = config.getValue<std::string>("output_dir");
 	scan_folder = output_dir + PATH_SEP + object_name;
 
-
 	// thread locking and timings to discern every piece of thread usage
 	bool safe_take_picture = false;
 	if (config.getValue<bool>("dslr.safe_take_picture")) {
-		std::cout << "Safe TakePicture() is enabled." << std::endl;
+		// std::cout << "Safe TakePicture() is enabled." << std::endl;
+		DebugUtils::logConfig("Safe TakePicture() is enabled.");
 		safe_take_picture = true;
 	}
 
@@ -550,14 +550,12 @@ bool scan(ThreadPool* pool = nullptr) {
 		// Create RS Scan Folder
 		rshandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "realsense";
 
-
 		create_folder(rshandle.save_dir, true);
-
 
 		DebugUtils::logDebug("Getting RealSense Data...");
 
 		// Get the current frame from RealSense
-		int rs_timeout = get_rs_timeout();
+		int rs_timeout = config.getValue<int>("realsense.realsense_timeout_sec") * 1000;
 		rshandle.turntable_position = degree_tracker;
 		rshandle.get_current_frame(degree_tracker, rs_timeout, pool);
 
@@ -571,7 +569,6 @@ bool scan(ThreadPool* pool = nullptr) {
 	}
 
 
-
 	// Collect DSLR Data
 	if(config.getValue<bool>("dslr.collect_dslr")) {
 		canonhandle.images_downloaded = 0;
@@ -579,15 +576,11 @@ bool scan(ThreadPool* pool = nullptr) {
 
 		create_folder(canonhandle.save_dir,true);
 	
-		std::cout << "Getting DSLR Data...\n";
+		// std::cout << "Getting DSLR Data...\n";
 		DebugUtils::logDebug("Getting DSLR Data...");
 		canonhandle.turntable_position = degree_tracker;
 
-
-
-
-
-
+		// Create thread vector
 		std::vector<std::thread> threads;
 
 		for (auto& camera : canonhandle.cameraArray) {
@@ -602,125 +595,38 @@ bool scan(ThreadPool* pool = nullptr) {
 					err = TakePictureNoWait(camera, cam_name);
 
 				if (err != EDS_ERR_OK)
-					std::cout << "Error taking picture with camera: " << cam_name << std::endl;
+					// std::cout << "Error taking picture with camera: " << cam_name << std::endl;
+					DebugUtils::logError("Error taking picture with camera: " + cam_name );
 
-				DebugUtils::logPictureLoop("running DSLR picture loop, : " + std::to_string(err));
+				// DebugUtils::logPictureLoop("running DSLR picture loop, : " + std::to_string(err));
 			});
 		}
 
-		std::cout << "waiting for threads to join" << std::endl;
-
-		// wait for all threads to finish
+		// Wait for all threads to finish
+		DebugUtils::logDebug("Waiting for threads to join...");
 		for (auto& t : threads) {
 			t.join();
 		}
 
-
-
-		// std::mutex edsdk_mutex;
-
-		// for (auto& camera : canonhandle.cameraArray) {
-
-		// 	std::string cam_name = camera_name[camera];
-
-		// 	EdsError err = EDS_ERR_OK;
-
-		// 	// std::lock_guard<std::mutex> lock(edsdk_mutex); // note: lock guard unlocks when resource falls out of scoep
-		// 	// edsdk_mutex.lock();
-
-		// 	if(safe_take_picture) {
-		// 		err = TakePicture(camera, cam_name);
-		// 	} else {
-		// 		err = TakePictureNoWait(camera, cam_name);
-		// 	}
-
-		// 	std::cout << "picture error: " << err << std::endl;
-
-		// 	if (err != EDS_ERR_OK) {
-		// 		std::cout << "Error taking picture with camera: " << cam_name << std::endl;
-		// 		std::cout << "err is: " << err << std::endl;
-		// 		DebugUtils::logError("Failed to take picture with camera: " + cam_name);
-		// 	}
-
-		// 	DebugUtils::logPictureLoop("running DSLR picture loop, : " + std::to_string(err));
-
-		// 	// edsdk_mutex.unlock();
-		// }
-
-
-
-
-
-		
-
+		// Wait until all Canon images have been downloaded.
 		while(canonhandle.images_downloaded != canonhandle.cameras_found) {
 			EdsError err = EDS_ERR_OK;
 			err = EdsGetEvent(); // NOTE: this does not save the cmaeras, this just asks for current event
-			std::cout << err; // this line meant to prevent annoying unsed variable error
+			// std::cout << err; // this line meant to prevent annoying unsed variable error
+			DebugUtils::logDebug("Waiting for Canon images... (Error = " + std::to_string(err) + ")");
 			std::this_thread::sleep_for(100ms);
 			// std::cerr << "waiting: " << canonhandle.images_downloaded << "/" << canonhandle.cameras_found << " images downloaded" << std::endl;
 		}
-
-
-
-
-		// // Collecting images from DSLR
-		// int c = 0;
-		// int dslr_timeout = get_dslr_timeout();
-
-		// // DELAY LOOP
-		// //  will wait up to <dslr_timeout> milliseconds to see if images come in
-		// //	BUT does NOT exit program, the check afterwards does.
-		// //	TODO: potentially redundant code here
-		// // std::cout << "saving images..." << std::endl;
-		// while (canonhandle.images_downloaded < canonhandle.cameras_found && c < dslr_timeout) {
-
-		// 	EdsError err = EDS_ERR_OK;
-			
-		// 	err = EdsGetEvent(); // NOTE: this does not save the cmaeras, this just asks for current event
-
-		// 	if (err != EDS_ERR_OK) {
-		// 		std::cerr << "WARNING, EdsGetEvent() failed: " << err << std::endl;
-		// 	}
-
-		// 	// std::this_thread::sleep_for(10ms); // THIS IS NECESSARY, otherwise cams dont save and scan() fails w/ error 8217
-		// 	c++;
-
-		// }
-		// cout << "DSLR Timeout Count: " << c << "/" << dslr_timeout << std::endl;
-		// DebugUtils::logSaveLoop("image save loop DSLR timeout count: " + std::to_string(c) + "/" + std::to_string(dslr_timeout));
-
-		// // check if same number of images were downloaded as their are cameras
-		// if (canonhandle.images_downloaded != canonhandle.cameras_found) {
-
-		// 	std::cerr << "ERROR: Expected " << canonhandle.cameras_found << " images to be downloaded, but got " 
-		// 		<< canonhandle.images_downloaded << "." << std::endl;
-
-		// 	DebugUtils::logError("Expected " + std::to_string(canonhandle.cameras_found) + 
-		// 		" images to be downloaded, but got " + std::to_string(canonhandle.images_downloaded) + ".");
-
-		// 	// return to the main menu
-		// 	// note we have to stop all threads and return to the main menu
-		// 	std::cout << "Returning to main menu..." << std::endl;
-		// 	return false; // NOTE: COMMENT THIS TO IGNORE INTERRUPT // TODO: MAKE TOGGLEABLE
-		// }
-
 	}
-
 	return true;
 }
 
 
-
-
-
-
-
-
-
-
-
-
+/*
+Writes the proper command over serial connection to move the turntable a specified number of degrees.
+TODO: Currently has hardcoded wait time, and I think it just continues if it times out, which breaks data collection for large 
+		degree increments. Need to test this.
+*/
 void rotate_turntable(int degree_inc) {
 
 	std::string degree_inc_str = std::to_string(degree_inc);
@@ -734,12 +640,13 @@ void rotate_turntable(int degree_inc) {
 
 
 		// int wait_time = std::ceil(((abs(degree_inc)*200)+500)/1000) + 5; // faster????
-		int wait_time = 3; // 2 is probably fastest/safest
-		std::cout << "Message sent, moving: " << degree_inc << " degrees, waiting up to " << wait_time << " seconds.\n";
-		
+		int wait_time = 30; // 2 is probably fastest/safest
+		// std::cout << "Message sent, moving: " << degree_inc << " degrees, waiting up to " << wait_time << " seconds.\n";
+		DebugUtils::logTurntable("Message sent: MOVING " + std::to_string(degree_inc) + " degrees, WAITING up to " + std::to_string(wait_time) + " seconds...");
 		
 		std::string incoming = Serial->ReadSerialPort(wait_time, "json");
-		std::cout << "Incoming: " << incoming;// << std::endl;
+		// std::cout << "Incoming: " << incoming;// << std::endl;
+		DebugUtils::logTurntable("Read from turntable serial: " + incoming);
 		
 		// DebugUtils::logTurntable("Message sent, moving: " + std::to_string(degree_inc) + " degrees, waiting up to " + std::to_string(wait_time) + " seconds.");
 		// std::this_thread::sleep_for(250ms);
@@ -748,7 +655,7 @@ void rotate_turntable(int degree_inc) {
 		// std::this_thread::sleep_for(std::chrono::milliseconds(turntable_delay_ms));
 
 	} else {
-		std::cout << "WARNING: Serial command not sent, something went wrong.\n";
+		// std::cout << "WARNING: Serial command not sent, something went wrong.\n";
 		DebugUtils::logTurntable("WARNING: Serial command not sent, something went wrong.");
 	}
 }
@@ -757,6 +664,8 @@ void rotate_turntable(int degree_inc) {
 
 
 bool generateTransform(int degree_inc, int num_moves) {
+	DebugUtils::logWhitespace();
+	DebugUtils::logInfo("Generating transforms.json...");
 	ConfigHandler& config = ConfigHandler::getInstance();
 
 	// Collect parameters from config
@@ -792,7 +701,9 @@ bool generateTransform(int degree_inc, int num_moves) {
 	// Execute command
 	std::string command = command_stream.str(); 
 	const char* c_command = command.c_str();
-	std::cout << "\nExecuting Command: " << command; 
+	DebugUtils::logInfo("Executing Command: " + command);
+	std::this_thread::sleep_for(500ms);
+	// std::cout << "\nExecuting Command: " << command; 
 	system(c_command);
 
 	return false;
@@ -836,7 +747,6 @@ bool generateTransform(int degree_inc, int num_moves) {
 	- GS 7/25/2025
 
 */
-
 bool fullScan() {
 	ConfigHandler& config = ConfigHandler::getInstance();
 
@@ -870,8 +780,8 @@ bool fullScan() {
 	auto start = std::chrono::high_resolution_clock::now();
 	for (int rots = 0; rots < num_moves; rots++)
 	{
-
-		DebugUtils::logDebug("move " + std::to_string(rots + 1) + "/" + std::to_string(num_moves));
+		DebugUtils::logWhitespace(2);
+		DebugUtils::logDebug("Starting move " + std::to_string(rots + 1) + "/" + std::to_string(num_moves));
 
 		if(scan(&pool) == false) {
 			std::cerr << "\n============================================================" << std::endl;
@@ -895,7 +805,7 @@ bool fullScan() {
 
 		write_degree_move_to_moadfig(degree_tracker, rots + 1);
 		
-		std::cout << "Image " << rots+1 << "/" << num_moves << " taken. " << std::endl;
+		// std::cout << "Image " << rots+1 << "/" << num_moves << " taken. " << std::endl;
 		DebugUtils::logDebug("Image " + std::to_string(rots + 1) + "/" + std::to_string(num_moves) + " taken.");
 	}
 
@@ -907,13 +817,18 @@ bool fullScan() {
 	// Convert the duration to minutes, seconds, and milliseconds
 	int minutes = duration.count() / 60000;
 	int seconds = (duration.count() % 60000) / 1000;
-	std::cout << "Scan Time: " << std::setfill('0') << std::setw(2) << minutes << ":" 
-	<< std::setfill('0') << std::setw(2) << seconds << std::endl;
-	std::cout << "RS Fail Count: " << rshandle.fail_count << std::endl;
+	std::ostringstream oss;
+	oss << "Scan Time: "
+		<< std::setw(2) << std::setfill('0') << minutes << ":"
+		<< std::setw(2) << std::setfill('0') << seconds << "  [mm:ss]";
+	// std::cout << "Scan Time: " << std::setfill('0') << std::setw(2) << minutes << ":" 
+	// << std::setfill('0') << std::setw(2) << seconds << std::endl;
+	// std::cout << "RS Fail Count: " << rshandle.fail_count << std::endl;
 
-	DebugUtils::logDebug("Scan Time: " + std::to_string(duration.count()) + " ms");
+	DebugUtils::logDebug(oss.str());
 	DebugUtils::logDebug("RS Fail Count: " + std::to_string(rshandle.fail_count));
-
+	DebugUtils::logWhitespace();
+	DebugUtils::logInfo("=== Full Scan Finished ===");
 	//std::this_thread::sleep_for(3000ms);
 	
 	// Save camera configurations in a json file
@@ -922,7 +837,7 @@ bool fullScan() {
 	// std::cout << "================\nsaved to" << scan_folder + "\\pose-" + curr_pose << "\n================\n";
 	// saveScanTime(duration, scan_folder + "\\pose-" + curr_pose);
 
-		// Save camera configurations in a json file
+	// Save camera configurations in a json file
 	if (config.getValue<bool>("dslr.collect_dslr")) {
 		saveCameraConfig(scan_folder + PATH_SEP + "pose-" + curr_pose);
 		saveScanTime(duration, scan_folder + PATH_SEP + "pose-" + curr_pose);
@@ -946,24 +861,24 @@ bool fullScan() {
 
 	MenuHandler::WaitUntilKeypress();
 
-	DebugUtils::logDebug("======Full scan for pose " + std::to_string(curr_pose) + " completed.======");
+	DebugUtils::logInfo("======Full scan for pose " + std::to_string(curr_pose) + " completed.======");
 	return true;
 }
 
 
-
-
-
-
+/*
+Initiate a scan with terminal prompts to manually set the degrees per move and number of moves.
+*/
 bool customScan() {
 	ConfigHandler& config = ConfigHandler::getInstance();
 	if (liveview_active){
-		std::cout << "Liveview is active, please stop it before scanning." << std::endl;
+		DebugUtils::logWarning("Liveview is active, please stop it before scanning.");
+		// std::cout << "Liveview is active, please stop it before scanning." << std::endl;
 		return false;
 	}
 
 	DebugUtils::logInfo("========Starting a custom scan========");
-	DebugUtils::logInfo("\n\tcurrent pose: " + std::to_string(curr_pose));
+	DebugUtils::logInfo("Current pose: " + std::to_string(curr_pose));
 
 	// Create the thread pool
 	int thread_num = config.getValue<int>("thread_num");
@@ -985,9 +900,10 @@ bool customScan() {
 	auto start = std::chrono::high_resolution_clock::now();
 	for (int rots = 0; rots < num_moves; rots++)
 	{
+		DebugUtils::logWhitespace(2);
+		DebugUtils::logInfo("Getting data " + std::to_string(rots + 1) + "/" + std::to_string(num_moves));
 
-		DebugUtils::logDebug("move " + std::to_string(rots + 1) + "/" + std::to_string(num_moves));
-
+		// Scan function is given thread pool to collect all sensor data for a single frame, returns true when successful
 		if(scan(&pool) == false) {
 			std::cerr << "\n============================================================" << std::endl;
 			std::cerr << "!!! ERROR: scan() failed at move " << rots + 1 << "/" << num_moves << ". Aborting scan. !!!" << std::endl;
@@ -1000,14 +916,16 @@ bool customScan() {
 			break;
 		}
 
+		// std::cout << "Image " << rots+1 << "/" << num_moves << " taken. " << std::endl;
+		DebugUtils::logInfo("Data frame " + std::to_string(rots + 1) + "/" + std::to_string(num_moves) + " captured.");
+		DebugUtils::logWhitespace(1);
 		// Rotate the turntable
 		rotate_turntable(degree_inc);
 		
 		// Update the degree tracker 
 		degree_tracker += degree_inc;
-		std::cout << "Image " << rots+1 << "/" << num_moves << " taken. " << std::endl;
-		DebugUtils::logDebug("Image " + std::to_string(rots + 1) + "/" + std::to_string(num_moves) + " taken.");
 	}
+
 	// Stop the loop timer
 	auto end = std::chrono::high_resolution_clock::now();
 	// Calculate the elapsed time
@@ -1015,13 +933,16 @@ bool customScan() {
 	// Convert the duration to minutes, seconds, and milliseconds
 	int minutes = duration.count() / 60000;
 	int seconds = (duration.count() % 60000) / 1000;
-	std::cout << "Scan Time: " << std::setfill('0') << std::setw(2) << minutes << ":" 
-		<< std::setfill('0') << std::setw(2) << seconds << std::endl;
-	std::cout << "RS Fail Count: " << rshandle.fail_count << std::endl;
-	std::this_thread::sleep_for(3000ms);
-
-	DebugUtils::logDebug("Scan Time: " + std::to_string(duration.count()) + " ms");
+	std::ostringstream oss;
+	oss << "Scan Time: "
+		<< std::setw(2) << std::setfill('0') << minutes << ":"
+		<< std::setw(2) << std::setfill('0') << seconds << "  [mm:ss]";
+	// Log time and fail count
+	DebugUtils::logDebug(oss.str());
 	DebugUtils::logDebug("RS Fail Count: " + std::to_string(rshandle.fail_count));
+	DebugUtils::logWhitespace();
+	DebugUtils::logInfo("=== Custom Scan Finished ===");
+	std::this_thread::sleep_for(3000ms);
 
 
 	// Save camera configurations in a json file
@@ -1049,7 +970,6 @@ bool customScan() {
 	DebugUtils::logDebug("======Custom scan for pose " + std::to_string(curr_pose) + " completed.======");
 	return true;
 }
-
 
 
 
@@ -1086,7 +1006,6 @@ bool customScan() {
 
 	- GS 7/25/2025
 */
-
 bool scanFromSaveState() {
 	ConfigHandler& config = ConfigHandler::getInstance();
 	if (liveview_active){
@@ -1150,13 +1069,14 @@ bool scanFromSaveState() {
 
 
 	// debug messages
-	std::cout << "Starting scan from saved state..." << std::endl;
-	std::cout << "Previous Turntable Position: " << prev_inc << std::endl;
-	std::cout << "Current Degree Tracker: " << degree_tracker << std::endl;
-	std::cout << "Number of Moves Left: " << num_moves_left << std::endl;
-	std::cout << "Total Number of Moves: " << num_moves << std::endl;
+	// std::cout << "Starting scan from saved state..." << std::endl;
+	// std::cout << "Previous Turntable Position: " << prev_inc << std::endl;
+	// std::cout << "Current Degree Tracker: " << degree_tracker << std::endl;
+	// std::cout << "Number of Moves Left: " << num_moves_left << std::endl;
+	// std::cout << "Total Number of Moves: " << num_moves << std::endl;
 
 
+	DebugUtils::logDebug("Starting scan from saved state...");
 	DebugUtils::logDebug("Current Degree Tracker: " + std::to_string(degree_tracker));
 	DebugUtils::logDebug("Previous Turntable Position: " + std::to_string(prev_inc));
 	DebugUtils::logDebug("Number of Moves Left: " + std::to_string(num_moves_left));
@@ -1254,7 +1174,8 @@ bool collectSampleData() {
 	// Scan all the cameras
 	scan(&pool);
 
-	run_filecount_check();
+	// I think this only makes sense to call for full scans...
+	// run_filecount_check();
 
 	DebugUtils::logInfo("========Single scan completed========");
 	return false;
@@ -1264,7 +1185,14 @@ bool collectSampleData() {
 
 
 
-
+/*
+Sets the name for the object being scanned / data being collected.
+	- creates the necessary output folders
+	- sets the global "scan_folder"
+	- creates and object_info.json template file
+	- determines the last pose
+	- updates the moad config file with the new object name / pose
+*/
 void setObjectName(std::string object_name) {
 	ConfigHandler& config = ConfigHandler::getInstance();
 
@@ -1279,11 +1207,6 @@ void setObjectName(std::string object_name) {
 	// Get the scan folder path
 	std::string output_dir = config.getValue<std::string>("output_dir");
 	scan_folder = output_dir + PATH_SEP + object_name;
-
-
-
-
-
 
 	// Create Main Folder
 	create_folder(scan_folder);
@@ -1331,7 +1254,6 @@ void setObjectName(std::string object_name) {
 }
 
 bool setObjectName() {
-	
 	// Prompt for object name 
 	std::string object_name_input;
 	std::cout << "\n\nEnter Object Name: ";
@@ -1885,6 +1807,9 @@ bool turntablePosition() {
 	return false;
 }
 
+
+// DEFINE SUBMENU OPTIONS =============================================================================
+// Calibration submenu for controlling camera shooting button
 bool CalibrationSubMenu(){
 	MenuHandler calibration_menu_handler({
 		{"1", "Press Halfway"},
@@ -1899,6 +1824,7 @@ bool CalibrationSubMenu(){
 	calibration_menu_handler.initialize(curr_menu);
 	return true;
 }
+// Camera submenu for controlling camera settings
 bool CameraSubmenu(){
 	MenuHandler camera_menu_handler({
 		{"1", "TV"},
@@ -1921,7 +1847,7 @@ bool CameraSubmenu(){
 	camera_menu_handler.initialize(curr_menu);
 	return true;
 }
-
+// Turntable submenu for manually controlling turntable position and internal position tracking state
 bool TurntableSubMenu(){
 	MenuHandler turntable_handler({
 		{"1", "Turntable Control"},
@@ -1935,15 +1861,6 @@ bool TurntableSubMenu(){
 	return true;
 }
 
-bool reloadConfig() {
-	if (liveview_active) {
-		std::cout << "Liveview is active, please stop it before reloading the config." << std::endl;
-		return false;
-	}
-
-	loadJsonConfig(json_path);
-	return false;
-}
 
 /*
 	InitializeRealsense()
@@ -1953,7 +1870,6 @@ bool reloadConfig() {
 	TODO: this adds a lot of possibly unneeded info to the console upon startup, clear this up
 		or add a verbose flag in the config for info toggling.
 */
-
 void initializeRealsense() {
 	ConfigHandler& config = ConfigHandler::getInstance();
 
@@ -2025,7 +1941,6 @@ void initializeCanon() {
 			}
 
 
-
 			// Convert it into string
 			std::string serial_str = "";
 			for (size_t i = 0; i < sizeof(serial) - 1; i++){
@@ -2083,13 +1998,9 @@ void initializeCanon() {
 	Note: args available are --count, --create, --prog-delay, --delay=<seconds> (see comments in filecount_test.py)
 	TODO: add function parameters that setup CLI args the script is called with (personally i dont see an immediate need for this)
 	- GS 7/15
-
-	TODO 10/3:
-	    - must tweak the python code such that we can run with only the current object selected
-
 */
 bool run_filecount_check() {
-
+	
 	// Sleep(200); // wait a bit for realsense to save, otherwise jumbled console output
 
 	ConfigHandler& config = ConfigHandler::getInstance();
@@ -2097,8 +2008,10 @@ bool run_filecount_check() {
 		std::cout << "Filecount testing disabled in config, skipping..." << std::endl;
 		return false;
 	}
-
-	std::cout << "Running file count checking script: " << std::endl;
+	
+	DebugUtils::logWhitespace();
+	DebugUtils::logInfo("Running file count checking script...");
+	// std::cout << "Running file count checking script: " << std::endl;
 
 	// ex. python3.12.exe .\filecount_test.py --count --create --manual_check
 
@@ -2144,136 +2057,72 @@ bool run_filecount_check() {
 	return true;
 }
 
-bool detect_anchor_tags() {
 
-	//TESTING:
-	ConfigHandler& config = ConfigHandler::getInstance();
-	std::string curr_obj = config.getValue<std::string>("object_name");
-	std::cout << "Current object:" << curr_obj.c_str() << std::endl;
-	// Prepare command to execute scripts/filecount_test.py
-	std::stringstream command_stream;
-	command_stream 
-		<< "python3 "
-		<< "scripts/detect_ar_tags.py "
-		<< "artag_test " 	// Object Name
-		<< "a " 			// Pose
-		<< "0"; 			// Position 
-
-	command_stream 
-		<< "which python3"; 
-
-	// Execute command
-	// convert to string for output debug message
-	std::string command = command_stream.str(); 
-	std::cout << "\nExecuting Command: " << command; 
+int main(int argc, char* argv[]) 
+{	
+	std::cout << "\033[1;44m" << "[ START OF MAIN ]" << "\033[0m\n";	
+	// SETUP ----------------------------------------------------------------------------------------------
 	
-	// system requires c string
-	const char* c_command = command.c_str();
-	system(c_command);
-	return true;
-}
-
-
-
-int temp(int argc, char* argv[]) {
-
-	// as of 10/30/2025 peter has graciuosly dubbed me as "keeper of this codebase"
-	//	this is a wonderful honor and i definitely will not abuse my power at all
-	//
-	// thing 1:
-	// 	henceforth, in comments and a couple declarations, "moadfig" refers to
-	//	"the moad json config" shorthand
-
-	std::cout << "\033[1;44m" << "start of main2" << "\033[0m\n"; // todo: macros for cli coloring
+	// NOTE: degree_tracker is a global variable so that every function can use it
+	//		initially it is set to 0, but in order to save state for potential cam
+	//		interrupts, it needs to be loaded from config
+	degree_tracker = 0;
 	
-	// local variable setup:
-	degree_tracker = 0;	
-	// all functions that need the moadfig use this variable locally (singleton pattern)
+	// use "fs::canonical" to get the moad directory FROM THE MultiCamCui EXECUTABLE
+	//	this is meant to avoid direct pathing and get the config from the moad_cui directory
+	// NOTE: this is a global variable...
+	moad_dir = fs::canonical(argv[0]).parent_path().parent_path();
+
+	// Load the JSON Config file
+	// NOTE: this a global variable...
+	json_path = (moad_dir + PATH_SEP + "config" + PATH_SEP + "moad_config.json");
+
+	// This function also handles setting the initial object name, 
+	// creating the object folder, and getting the last pose
+	loadJsonConfig(json_path);
+
+	// Provides global config access
 	ConfigHandler& config = ConfigHandler::getInstance();
 
-	// setup pathing to load the actual config:
-	//  NOTE: I am not sure why this is explicitly done in main (shouldnt it be a helper?)
-	//	unless its meant to let the user enter something like ./MultiCamCui <path to config json>
-	//	which we then argparse??
-	std::string moadfig_path = "moad_config.json";
-	// TODO: this is bad coding practice
-	json_path = moadfig_path; // as of now, 10/30, json_path is a global variable that breaks the code if not set.
+	// Initialize Debug Log File
+	// NOTE: 'scan_folder' is initialized when the config is loaded, which calls setObjectName()
+	std::string debug_log_dir = scan_folder + PATH_SEP + "debug_log.txt";
+	// std::cout << std::endl << "DEBUG LOG\nDebug Log Path: " << debug_log_dir << std::endl;
+	DebugUtils::initLogFile(debug_log_dir);
 
-	// call loadJsonConfig with the moadfig path
-	//	should ONLY setup the ConfigHandler class with the info from the moad_config.json
-	// NOTE: currently ConfigHandler is instantiated as a global variable??? shouldnt it be
-	//	instantiated here in main first? or is this singleton patterning?
-	//	ConfigHandler might need to be global so any function in here can be used
-	// loadJsonConfig(moadfig_path);
-	config.loadConfig(moadfig_path);
+	// Setup Arduino serial port connection
+	DebugUtils::logSerial("Attempting serial port connection...");
+	// std::cout << "\033[1;40m" << "Attempting serial port connection..." << "\033[0m\n"; // todo: macros for cli coloring
 
-	// initialize realsense and DSLR
-	//	NOTE: the decision to attempt initializing is decided in the moadfig, both functions
-	//	check this as an if statement before running their respective Realsense/CanonHandler
-	//  class initializer functions
-	initializeCanon();
-	initializeRealsense();
+	// Check to ensure Linux OS
+	std::string com_port;
+	if(OS_LINUX) {
+		com_port = config.getValue<std::string>("serial_com_port");
+	} else {
+		std::cout << "not on linux naming scheme, serial port connection falure...\n";
+	}
 
-
-	std::string object_name = config.getValue<std::string>("object_name");
-	setObjectName(object_name);
-
-	// serial port communication setup for turntable arduino
-	//	windows and linux version use different ports
-	std::cout << "\033[1;40m" << "attempting serial port connection" << "\033[0m\n"; // todo: macros for cli coloring
-
-	// WINDOWS VERSION
-	// char com_port[] = "\\\\.\\COMX";
-	// com_port[7] = config.getValue<std::string>("serial_com_port").at(0);
-
-	// LINUX VERSION
-	char com_port[] = "/dev/ttyACM0";
 	typedef unsigned long DWORD;
 	DWORD COM_BAUD_RATE = B9600;
 
-	Serial = new SimpleSerial(com_port, COM_BAUD_RATE);
+	Serial = new SimpleSerial(com_port.c_str(), COM_BAUD_RATE); // input must be c string
+
 	if(Serial->connected_) {
-		std::cout << "\033[1;40m" << "serial port connected via " << com_port << "\033[0m\n"; // todo: macros for cli coloring
+		DebugUtils::logSerial("Serial port connected via " + com_port);
+		// std::cout << "\033[1;40m" << "serial port connected via " << com_port << "\033[0m\n"; // todo: macros for cli coloring
 	} else {
-		std::cout << "\033[1;40m" << "ERROR in port connection via " << com_port << "\033[0m\n"; // todo: macros for cli coloring
+		DebugUtils::logError("Serial connection failed after attempting port " + com_port + " from config.");
+		// std::cout << "\033[1;31m" << "ERROR in port connection, turntable will likely not work. Port received in config: " << com_port << "\033[0m\n"; // todo: macros for cli coloring
 	}
 
-	// DEBUG_UTILS
-	// meant for writing various printouts to a debug log, also supports more verbose cli
-	//  setup path for the debug_log (for DebugUtils)
-	std::string debug_log_dir = scan_folder + PATH_SEP + "debug_log.txt";
-	std::cout << debug_log_dir << std::endl;
-	
-	// init log file and begin logging:
-	DebugUtils::initLogFile(debug_log_dir);
+	// Log some additional information at startup
+	DebugUtils::logDebug("Current Object Name: " + object_info["Object Name"]);
+	DebugUtils::logDebug("Current Pose: " + object_info["Pose"]);
+	DebugUtils::logDebug("Current Turntable Position: " + object_info["Turntable Pos"]);
+	DebugUtils::logDebug("Current Scan Folder: " + scan_folder);
+	DebugUtils::logDebug("Current JSON Path: " + json_path);
 
-	// debug utils etc.
-	// ...
-	// just took them out for now since priority is clean codebase, should be easy to add in
-	//	see previous main()
-
-
-
-
-	
-	
-	// object_info things
-	// my understanding is that it's a map that acts as an abstract floating config but
-	//	since it's so easy to just use the json config i don't think we really need it?
-	//	as of now, object_info["Pose"] is possibly needed in all the scan functions?
-	//  and something segfaults in menuhandler if its not instantiated.
-
-	curr_pose = get_last_pose(); // must make sure this isnt quadruple set
-
-	object_info["Object Name"] = config.getValue<std::string>("object_name");
-	object_info["Turntable Pos"] = std::to_string(degree_tracker);
-	object_info["Pose"] = curr_pose;
-
-
-
-
-
-	// initialize main menu (uses MenuHandler class)
+	// Main Menu initialization - maps menu options to function calls
 	MenuHandler menu_handler({
 		{"1", "Full Scan"},
 		{"2", "Custom Scan"},
@@ -2306,206 +2155,7 @@ int temp(int argc, char* argv[]) {
 	menu_handler.ClearScreen();
 	menu_handler.initialize(curr_menu);
 
-
-	return 0;
-}
-
-
-
-int main(int argc, char* argv[]) 
-{	
-	std::cout << "\033[1;44m" << "[ start of main ]" << "\033[0m\n";	
-	// SETUP ----------------------------------------------------------------------------------------------
-	
-	// NOTE: degree_tracker is a global variable so that every function can use it
-	//		initially it is set to 0, but in order to save state for potential cam
-	//		interrupts, it needs to be loaded from config
-	degree_tracker = 0;
-	
-	// use "fs::canonical" to get the moad directory FROM THE MultiCamCui EXECUTABLE
-	//	this is meant to avoid direct pathing and get the config from the moad_cui directory
-	// NOTE: this is a global variable...
-	moad_dir = fs::canonical(argv[0]).parent_path().parent_path();
-
-	// Load the JSON Config file
-	// NOTE: this a global variable...
-	json_path = (moad_dir + PATH_SEP + "config" + PATH_SEP + "moad_config.json");
-
-	loadJsonConfig(json_path);
-
-	ConfigHandler& config = ConfigHandler::getInstance();
-
-	
-
-	// COMMENTED OUT 10/29 GS
-	// create_folder() with the object name is alled through loadJsonConfig() -> setObjectName()
-	//	and therefore the one right below is redundant
-
-	// // Create object folder 
-	// scan_folder = config.getValue<std::string>("output_dir") + "/" + config.getValue<std::string>("object_name");
-	// create_folder(scan_folder);
-
-
-
-
-	// COMMENTED OUT 10/29 GS
-	// create_obj_info_json() with the object name is called through loadJsonConfig() -> setObjectName()
-	//	and therefore the one right below is redundant
-
-// 	// Create object info template
-// 	create_obj_info_json(config.getValue<std::string>("output_dir"));
-// std::cout << "\n\033[1;35mafter create object info json\033[0m\n";;
-
-
-
-
-
-
-	// Get last pose
-	// NOTE: something about the last pose doesnt work, I think it's that the previous pose never gets saved
-	//		*IN THE JSON FILE* so the last pose is whatever it says in the json file NOT what the program ran
-	//		last time - GS 7/24
-
-	// COMMENTED OUT 10/29 GS
-	// redundant, get_last_pose called in setObjectName
-
-	// std::cout << "Checking Last Pose..." << std::endl;
-	// curr_pose = get_last_pose();
-	// std::cout << "Last Pose Checked." << std::endl;
-
-
-
-
-
-	
-	// Setup Arduino serial port connection
-	std::cout << "\033[1;40m" << "Attempting serial port connection..." << "\033[0m\n"; // todo: macros for cli coloring
-
-	// LINUX VERSION
-	std::string com_port;
-	if(OS_LINUX) {
-		com_port = config.getValue<std::string>("serial_com_port");
-	} else {
-		std::cout << "not on linux naming scheme, serial port connection falure...\n";
-	}
-
-	typedef unsigned long DWORD;
-	DWORD COM_BAUD_RATE = B9600;
-
-	Serial = new SimpleSerial(com_port.c_str(), COM_BAUD_RATE); // input must be c string
-
-	if(Serial->connected_) {
-		std::cout << "\033[1;40m" << "serial port connected via " << com_port << "\033[0m\n"; // todo: macros for cli coloring
-	} else {
-		std::cout << "\033[1;31m" << "ERROR in port connection, turntable will likely not work. Port received in config: " << com_port << "\033[0m\n"; // todo: macros for cli coloring
-
-	}
-
-
-
-
-
-
-
-	// Change pose
-	// NOTE: get_last_pose() called twice? (2nd instance, 1st on a couple lines up or so) - GS 7/8
-	// curr_pose = get_last_pose();
-	
-	// why is this here??
-	//  commented out 10/30, everything still ran fine so I guess it gets instantiated somewhere
-	//	before anything that needs to use it?
-	// my understanding is that it's a map that acts as an abstract floating config but
-	//	since it's so easy to just use the json config i don't think we really need it?
-
-	// object_info["Object Name"] = config.getValue<std::string>("object_name");
-	// object_info["Turntable Pos"] = std::to_string(degree_tracker);
-	// object_info["Pose"] = curr_pose;
-
-
-
-	
-
-
-	//  apparently scan_folder gets set somewhere before this?
-	std::string debug_log_dir = scan_folder + PATH_SEP + "debug_log.txt";
-	std::cout << std::endl << "DEBUG LOG\nDebug Log Path: " << debug_log_dir << std::endl;
-
-	// init log file and begin logging:
-	DebugUtils::initLogFile(debug_log_dir);
-
-	// start sending to debug log here
-	// Helper function to get current date as string
-	auto getCurrentDateTime = []() -> std::string {
-		auto now = std::chrono::system_clock::now();
-		std::time_t now_time = std::chrono::system_clock::to_time_t(now);
-		std::tm local_tm;
-
-		localtime_r(&now_time, &local_tm);
-
-		char buffer[32];
-		std::strftime(buffer, sizeof(buffer), "%Y-%m-%d", &local_tm);
-		return std::string(buffer);
-	};
-	// Helper function to get current time as string
-	auto getCurrentTime = []() -> std::string {
-		auto now = std::chrono::system_clock::now();
-		std::time_t now_time = std::chrono::system_clock::to_time_t(now);
-		std::tm local_tm;
-
-		localtime_r(&now_time, &local_tm);
-
-		char buffer[32];
-		std::strftime(buffer, sizeof(buffer), "%H:%M:%S", &local_tm);
-		return std::string(buffer);
-	};
-	DebugUtils::logDebug(std::string("\n\n[START] Debug logging started, \n\tdate: ") + getCurrentDateTime() + "  \n\ttime: " + getCurrentTime());
-	DebugUtils::logDebug("Current Object Name: " + object_info["Object Name"]);
-	DebugUtils::logDebug("Current Pose: " + object_info["Pose"]);
-	DebugUtils::logDebug("Current Turntable Position: " + object_info["Turntable Pos"]);
-	DebugUtils::logDebug("Current Scan Folder: " + scan_folder);
-	DebugUtils::logDebug("Current JSON Path: " + json_path);
-
-
-
-	// Main Menu initialization
-	MenuHandler menu_handler({
-		{"1", "Full Scan"},
-		{"2", "Custom Scan"},
-		{"3", "Collect Single Data"},
-		{"4", "Set Object Name"},
-		{"5", "Set Pose"},
-		{"6", "Camera Calibration..."},
-		{"7", "Camera Options..."},
-		{"8", "Turntable Options..."},
-		{"9", "Live View..."},
-		{"p", "Scan from saved state"},
-		{"0", "Reload Config"},
-		{"f", "Run Filecount Check Script"},
-		{"d", "Detect AR Anchor Tags"}
-	},
-	{
-		{"1", fullScan},
-		{"2", customScan},
-		{"3", collectSampleData},
-		{"4", setObjectName},
-		{"5", setPose},
-		{"6", CalibrationSubMenu},
-		{"7", CameraSubmenu},
-		{"8", TurntableSubMenu},
-		{"9", liveViewMenu},
-		{"p", scanFromSaveState}, // TODO: "10" seemed to not work??
-		{"0", reloadConfig},
-		{"f", run_filecount_check},
-		{"d", detect_anchor_tags}
-	}, object_info);
-	menu_handler.setTitle("MOAD - CLI Menu");
-	menu_handler.ClearScreen();
-	menu_handler.initialize(curr_menu);
-
-	// end message for log file:
-	DebugUtils::logEnd("Debug logging ended at " + getCurrentTime() + "\n\n\n");
-
-	// close log file
+	// Close log file
 	DebugUtils::closeLogFile();
 
 	return false;

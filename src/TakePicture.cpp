@@ -287,8 +287,13 @@ EdsError TakePicture(EdsCameraRef const& camera, std::string const& bodyID) {
 
 
 EdsError TakePictureNoWait(EdsCameraRef const& camera, std::string const& bodyID) {
+    // Acquire thread ID string for printing...
+    std::stringstream ss;
+    ss << std::this_thread::get_id();
+    std::string thr_id_str = ss.str();
     // std::lock_guard<std::mutex> lock(dslr_mutex); // ensures exclusive access for this function
-    std::cout << "\033[1;45m" << "taking picture with no wait" << "\033[0m" << std::endl;
+    // std::cout << "\033[1;45m" << "taking picture with no wait" << "\033[0m" << std::endl;
+    DebugUtils::logThread("[ID:"+thr_id_str+"] " + bodyID +" taking picture... (No Delay)");
     
     EdsError err = EDS_ERR_OK;
     // std::cout << "[Thread " << std::this_thread::get_id() << "] Started shooting cam " << bodyID << std::endl;
@@ -335,7 +340,8 @@ EdsError TakePictureNoWait(EdsCameraRef const& camera, std::string const& bodyID
     }
     
     // #define EDS_ERR_COMM_DISCONNECTED 0x000000C1L
-    std::cout << "[Thread " << std::this_thread::get_id() << "] Finished shooting cam " << bodyID << std::endl;
+    DebugUtils::logThread("[ID:"+thr_id_str+"] Finished shooting " + bodyID);
+    // std::cout << "[Thread " << std::this_thread::get_id() << "] Finished shooting cam " << bodyID << std::endl;
     // DebugUtils::logThread("thread finished, id " + std::to_string(std::hash<std::thread::id>{}(std::this_thread::get_id())));
     // DebugUtils::logCam("finished taking picture with camera: " + bodyID);
 
