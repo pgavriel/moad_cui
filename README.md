@@ -9,6 +9,7 @@
 4. Run:
 ```
 cd moad_cui/
+cmake -S . -B build
 cmake --build build
 sudo ./build/MultiCamCui
 ```

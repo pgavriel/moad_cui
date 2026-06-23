@@ -49,6 +49,10 @@ Eigen::Matrix4f createRotationMatrix(float angle_degrees)
     Eigen::Matrix4f transformation = Eigen::Matrix4f::Identity();
     transformation.block<3, 3>(0, 0) = rotation.matrix();
 
+    std::stringstream ss; 
+    ss << "Rotation Transform for " << angle_degrees << " degrees:\n" << transformation;
+    DebugUtils::logRS(ss.str(),3);
+
     return transformation;
 }
 
@@ -66,17 +70,26 @@ RealSenseHandler::RealSenseHandler() {
 }
 
 RealSenseHandler::~RealSenseHandler() {
-    std::cout << "Shutting down RealSense Handler... ";
+    shutdown();
+}
+
+void RealSenseHandler::shutdown() {
+    if(!running) return;  // guard against double-calls
+
+    DebugUtils::logRS("Shutting down RealSense Handler...");
     running = false;
     for (auto& pipe : pipeline_map) {
             pipe.second.stop();
-            cout << ". ";
+            DebugUtils::logRS("Device stopped.");
+            // cout << ". ";
     }
     // for (auto& th : frame_thread_map) {
     //         th.second.join();
     // }
-    std::cout << "Done.\n";
+
+    DebugUtils::logRS("Done.");
 }
+
 
 /*
     Initialize the RealSense Handler
@@ -85,17 +98,18 @@ RealSenseHandler::~RealSenseHandler() {
 
     TODO: Clear up some of the console spam on startup via verbose flag?
 */
-
 void RealSenseHandler::initialize(std::string config_path) {
 
-    std::cout << "\033[1;46m" << "Initializing RealSense Handler..." << "\033[0m\n";
-    std::cout << "\033[1;46m" << "Searching for rs_info in " + config_path << "\033[0m\n"; 
+    DebugUtils::logInfo("Initializing RealSense Cameras...");
+    // std::cout << "\033[1;46m" << "Initializing RealSense Handler..." << "\033[0m\n";
+    // std::cout << "\033[1;46m" << "Searching for rs_info in " + config_path << "\033[0m\n"; 
 
     // ConfigHandler& config = ConfigHandler::getInstance();
 
     // Get Realsense camera transforms from JSON file
     nlohmann::json realsense_json;
 
+    DebugUtils::logDebug("Loading config to find RS info: " + config_path);
     std::ifstream realsense_file(config_path);
 
     realsense_json = nlohmann::json::parse(realsense_file);
@@ -107,6 +121,7 @@ void RealSenseHandler::initialize(std::string config_path) {
         auto &rs_root = realsense_json["realsense"];
         if (rs_root.contains("rs_info") && rs_root["rs_info"].is_object()) {
             realsense_json = rs_root["rs_info"];
+            DebugUtils::logDebug("RealSense mapping info found in config. (ID: [serial, transform])");
             // std::cout << "Using nested 'realsense.rs_info' object from JSON.\n";
         } else {
             // Fallback to older structure realsense->{ "rs1":..., ... }
@@ -115,7 +130,8 @@ void RealSenseHandler::initialize(std::string config_path) {
         }
     }
     else {
-        std::cout << "Warning, no realsense ids were found in " + config_path << std::endl;
+        DebugUtils::logWarning("No RealSense IDs were found in " + config_path);
+        // std::cout << "Warning, no realsense ids were found in " + config_path << std::endl;
     }
 
     // Quick sanity check: warn if no device-like keys were found (keys starting with "rs")
@@ -127,7 +143,8 @@ void RealSenseHandler::initialize(std::string config_path) {
         }
     }
     if (!found_rs_entry) {
-        std::cerr << "Warning: no 'rs*' entries found in realsense JSON. Check file structure: expected realsense.rs_info->{\"rs1\":..., ...} or realsense->{\"rs1\":..., ...}.\n";
+        DebugUtils::logError("Warning: no 'rs*' entries found in realsense JSON. Check file structure: expected realsense.rs_info->{\"rs1\":..., ...} or realsense->{\"rs1\":..., ...}.");
+        // std::cerr << "Warning: no 'rs*' entries found in realsense JSON. Check file structure: expected realsense.rs_info->{\"rs1\":..., ...} or realsense->{\"rs1\":..., ...}.\n";
     }
 
 
@@ -183,23 +200,23 @@ void RealSenseHandler::initialize(std::string config_path) {
         camera_info_map[id] = std::make_pair(serial, transform);
     }
 
-
+    // KEEP THIS IN CASE OF DEBUG EMERGENCY
     // Pretty-print maps for debugging
-    std::cout << "\033[1;46m" << "Camera info map contents:" << "\033[0m\n";
-    for (const auto& kv : camera_info_map) {
-        const auto& id = kv.first;
-        const auto& serial = kv.second.first;
-        const auto& mat = kv.second.second;
-        std::cout << "ID: " << id << "  Serial: " << serial << "\n";
-        std::cout << "Transform:\n";
-        for (int r = 0; r < 4; ++r) {
-            for (int c = 0; c < 4; ++c) {
-                std::cout << std::setw(10) << std::fixed << std::setprecision(4) << mat(r, c) << " ";
-            }
-            std::cout << "\n";
-        }
-        std::cout << "----\n";
-    }
+    // std::cout << "\033[1;46m" << "Camera info map contents:" << "\033[0m\n";
+    // for (const auto& kv : camera_info_map) {
+    //     const auto& id = kv.first;
+    //     const auto& serial = kv.second.first;
+    //     const auto& mat = kv.second.second;
+    //     std::cout << "ID: " << id << "  Serial: " << serial << "\n";
+    //     std::cout << "Transform:\n";
+    //     for (int r = 0; r < 4; ++r) {
+    //         for (int c = 0; c < 4; ++c) {
+    //             std::cout << std::setw(10) << std::fixed << std::setprecision(4) << mat(r, c) << " ";
+    //         }
+    //         std::cout << "\n";
+    //     }
+    //     std::cout << "----\n";
+    // }
 
     // std::cout << "\033[1;46m" << "Serial -> id (camera_names) map:" << "\033[0m\n";
     // for (const auto& p : camera_names) {
@@ -229,9 +246,6 @@ void RealSenseHandler::initialize(std::string config_path) {
 }
 
 
-
-
-
 // Checks for all connected realsense devices, starts a pipeline for each,
 // and adds them all to the pipelines vector.
 int RealSenseHandler::device_check() {
@@ -240,23 +254,35 @@ int RealSenseHandler::device_check() {
     device_count = devices_list.size();
 
     // check physical devices detected versus devices listed in moad_config.json
-    std::cout << "\033[1;46m" << device_count << " physical realsense devices detected with ids:\n";
+    // std::cout << "\033[1;46m" << device_count << " physical realsense devices detected with ids:\n";
+    DebugUtils::logRS("Detected " + std::to_string(device_count) + " RealSense devices.");
+    int i = 1;
+    std::stringstream msg_stream;
     for (auto&& dev : devices_list) {
+        msg_stream.str("");
+        msg_stream.clear();
+        msg_stream << "[" << i << "]\t";
+        if (dev.supports(RS2_CAMERA_INFO_NAME)) {
+            msg_stream << dev.get_info(RS2_CAMERA_INFO_NAME) << "\t";
+        }
         std::string serial = dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
         // TODO: add to verbose flagging
-        std::cout << serial << " ";
+        msg_stream << "Serial: " << serial;
 
         // check if this matches with one of the serial numbers in the moad_config 
         auto it = camera_names.find(serial);
         if (it != camera_names.end()) {
-            std::cout << "matches with [" << it->second << "]:[" << it->first << "] from moad_config.json" << std::endl;
+            msg_stream << "\n\t\t|- Matches with [" << it->second << "]:[" << it->first << "] from moad_config.json";
             start_device(serial);
         } else {
-            std::cout << "(no matching config id!!) " << std::endl;
+            msg_stream << "\n\t\t|- NO MATCH FOUND IN CONFIG, SKIPPING ";
         }
+
+        DebugUtils::logRS(msg_stream.str());
+        i++;
     }
 
-    std::cout << "\033[0m\n" << std::endl;
+    // std::cout << "\033[0m\n" << std::endl;
 
 
 
@@ -365,12 +391,11 @@ void RealSenseHandler::frame_poll_thread(rs2::pipeline pipe) {
 // Gets num_frames frames from all connected devices, but does nothing with them.
 // Verifies proper communication and allows autoexposure to settle.
 void RealSenseHandler::get_frames(int num_frames, int timeout_ms) {
-    // cout << "Getting " << num_frames << " frames from " << pipelines.size()
-    //     << " devices:\n";
-    cout << "\033[1;46m" << "Getting " << num_frames << " frames from " << pipeline_map.size()
-        << " devices:\n";
 
-        DebugUtils::logRS("Getting frames from all connected devices...");
+    std::stringstream ss;
+    ss  << "Getting " << num_frames << " frames from " << pipeline_map.size()
+        << " devices:";
+    DebugUtils::logRS(ss.str());
 
     // new_frames.clear();
     for (int i = 0 ; i < num_frames ; i++) {
@@ -380,7 +405,7 @@ void RealSenseHandler::get_frames(int num_frames, int timeout_ms) {
             rs2::frameset fs;
             fs = pipe.second.wait_for_frames(timeout_ms);
             cout << "- ";
-            DebugUtils::logRS("- ");
+            // DebugUtils::logRS("- ");
             std::this_thread::sleep_for(std::chrono::milliseconds(25));
         }
         // if (frameset_map.size() == 0) break;
@@ -393,28 +418,27 @@ void RealSenseHandler::get_frames(int num_frames, int timeout_ms) {
             // cout << "- ";
         // }
         // lock.unlock();
-        cout << endl;
+        // cout << endl;
     }
-    cout << " [DONE]\n" << "\033[0m\n";
+
+    cout << endl;
+    // cout << " [DONE]\n" << "\033[0m\n";
     DebugUtils::logRS("Finished getting frames from all connected devices.");
 }
 
 // Collects relevant MOAD data from all RealSense devices
 void RealSenseHandler::get_current_frame(int degree, int timeout_ms, ThreadPool* pool) {
-    ConfigHandler& config = ConfigHandler::getInstance();
+    // ConfigHandler& config = ConfigHandler::getInstance();
 
-    cout << "\n\033[1;46m" << "Getting RealSense Data..." << "\033[0m\n";
+    // cout << "\n\033[1;46m" << "Getting RealSense Data..." << "\033[0m\n";
     DebugUtils::logRS("Getting RealSense data at angle " + std::to_string(degree) + " degrees...");
 
     // Create a rotation matrix for the current turntable position
-    cout << "\033[1;46m" << "Getting rotation matrix for " << turntable_position << " degress..." << "\033[0m\n";
+    // cout << "\033[1;46m" << "Getting rotation matrix for " << turntable_position << " degress..." << "\033[0m\n";
     DebugUtils::logRS("Getting rotation matrix for " + std::to_string(turntable_position) + " degrees...");
 
 
     rot_matrix = createRotationMatrix(turntable_position);
-    if (config.getValue<bool>("debug")) {
-        cout << rot_matrix << endl << endl;
-    }
 
     // Check if the functon is being called with a thread pool
     if (pool == nullptr) {
@@ -443,20 +467,26 @@ void RealSenseHandler::get_current_frame(int degree, int timeout_ms, ThreadPool*
         }
     }
 
-    cout << "\033[1;46m" << "Got frames from all RS at angle " << degree << ", Saving in the background..." << "\033[0m\n";
+    // cout << "\033[1;46m" << "Got frames from all RS at angle " << degree << ", Saving in the background..." << "\033[0m\n";
     DebugUtils::logRS("Got frames from all RealSense at angle " + std::to_string(degree) + ", saving in the background...");
 }
 
 void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeout_ms) {
     ConfigHandler& config = ConfigHandler::getInstance();
     std::stringstream out_file;
+
+    // Acquire thread ID string for printing...
+    std::stringstream ss;
+    ss << std::this_thread::get_id();
+    std::string thr_id_str = ss.str();
     
     // Get serial number for this camera
     std::string serial_number = pipe.get_active_profile().get_device().get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
 
-    cout << "\033[1;46m" << "Processing " << camera_names[serial_number] << " at angle " << degree << "..." << "\033[0m\n";
-    DebugUtils::logRS("Processing " + camera_names[serial_number] + " at angle " + std::to_string(degree) + "...");
-
+    // cout << "\033[1;46m" << "Processing " << camera_names[serial_number] << " at angle " << degree << "..." << "\033[0m\n";
+    // DebugUtils::logRS("Processing " + camera_names[serial_number] + " at angle " + std::to_string(degree) + "...");
+    DebugUtils::logThread("[ID:"+thr_id_str+"] Processing " + camera_names[serial_number]+ " at angle " + std::to_string(degree) + "...");
+    
     // Collect frameset from camera
     rs2::frameset fs;
     try {
@@ -464,27 +494,27 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
         fs = pipe.wait_for_frames(timeout_ms);
     } catch (const rs2::error& e) {
         fail_count++;
-        std::cerr << camera_names[serial_number] << ": RS error occurred: " << e.what() << std::endl;
-        cout << "WARNING: " << camera_names[serial_number] << " did not get frames.\n";
-        DebugUtils::logRS(camera_names[serial_number] + ": RS error occurred: " + std::string(e.what()));
+        // std::cerr << camera_names[serial_number] << ": RS error occurred: " << e.what() << std::endl;
+        // cout << "WARNING: " << camera_names[serial_number] << " did not get frames.\n";
+        DebugUtils::logWarning(camera_names[serial_number] + " did not get frames.");
+        DebugUtils::logError(camera_names[serial_number] + ": RS error occurred: " + std::string(e.what()));
         return;
     } catch (const std::exception& ex) {
-        std::cerr << camera_names[serial_number] << ": An error occurred: " << ex.what() << std::endl;
-        DebugUtils::logRS(camera_names[serial_number] + ": An error occurred: " + std::string(ex.what()));
+        // std::cerr << camera_names[serial_number] << ": An error occurred: " << ex.what() << std::endl;
+        DebugUtils::logError(camera_names[serial_number] + ": An error occurred: " + std::string(ex.what()));
     } catch (...) {
-        cout << "ERROR: ????\n";
+        DebugUtils::logError("ERROR: ????");
     }
 
     // fs = pipe.wait_for_frames(timeout_ms);
     if (fs.size() == 0) {
-        cout << "WARNING: " << camera_names[serial_number] << " did not get frames.\n";
-        DebugUtils::logRS(camera_names[serial_number] + ": WARNING: did not get frames.");
+        // cout << "WARNING: " << camera_names[serial_number] << " did not get frames.\n";
+        DebugUtils::logWarning(camera_names[serial_number] + ": Did not get frames.");
         return;
     }
     
 
     // function to swap between data collection strategies (color/depth)
-
      if (config.getValue<bool>("realsense.align_to_color")) {
         // Align frames to color if enabled
         rs2::align align(RS2_STREAM_COLOR);
@@ -511,8 +541,6 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
         }
      }
 
-    
-
     // Get color and depth frames from the frameset
     rs2::video_frame color = fs.get_color_frame();
     rs2::depth_frame depth = fs.get_depth_frame();
@@ -522,35 +550,27 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
     depth = spatial_filter.process(depth);
     depth = temporal_filter.process(depth);
 
+    // === COLOR IMAGE COLLECTION =====================================================================================================
     // //Testing: Create the color/depth images before processing/filtering
     // Check if collecting color images is enabled
     // Convert the color frame to OpenCV Mat
-
     if (config.getValue<bool>("realsense.collect_color")) {
         cv::Mat color_mat(color.get_height(), color.get_width(), CV_8UC3, (void*)color.get_data(), cv::Mat::AUTO_STEP);
         cv::cvtColor(color_mat, color_mat, cv::COLOR_RGB2BGR);
+
         // Generate image name
         out_file.str("");
-
-
-
-
 
         // should not be harcoded as "/" - gs 10/29
         out_file << save_dir << "/" << camera_names[serial_number] << "_"
             << std::setfill('0') << std::setw(3) << turntable_position << "_color.png";
 
-
-
-
-
-
-
-
         // Save the color image
         cv::imwrite(out_file.str(), color_mat);
+        DebugUtils::logSaveLoop(camera_names[serial_number] + "(Color): "+ out_file.str());
     }
 
+    // === DEPTH IMAGE COLLECTION =====================================================================================================
     // Check if collecting depth images is enabled
     if (config.getValue<bool>("realsense.collect_depth")) {
         // Convert the depth frame to OpenCV Mat
@@ -562,23 +582,13 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
         // Generate image name
         out_file.str("");
 
-
-
-
-
         // should not be hardcoded as "/"
         out_file << save_dir << "/" << camera_names[serial_number] << "_"
             << std::setfill('0') << std::setw(3) << turntable_position << "_depth.png";
         
-
-
-
-
-
-
-
         // Save the depth image
         cv::imwrite(out_file.str(), depth_mat);
+        DebugUtils::logSaveLoop(camera_names[serial_number] + "(Depth): "+ out_file.str());
     }
 
     // At this point, we should throw the rest of the process in a thread pool 
@@ -593,6 +603,7 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
     bool COLOR_ORDER_BGR = config.getValue<bool>("realsense.collect_color");
 
 
+    // === POINT CLOUD COLLECTION =====================================================================================================
     // Check if collecting pointclouds is enabled
     if (config.getValue<bool>("realsense.collect_pointcloud")) {
         // [DEUG] Start Timer for pointcloud creation
@@ -815,14 +826,7 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
 
         // should not be hardcoded as "/"
         out_file << save_dir << "/" << camera_names[serial_number] << "_"
-
-
-
-
-
-
-
-            << std::setfill('0') << std::setw(3) << degree << "_cloud.ply";
+             << std::setfill('0') << std::setw(3) << degree << "_cloud.ply";
         std::cout.copyfmt(std::ios(nullptr));
 
         // Set the locale to "C" to avoid issues with decimal point formatting
@@ -832,14 +836,16 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
         if (!config.getValue<bool>("realsense.compute_normals")) {
             // Save the point cloud without normals as binary PLY
             pcl::io::savePLYFile(out_file.str(), *cloud, true);
+            DebugUtils::logSaveLoop(camera_names[serial_number] + "(Cloud): "+ out_file.str());
         } else {
             // Save the point cloud with normals as binary PLY
             pcl::io::savePLYFile(out_file.str(), *normal_cloud, true);
+            DebugUtils::logSaveLoop(camera_names[serial_number] + "(Cloud+N): "+ out_file.str());
         }
     }
 
 
-    cout << "\033[1;46m" << "[" << degree << "][" << camera_names[serial_number] << ":SAVED]" << "\033[0m" << "\n";
+    // cout << "\033[1;46m" << "[" << degree << "][" << camera_names[serial_number] << ":SAVED]" << "\033[0m" << "\n";
 
 
 

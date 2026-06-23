@@ -1,9 +1,6 @@
 {
-    "num_moves": 72,
-    "object_name": "test_object",
-    "output_dir": "/home/csrobot/MOAD_DATA",
     "debug": {
-        "debug_verbosity": 3,
+        "debug_verbosity": 2,
         "log": true
     },
     "degree_inc": 5,
@@ -29,18 +26,21 @@
         "enabled": true,
         "manual_check": false
     },
+    "num_moves": 72,
+    "object_name": "yyy",
+    "output_dir": "/home/csrobot/MOAD_DATA",
     "prev_state": {
         "current_move": 27,
         "current_object": "",
-        "current_pose": 98,
+        "current_pose": 97,
         "turntable_pos": 135
     },
     "realsense": {
         "align_to_color": false,
-        "collect_color": false,
-        "collect_depth": false,
+        "collect_color": true,
+        "collect_depth": true,
         "collect_pointcloud": true,
-        "collect_realsense": false,
+        "collect_realsense": true,
         "compute_normals": true,
         "filter": {
             "sor": {

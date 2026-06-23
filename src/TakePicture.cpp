@@ -11,38 +11,6 @@
 #include <thread> // for thread debugging
 
 
-// static std::mutex dslr_mutex;
-
-// bool WaitForCameraReady1(EdsCameraRef camera, int timeoutMs) {
-//     // std::cout << "inside wait function..." << std::endl;
-//     // std::cout << "timeout is " << timeoutMs << " sec" << std::endl;
-//     int busy_count = 0;
-//     auto start = std::chrono::steady_clock::now();
-//     while (true) {
-//         EdsError err = EdsSendStatusCommand(camera, kEdsCameraStatusCommand_UILock, 0);
-//         if (err == EDS_ERR_OK) {
-//             // if ok then early return
-//             EdsSendStatusCommand(camera, kEdsCameraStatusCommand_UIUnLock, 0);
-//             return true; // Ready
-//         }
-//         else if (err != EDS_ERR_DEVICE_BUSY) {
-//             // if cam not busy but still err, return err
-//             std::cerr << "Camera returned error: " << err << std::endl;
-//             return false;
-//         } 
-//         else {
-//             std::cerr << "camera " << camera << " is busy, count: " << busy_count << std::endl;
-//             busy_count++;
-//         }    
-//         if (std::chrono::duration_cast<std::chrono::seconds>(
-//                 std::chrono::steady_clock::now() - start).count() >= timeoutMs) {
-//             std::cerr << "Camera still busy after timeout." << std::endl;
-//             return false;
-//         }
-//         std::this_thread::sleep_for(std::chrono::milliseconds(50));
-//     }
-// }
-
 bool WaitForCameraReadyStrict(EdsCameraRef camera, int timeoutMs) {
 
     // attempt to light reset the state of the camera
@@ -99,71 +67,8 @@ bool WaitForCameraReadyStrict(EdsCameraRef camera, int timeoutMs) {
             DebugUtils::logInfo("\tAttempting to free camera " + std::to_string(reinterpret_cast<uintptr_t>(camera)) + "...");
             DebugUtils::logInfo("\tTimestamp: " + std::to_string(now));
 
-            // attempt shutter press/release if stuck too long
-
-            // EdsError pressErr = EdsSendCommand(camera, kEdsCameraCommand_PressShutterButton, kEdsCameraCommand_ShutterButton_Completely_NonAF);
-
-            // EdsError releaseErr = EdsSendCommand(camera, kEdsCameraCommand_PressShutterButton, kEdsCameraCommand_ShutterButton_OFF);
-            // std::cout << "[RETRY] Press error: " << pressErr << ", Release error: " << releaseErr << std::endl;
-
-
-
-
-
-            // attempt full download to try and reset camera state 
-
-            // EdsError downloadErr = EDS_ERR_OK;
-
-            // // Dummy filename and stream for testing
-            // const char* filename = "bad.jpg";
-            // EdsStreamRef stream = nullptr;
-            // EdsDirectoryItemRef directoryItem = nullptr;
-            // EdsDirectoryItemInfo dirItemInfo = {0};
-
-            // // Set stream to current directory
-            // EdsError dirErr = EdsGetChildAtIndex(camera, 0, &directoryItem);
-            // if (dirErr == EDS_ERR_OK && directoryItem != nullptr) {
-            //     EdsGetDirectoryItemInfo(directoryItem, &dirItemInfo);
-            // } else {
-            //     std::cout << "Failed to get current directory item, err: " << dirErr << std::endl;
-            // }
-
-            // // Create file stream for transfer destination  
-            // if (downloadErr == EDS_ERR_OK) {
-            //     downloadErr = EdsCreateFileStream(filename, kEdsFileCreateDisposition_CreateAlways, kEdsAccess_ReadWrite, &stream);
-            //     std::cout << "eds create filestream, err: " << downloadErr << std::endl;
-            // } else {
-            //     std::cout << "eds create filestream, err: " << downloadErr << std::endl;
-            // }
-
-            // // Download image  
-            // if (downloadErr == EDS_ERR_OK) {
-            //     downloadErr = EdsDownload(directoryItem, dirItemInfo.size, stream);
-            // } else {
-            //     std::cout << "eds download, err: " << downloadErr << std::endl;
-            // }
-
-            // // Issue notification that download is complete  
-            // if (downloadErr == EDS_ERR_OK) {
-            //     downloadErr = EdsDownloadComplete(directoryItem);
-            // } else {
-            //     std::cout << "eds download complete, err: " << downloadErr << std::endl;
-            // }
-
-            // // Release stream  
-            // if (stream != NULL) {
-            //     downloadErr = EdsRelease(stream);   stream = NULL;
-            // } else {
-            //     std::cout << "eds release filestream, err: " << downloadErr << std::endl;
-            // }
-
-
-
-            // std::this_thread::sleep_for(std::chrono::milliseconds(500));
             busy_count = 0;
         }
-
-
 
         if (std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start).count() >= timeoutMs) {
             std::cerr << "[TIMEOUT] Camera still busy after " << timeoutMs << " sec." << std::endl;
@@ -261,31 +166,6 @@ EdsError TakePicture(EdsCameraRef const& camera, std::string const& bodyID) {
 }
 
 
-
-
-// static std::mutex dslr_mutex;
-
-// EdsError SendCommandWithWait(EdsCameraRef const& camera, std::string const& bodyID, EdsUInt32 command, EdsUInt32 param) {
-//     EdsError err;
-//     int retries = 0;
-//     const int max_retries = 900; // e.g., 5 seconds if we sleep 100ms each time
-
-//     do {
-//         err = EdsSendCommand(camera, command, param);
-//         DebugUtils::logDebug("inside send command for cam " + bodyID + ", err " + std::to_string(err));
-//         if (err == EDS_ERR_DEVICE_BUSY) {
-//             DebugUtils::logDebug("camera " + bodyID + " is busy, retrying..." + std::to_string(retries) + " out of " + std::to_string(max_retries));
-//             std::this_thread::sleep_for(std::chrono::seconds(2));
-//             retries++;
-//         } else {
-//             break;
-//         }
-//     } while (retries < max_retries);
-
-//     return err;
-// }
-
-
 EdsError TakePictureNoWait(EdsCameraRef const& camera, std::string const& bodyID) {
     // Acquire thread ID string for printing...
     std::stringstream ss;
@@ -348,21 +228,6 @@ EdsError TakePictureNoWait(EdsCameraRef const& camera, std::string const& bodyID
     return err;
 }
 
-
-
-// EdsError TakePicture(std::vector<EdsCameraRef> const& cameraArray, std::map<EdsCameraRef, std::string> const& bodyID) {
-	
-// 	std::cout << "multi cam shooting" << std::endl;
-	
-// 	EdsError err = EDS_ERR_OK;
-	
-// 	// For each camera in the array, take a picture
-// 	for (auto& camera : cameraArray) {
-// 		TakePicture(camera, bodyID.at(camera));
-// 	}
-
-// 	return err;
-// }
 
 
 

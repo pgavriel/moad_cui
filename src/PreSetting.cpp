@@ -3,6 +3,7 @@
 #include "EDSDK.h"
 #include "EDSDKTypes.h"
 #include "CameraEvent.h"
+#include "DebugUtils.h" 
 
 EdsError PreSetting(std::vector<EdsCameraRef> const& cameraArray, std::vector<EdsUInt64> const& bodyID)
 {
@@ -11,7 +12,8 @@ EdsError PreSetting(std::vector<EdsCameraRef> const& cameraArray, std::vector<Ed
 	// Specify where to save images
 	saveto = kEdsSaveTo_Host;	//kEdsSaveTo_Host or kEdsSaveTo_Camera or kEdsSaveTo_Both;
 
-	std::cout << "session opening" << std::endl;
+	// std::cout << "session opening" << std::endl;
+	DebugUtils::logCanon("Openening Session for each camera (PreSetting.cpp)");
 
 	for (EdsUInt32 i = 0; i < cameraArray.size(); i++)
 	{

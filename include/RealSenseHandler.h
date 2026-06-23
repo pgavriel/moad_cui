@@ -43,6 +43,7 @@ public:
     ~RealSenseHandler();
     int device_check();
     void initialize(std::string);
+    void shutdown();
     void get_frames(int num_frames=1, int timeout_ms=10000);
     void get_current_frame(int degree, int timeout_ms=10000, ThreadPool* pool=nullptr);
 };

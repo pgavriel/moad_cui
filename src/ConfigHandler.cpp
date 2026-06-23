@@ -18,7 +18,7 @@ void ConfigHandler::loadConfig(const std::string& filepath) {
 
     DebugUtils::logDebug("Loading Config File: " + filepath);
     // std::cout << "Loading Config File: " << filepath << std::endl;
-    std::cout << "=============================== " << std::endl; // isolate this msg 
+    // std::cout << "=============================== " << std::endl; // isolate this msg 
     
     // NOTE: this debugutils statement actually cant be here, since the function defintion
     //       needs to check the config before writing to the log file and the config
@@ -31,6 +31,9 @@ void ConfigHandler::loadConfig(const std::string& filepath) {
     std::ifstream json_file(filepath);
 	config = nlohmann::json::parse(json_file);
 	json_file.close();
+    DebugUtils::logDebug("Config loaded.");
+    DebugUtils::logWhitespace();
+    DebugUtils::notifyConfigReady(); // Flag to DebugUtils that a config has been loaded
 }
 
 void ConfigHandler::saveConfig(const std::string& filepath) const {

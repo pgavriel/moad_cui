@@ -11,12 +11,13 @@
 
 class CanonHandler {
 private:
-    int i;
+    unsigned int i;
 	EdsCameraRef camera;
 public:
     CanonHandler();
     ~CanonHandler();
     void initialize();
+    void shutdown();
     int camera_check();
 
     int turntable_position = 0;

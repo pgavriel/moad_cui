@@ -13,11 +13,16 @@
 
 SimpleSerial::SimpleSerial(const char* portname, int baudrate) {
 
+    std::stringstream ss;
+    ss << portname;
+    std::string port_str = ss.str();
+    // DebugUtils::logSerial("Attempting serial port connection...");
     // open serial port (file since everything in linux is a file)
     //  note: somewhere someone suggested O_NDELAY but this causes a block somewhere
     fd_ = open(portname, O_RDWR | O_NOCTTY | O_NONBLOCK); // args are read/write, no controlling terminal, non-blocking
     if (fd_ == -1) {
-        std::cerr << "Error opening serial port " << portname << ": " << strerror(errno) << std::endl;
+        // std::cerr << "Error opening serial port " << portname << ": " << strerror(errno) << std::endl;
+        DebugUtils::logError("Couldn't open serial port \"" + port_str + "\". Error: " + std::string(strerror(errno)));
         connected_ = false;
         return;
     }
@@ -28,7 +33,8 @@ SimpleSerial::SimpleSerial(const char* portname, int baudrate) {
     // configure port:
     struct termios options;
     if (tcgetattr(fd_, &options) != 0) {
-        std::cerr << "Error getting port attributes: " << strerror(errno) << std::endl;
+        // std::cerr << "Error getting port attributes: " << strerror(errno) << std::endl;
+        DebugUtils::logError("Couldn't get port attributes: " + std::string(strerror(errno)));
         close(fd_);
         connected_ = false;
         return;
@@ -54,14 +60,17 @@ SimpleSerial::SimpleSerial(const char* portname, int baudrate) {
     // Apply settings
     tcsetattr(fd_, TCSANOW, &options);
 
-    std::cout << "Serial port " << portname << " opened and configured." << std::endl;
+    // std::cout << "Serial port " << portname << " opened and configured." << std::endl;
+    DebugUtils::logSerial("Serial port \"" + port_str + "\" opened and configured!");
     connected_ = true;
 
     // flush any stray input/output so we start with a clean buffer
     tcflush(fd_, TCIOFLUSH);
 
     // slight delay to allow device to reset/respond (e.g., Arduino auto-reset)
-    std::cout << "waiting 2 seconds for full arduino startup" << std::endl;
+    // std::cout << "waiting 2 seconds for full arduino startup" << std::endl;
+    DebugUtils::logSerial("Waiting 2 seconds for full arduino startup...");
+    DebugUtils::logWhitespace();
     sleep(2);
 }
 
@@ -142,14 +151,12 @@ std::string SimpleSerial::ReadSerialPort(int reply_wait_time, const std::string&
 
         if (message.find("}") != std::string::npos) {
             DebugUtils::logSerial("Termination string \"}\" received.");
-            // std::cout << "Termination string \"}\" received." << std::endl;
             break;
         }
 
         // check for timeout
         if (std::chrono::steady_clock::now() - start > timeout) {
             DebugUtils::logSerial("Read timeout ("+std::to_string(reply_wait_time)+" seconds) exceeded.");
-            // std::cout << "Read timeout exceeded." << std::endl;
             break;
         }
     }
@@ -185,7 +192,8 @@ bool SimpleSerial::CloseSerialPort() {
     if (connected_) {
         close(fd_);
         connected_ = false;
-        std::cout << "Serial port closed." << std::endl;
+        DebugUtils::logSerial("Serial port closed.");
+        // std::cout << "Serial port closed." << std::endl;
         return true;
     }
     return false;

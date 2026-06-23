@@ -221,41 +221,45 @@ initializes the objects responsible for handling their data collection.
 		- setObjectName()
 */
 void loadJsonConfig(std::string path) {
+	
 	// If config was already loaded, save current state of collect DSLR/RS.
 	ConfigHandler& config = ConfigHandler::getInstance();
 	std::optional<bool> previous_DSLR;
 	std::optional<bool> previous_RS;
-
+	
 	if (!config.emptyConfig()) {
+		DebugUtils::logDebug("Checking previously loaded config...");
 		previous_DSLR = config.getValue<bool>("dslr.collect_dslr");
 		previous_RS = config.getValue<bool>("realsense.collect_realsense");
 	}
 
 	// Reload the config .json file to update all setting values
-	std::cout << "Path in loadJsonConfig(): " << path << std::endl;
+	// std::cout << "Path in loadJsonConfig(): " << path << std::endl;
 	config.loadConfig(path);
-
 
 	// Check if the configuration has changed for DSLR, if so, initialize Canon Handler
 	if (!previous_DSLR.has_value() || previous_DSLR != config.getValue<bool>("dslr.collect_dslr")) {
-		std::cout << "Initializing CanonHandler" << std::endl;
+		// std::cout << "Initializing CanonHandler" << std::endl;
 		if (config.getValue<bool>("dslr.collect_dslr") && !canonhandle.isSDKLoaded) {
 			initializeCanon();
+			DebugUtils::logWhitespace();
 		}
 	}
 	
 	// Check if the configuration has changed for RealSense, if so, initialize RS handler
 	if (!previous_RS.has_value() || previous_RS != config.getValue<bool>("realsense.collect_realsense")) {
-		std::cout << "Initializing RealSenseHandler" << std::endl;
+		// std::cout << "Initializing RealSenseHandler" << std::endl;
 		if (config.getValue<bool>("realsense.collect_realsense")) {
 			initializeRealsense();
+			DebugUtils::logWhitespace();
 		}
 	}
-
+	
 
 	// Set the object name from the configuration
 	std::string object_name = config.getValue<std::string>("object_name");
 	setObjectName(object_name);
+	DebugUtils::logWhitespace();
 }
 
 bool reloadConfig() {
@@ -411,8 +415,8 @@ int create_folder(std::string path, bool quiet=false) {
             return 1;
         }
     } else { 
-		DebugUtils::logFileSys("Folder already exists: " + path);
-		DebugUtils::logWarning("You may accidentally overwrite data.");
+		// DebugUtils::logFileSys("Folder already exists: " + path);
+		DebugUtils::logWarning("Folder already exists: " + path + " (You may accidentally overwrite data.)");
 		// std::cout << "\033[1;33m" << "WARNING!: Folder already exists: " << path << std::endl
 		// 	<< "\tYou may accidentally overwrite data.\n" << "\033[0m\n";
     }
@@ -420,13 +424,19 @@ int create_folder(std::string path, bool quiet=false) {
 }
 
 
-
+// TODO: Move to python script file
 void create_obj_info_json(std::string path) {
 	std::string object_name = object_info["Object Name"];
-	std::cout << "Creating object info JSON file: " << object_name << std::endl;
+	DebugUtils::logInfo("Creating object info JSON file: " + object_name);
+	// std::cout << "Creating object info JSON file: " << object_name << std::endl;
 
 	// Check if the path exists
 	if (fs::exists(path)){
+		std::string full_path = path + PATH_SEP + object_name + PATH_SEP + "object_info.json";
+		if(fs::exists(full_path)){
+			DebugUtils::logDebug("Object info file already exists. Skipping...");
+			return;
+		}
 		// Generate the command to execute scripts\create_object_info.py
 		std::stringstream command_stream;
 		command_stream 
@@ -442,7 +452,8 @@ void create_obj_info_json(std::string path) {
 		system(c_command);
 	}
 	else {
-		std::cout << "WARNING: folder " << path << " does not exist." << std::endl;
+		DebugUtils::logWarning("Folder \'" + path + "\' does not exist.");
+		// std::cout << "WARNING: folder " << path << " does not exist." << std::endl;
 	}
 }
 
@@ -1196,7 +1207,7 @@ Sets the name for the object being scanned / data being collected.
 void setObjectName(std::string object_name) {
 	ConfigHandler& config = ConfigHandler::getInstance();
 
-	DebugUtils::logDebug("Setting object name from: " + config.getValue<std::string>("object_name") + " to: " + object_name);
+	DebugUtils::logInfo("Setting object name to: " + object_name);
 
 	// this does something weird where templated setValue calls an inner "saveConfig" function that was
 	//	previously hardcoded and saved the config in the wrong location. should be fixed with fs::canonical
@@ -1208,22 +1219,16 @@ void setObjectName(std::string object_name) {
 	std::string output_dir = config.getValue<std::string>("output_dir");
 	scan_folder = output_dir + PATH_SEP + object_name;
 
-	// Create Main Folder
+	// Create base Object data Folder
 	create_folder(scan_folder);
 
-	scan_folder = output_dir + PATH_SEP + object_name;
-
-
-
-
-
-	// THIS CODE DOESNT WORK THE WAY ITS MEANT TO I THINK - GS 8/7
 	// Create object info.json (template)
 	object_info["Object Name"] = object_name;
 	create_obj_info_json(config.getValue<std::string>("output_dir"));
+	DebugUtils::logWhitespace();
 
 	// save the object name to the moadfig file
-	// THIS CODE SHOULD BE BETTER - GS 8/7
+	DebugUtils::logInfo("Updating moad_config.json file...");
 	write_obj_to_moadfig(object_name); // write object name to moadfig
 
 	// Change pose
@@ -1247,9 +1252,9 @@ void setObjectName(std::string object_name) {
 
 	// Update the save directories for RealSense and DSLR
 	rshandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "realsense";
-	create_folder(rshandle.save_dir,true);
+	// create_folder(rshandle.save_dir,true);
 	canonhandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "DSLR";
-	create_folder(canonhandle.save_dir,true);
+	// create_folder(canonhandle.save_dir,true);
 
 }
 
@@ -1874,19 +1879,21 @@ void initializeRealsense() {
 	ConfigHandler& config = ConfigHandler::getInstance();
 
 	if (config.getValue<bool>("realsense.collect_realsense")) {
-		DebugUtils::logRS("Attempting Realsense setup...");
 
 		// scan_folder is not set when this is first intialized TODO
 		rshandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "realsense";
-		create_folder(rshandle.save_dir,true);
+		// create_folder(rshandle.save_dir,true);
 
 		// Get some frames to settle autoexposure.
-		std::cout << "Getting frames..." << std::endl;
-		DebugUtils::logRS("Getting frames...");
+		// std::cout << "Getting frames..." << std::endl;
 
 	
 		rshandle.initialize(json_path);
-		rshandle.get_frames(10); // make 30 later
+
+		// Get some frames to settle autoexposure and verify stream.
+		int test_frames = 10;
+		DebugUtils::logRS("Getting " + std::to_string(test_frames) + " frames to verify data...");
+		rshandle.get_frames(test_frames); // make 30 later
 		// rshandle.get_current_frame();
 
 	} else {
@@ -1905,7 +1912,6 @@ void initializeRealsense() {
 	COMPLETED: added yellow text on startup that displays number of connected cameras - GS 10/3
 	
 */
-
 void initializeCanon() {
 	ConfigHandler& config = ConfigHandler::getInstance();
 
@@ -1924,22 +1930,20 @@ void initializeCanon() {
 
 		// scan_folder is not set when this is first intialized TODO
 		canonhandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "DSLR";
-		create_folder(canonhandle.save_dir,true);
+		// create_folder(canonhandle.save_dir,true);
 		PreSetting(canonhandle.cameraArray, canonhandle.bodyID);
 		// Naming of the camera
+		DebugUtils::logCanon("Remapping Camera Names...");
 		EdsChar serial[13];
 		EdsError err;
+		std::stringstream cam_message;
 		int index = 1;
 		for (const auto& camera: canonhandle.cameraArray) {
-
-
-
 			// Fetch the serial number
 			err = EdsGetPropertyData(camera, kEdsPropID_BodyIDEx, 0, sizeof(serial), &serial);
 			if (err != 0)  {
 				std::cout << "canon initialization err: " << err << std::endl;
 			}
-
 
 			// Convert it into string
 			std::string serial_str = "";
@@ -1947,35 +1951,43 @@ void initializeCanon() {
 				serial_str += serial[i];
 			}
 
-			std::cout << "\033[1;45m" << "Renaming Camera " << index << " (Serial Number: " << serial_str <<")";
+			cam_message.str("");
+			cam_message.clear();
+			cam_message << "Camera " << index << " (Serial Number: " << serial_str <<"):";
 
 
 			if (serial_str == cam1) {
-				std::cout << " to 1" << "\033[0m" << std::endl;
+				cam_message << "\n\t\t|- Renamed to Camera 1";
 				canonhandle.camera_names[std::to_string(index)] = "1";
 				camera_name[camera] = "Camera 1";
 			}
-			if (serial_str == cam2) {
-				std::cout << " to 2" << "\033[0m" << std::endl;
+			else if (serial_str == cam2) {
+				cam_message << "\n\t\t|- Renamed to Camera 2";
 				canonhandle.camera_names[std::to_string(index)] = "2";
 				camera_name[camera] = "Camera 2";
 			}
-			if (serial_str == cam3) {
-				std::cout << " to 3" << "\033[0m" << std::endl;
+			else if (serial_str == cam3) {
+				cam_message << "\n\t\t|- Renamed to Camera 3";
 				canonhandle.camera_names[std::to_string(index)] = "3";
 				camera_name[camera] = "Camera 3";
 			}
-			if (serial_str == cam4) {
-				std::cout << " to 4" << "\033[0m" << std::endl;
+			else if (serial_str == cam4) {
+				cam_message << "\n\t\t|- Renamed to Camera 4";
 				canonhandle.camera_names[std::to_string(index)] = "4";
 				camera_name[camera] = "Camera 4";
 			}
-			if (serial_str == cam5) {
-				std::cout << " to 5" << "\033[0m" << std::endl;
+			else if (serial_str == cam5) {
+				cam_message << "\n\t\t|- Renamed to Camera 5";
 				canonhandle.camera_names[std::to_string(index)] = "5";
 				camera_name[camera] = "Camera 5";
+			}else {
+				// If serial number is not matched, set the camera name to it's serial number.
+				cam_message << "\n\t\t|- NO MATCHING SERIAL NUMBER FOUND IN CONFIG (dslr/camera_ids), setting name to serial...";
+				canonhandle.camera_names[std::to_string(index)] = serial_str;
+				camera_name[camera] = "Camera " + serial_str;
 			}
-
+			
+			DebugUtils::logCanon(cam_message.str());
 			index++;
 		}
 	} else {
@@ -2060,14 +2072,15 @@ bool run_filecount_check() {
 
 int main(int argc, char* argv[]) 
 {	
-	std::cout << "\033[1;44m" << "[ START OF MAIN ]" << "\033[0m\n";	
+	// std::cout << "\033[1;44m" << "[ START OF MAIN ]" << "\033[0m\n";	
+	DebugUtils::logInfo("START OF MAIN");
+
 	// SETUP ----------------------------------------------------------------------------------------------
-	
 	// NOTE: degree_tracker is a global variable so that every function can use it
 	//		initially it is set to 0, but in order to save state for potential cam
 	//		interrupts, it needs to be loaded from config
 	degree_tracker = 0;
-	
+
 	// use "fs::canonical" to get the moad directory FROM THE MultiCamCui EXECUTABLE
 	//	this is meant to avoid direct pathing and get the config from the moad_cui directory
 	// NOTE: this is a global variable...
@@ -2076,44 +2089,32 @@ int main(int argc, char* argv[])
 	// Load the JSON Config file
 	// NOTE: this a global variable...
 	json_path = (moad_dir + PATH_SEP + "config" + PATH_SEP + "moad_config.json");
-
+	
 	// This function also handles setting the initial object name, 
-	// creating the object folder, and getting the last pose
+	// creating the object folder, and getting the last pose.
+	// Also notifies DebugUtils that a config has been loaded.
+	// DebugUtils::logDebug("Loading Config...");
 	loadJsonConfig(json_path);
+	// DebugUtils::notifyConfigReady(); // Flag to DebugUtils that a config has been loaded
 
 	// Provides global config access
 	ConfigHandler& config = ConfigHandler::getInstance();
-
+	
 	// Initialize Debug Log File
 	// NOTE: 'scan_folder' is initialized when the config is loaded, which calls setObjectName()
+	// NOTE/TODO: Currently, DebugUtils cannot be used until config is initialized.
 	std::string debug_log_dir = scan_folder + PATH_SEP + "debug_log.txt";
-	// std::cout << std::endl << "DEBUG LOG\nDebug Log Path: " << debug_log_dir << std::endl;
 	DebugUtils::initLogFile(debug_log_dir);
 
 	// Setup Arduino serial port connection
-	DebugUtils::logSerial("Attempting serial port connection...");
-	// std::cout << "\033[1;40m" << "Attempting serial port connection..." << "\033[0m\n"; // todo: macros for cli coloring
-
-	// Check to ensure Linux OS
 	std::string com_port;
-	if(OS_LINUX) {
-		com_port = config.getValue<std::string>("serial_com_port");
-	} else {
-		std::cout << "not on linux naming scheme, serial port connection falure...\n";
-	}
+	com_port = config.getValue<std::string>("serial_com_port");
 
 	typedef unsigned long DWORD;
-	DWORD COM_BAUD_RATE = B9600;
+	DWORD COM_BAUD_RATE = B9600; // Serial baud rate currently hardcoded
 
+	DebugUtils::logInfo("Attempting Serial Port Connection...");
 	Serial = new SimpleSerial(com_port.c_str(), COM_BAUD_RATE); // input must be c string
-
-	if(Serial->connected_) {
-		DebugUtils::logSerial("Serial port connected via " + com_port);
-		// std::cout << "\033[1;40m" << "serial port connected via " << com_port << "\033[0m\n"; // todo: macros for cli coloring
-	} else {
-		DebugUtils::logError("Serial connection failed after attempting port " + com_port + " from config.");
-		// std::cout << "\033[1;31m" << "ERROR in port connection, turntable will likely not work. Port received in config: " << com_port << "\033[0m\n"; // todo: macros for cli coloring
-	}
 
 	// Log some additional information at startup
 	DebugUtils::logDebug("Current Object Name: " + object_info["Object Name"]);
@@ -2155,8 +2156,17 @@ int main(int argc, char* argv[])
 	menu_handler.ClearScreen();
 	menu_handler.initialize(curr_menu);
 
+
+	// Cleanly shutdown sensor handlers
+	DebugUtils::log("END","Shutting down...\n",0,true);
+	canonhandle.shutdown();
+	rshandle.shutdown();
+
 	// Close log file
 	DebugUtils::closeLogFile();
+	DebugUtils::notifyConfigReady(false);
+
+
 
 	return false;
 }
