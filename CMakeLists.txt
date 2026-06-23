@@ -10,14 +10,11 @@ project(MultiCamCui CXX)
 set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
 set(INC_DIR ${PROJECT_SOURCE_DIR}/include)
 
+# Moved serial communication code into this repository - PG 6/23/26
+# set(SER_DIR ${PROJECT_SOURCE_DIR}/../simple_serial_port/linux)
 
-set(SER_DIR ${PROJECT_SOURCE_DIR}/../simple_serial_port/linux)
 
-# commented out, these were for windows version, realsense library located with find_package() later in cmake - gs 11/12
-#  set(RS_INCLUDE_DIR "C:\\Program Files (x86)\\Intel RealSense SDK 2.0\\include") # folder where librealsense2 folder is found
-#  set(RS_LIBRARY_DIR "C:\\Program Files (x86)\\Intel RealSense SDK 2.0\\lib\\x64") # where realsense2.lib is found
-#  set(RS_DLL_DIR "C:\\Program Files (x86)\\Intel RealSense SDK 2.0\\bin\\x64") # where realsense2.lib is found
-
+# Find RealSense SDK includes
 find_library(REALSENSE2_FOUND realsense2 HINTS ${RS_LIBRARY_DIR} REQUIRED)
 if(NOT REALSENSE2_FOUND)
     SET(REALSENSE2_FOUND "realsense2")
@@ -48,9 +45,8 @@ endif()
 if(REALSENSE2_LIB_DIR)
     set(RS_LIBRARY_DIR ${REALSENSE2_LIB_DIR} CACHE PATH "RealSense library directory" FORCE)
 endif()
-# not needed in linux version
-#  set(OpenCV_DIR "C:/opencv/build")
 
+# Find OpenCV includes
 find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})
 
@@ -59,7 +55,7 @@ include(FetchContent)
 FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz)
 FetchContent_MakeAvailable(json)
 
-
+# Find PCL includes
 # set(PCL_DIR "C:\\src\\vcpkg\\installed\\x64-windows\\share\\pcl")
 find_package(PCL 1.3 REQUIRED COMPONENTS)
 
@@ -88,7 +84,7 @@ add_executable (MultiCamCui
     
     ${SRC_DIR}/RealSenseHandler.cpp
     ${SRC_DIR}/CanonHandler.cpp
-    ${SER_DIR}/SimpleSerial.cpp
+    ${SRC_DIR}/SerialCommunication.cpp
     
     ${SRC_DIR}/CameraEvent.cpp
     ${SRC_DIR}/Download.cpp
@@ -123,7 +119,7 @@ target_include_directories(MultiCamCui
   PUBLIC ${INC_DIR}/Class
   PUBLIC ${INC_DIR}/Command
   PUBLIC ${PROJECT_SOURCE_DIR}/../EDSDK/Header
-  PUBLIC ${SER_DIR}
+#   PUBLIC ${SER_DIR}
   PUBLIC ${RS_INCLUDE_DIR}
   PRIVATE ${PCL_INCLUDE_DIRS}
   )

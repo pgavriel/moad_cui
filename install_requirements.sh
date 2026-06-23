@@ -31,23 +31,24 @@ else
     echo "Found ../EDSDK"
 fi
 
+# Moved serial communication code into this repository -PG 6/23/26
 # check for simple_serial_port, auto install if not there and user selects yes
-if [ ! -d "../simple_serial_port" ]; then
-    echo "ERROR: ../simple_serial_port not found."
-    read -r -p "Would you like this script to clone ../simple_serial_port for you and continue? [Y/n] " _resp
-    if [[ "$_resp" =~ ^([yY]|$) ]]; then
-        cd ..
-        git clone https://github.com/grahamstelzer/simple_serial_port.git
-        cd moad_cui/
-    else
-        echo "Did not clone simple_serial_port, reminder that this is necessary for communication with the turntable."
-        sleep 2
-    fi
-    echo "Continuing with installations..."
+# if [ ! -d "../simple_serial_port" ]; then
+#     echo "ERROR: ../simple_serial_port not found."
+#     read -r -p "Would you like this script to clone ../simple_serial_port for you and continue? [Y/n] " _resp
+#     if [[ "$_resp" =~ ^([yY]|$) ]]; then
+#         cd ..
+#         git clone https://github.com/grahamstelzer/simple_serial_port.git
+#         cd moad_cui/
+#     else
+#         echo "Did not clone simple_serial_port, reminder that this is necessary for communication with the turntable."
+#         sleep 2
+#     fi
+#     echo "Continuing with installations..."
 
-else
-    echo "Found ../simple_serial_port"
-fi
+# else
+#     echo "Found ../simple_serial_port"
+# fi
 
 
 

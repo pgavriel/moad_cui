@@ -3,7 +3,7 @@
 #### [Official MOAD Website](https://www.robot-manipulation.org/nist-moad)
 
 ## Quick Start
-1. Clone this repo and simple_serial_port into a folder with EDSDK (For Linux v13.19.10) from Canon's website
+1. Clone this repo into a folder with EDSDK (For Linux v13.19.10) from Canon's website
 2. Run bash script to auto-install packages.
 3. Configure moad_config.json
 4. Run:
@@ -40,13 +40,11 @@ To minimize dependency pathing, I suggest cloning this repo into its own directo
 
 **Target Directory Structure:**
 ```
-moadrig_control/
+moad_control/
 ├── EDSDK/
 ├── moad_cui/ # <-- THIS REPO
 │   ...
-└── simple_serial_port/
-    ├── linux/
-    ...
+├── librealsense/
 ```
 The CMake file is setup for this structure.
 
@@ -81,7 +79,7 @@ Install instructions found here: [<https://developercommunity.usa.canon.com/s/ar
 12. Extract into the overall project directory, make sure the repo structure matches the above visual, where `EDSDK/` has direct `Header` and `Library` subdirectories.
 
 
-
+<!-- 
 - **`simple_serial_port`:**
 
 Original repo is from  [<https://github.com/dmicha16/simple_serial_port>] though it was made for windows. I have added a linux-capable version in a forked repo at [<https://github.com/grahamstelzer/simple_serial_port.git>].
@@ -90,7 +88,7 @@ Original repo is from  [<https://github.com/dmicha16/simple_serial_port>] though
 ```
 git clone https://github.com/grahamstelzer/simple_serial_port.git
 ```
-*(note: the installation script in the next step will also attempt these two steps if the user allows it)*
+*(note: the installation script in the next step will also attempt these two steps if the user allows it)* -->
 
 <br>
 

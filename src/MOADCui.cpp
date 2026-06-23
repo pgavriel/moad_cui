@@ -33,7 +33,7 @@
 #include "Property.h"
 #include "TakePicture.h"
 
-#include "SimpleSerial.h" // TODO: this MIGHT try pointing to windows version header file but only in VSCODE?
+#include "SerialCommunication.h" 
 #include "CameraException.h"
 
 
