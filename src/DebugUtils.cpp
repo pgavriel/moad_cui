@@ -10,6 +10,7 @@ std::chrono::time_point<std::chrono::high_resolution_clock> DebugUtils::end_time
 std::ofstream DebugUtils::log_file;
 std::mutex DebugUtils::log_mutex;
 bool DebugUtils::config_available = false;
+std::string DebugUtils::log_path;
 
 
 std::unordered_map<std::string, const char*> DebugUtils::tag_colors = {

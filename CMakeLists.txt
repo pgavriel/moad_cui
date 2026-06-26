@@ -85,6 +85,7 @@ add_executable (MultiCamCui
     ${SRC_DIR}/RealSenseHandler.cpp
     ${SRC_DIR}/CanonHandler.cpp
     ${SRC_DIR}/SerialCommunication.cpp
+    ${SRC_DIR}/ScriptRunner.cpp
     
     ${SRC_DIR}/CameraEvent.cpp
     ${SRC_DIR}/Download.cpp

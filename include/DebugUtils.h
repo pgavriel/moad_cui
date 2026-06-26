@@ -92,6 +92,7 @@ private:
     static std::mutex log_mutex;
     static std::unordered_map<std::string, const char*> tag_colors;
     static bool config_available;
+    static std::string log_path;
 
 public:
 
@@ -120,6 +121,8 @@ public:
             fprintf(stderr, "[ERROR] Failed to open log file: %s\n", file_path.c_str());
             return;
         }
+        // Store log path to print when closing.
+        log_path = file_path;
 
         // Write startup timestamp entry
         auto now = std::chrono::system_clock::now();
@@ -152,8 +155,9 @@ public:
         char time_buf[32];
         std::strftime(time_buf, sizeof(time_buf), "%H:%M:%S", &local_tm);
 
-        log("END", std::string("Debug logging ended at ") + time_buf + "\n", 0);
+        log("END", std::string("Closing log at: ") + log_path, 0);
         log_file.close();
+        log("END", std::string("Debug logging ended at ") + time_buf + "\n", 0);
     }
 }
 
@@ -304,35 +308,6 @@ public:
         fprintf(stdout, "\n");
     }
 }
-
-
-    // -------------------------------------------------------------------------
-    // OLD: DONT USE THESE IN NEW CODE
-    // Print-only wrappers (terminal output, no file write)
-    // Preserved from original; these check the "debug" config flag, not
-    // "log_debug", so they are kept separate from log() rather than folded in.
-    // -------------------------------------------------------------------------
-
-    // static void printDebug(const std::string& message) {
-    //     if (!_debugEnabled()) return;
-    //     std::cout << "[DEBUG] " << message << std::endl;
-    // }
-
-    // static void printError(const std::string& message) {
-    //     if (!_debugEnabled()) return;
-    //     std::cerr << "[ERROR] " << message << std::endl;
-    // }
-
-    // static void printInfo(const std::string& message) {
-    //     if (!_debugEnabled()) return;
-    //     std::cout << "[INFO] " << message << std::endl;
-    // }
-
-    // static void printWarning(const std::string& message) {
-    //     if (!_debugEnabled()) return;
-    //     std::cout << "[WARNING] " << message << std::endl;
-    // }
-
 
     // -------------------------------------------------------------------------
     // Timer helpers

@@ -38,7 +38,7 @@ public:
             if (current->contains(k)) {
                 current = &(*current)[k];
             } else {
-                std::cerr << "Key not found: " << k << " in " << key << std::endl;
+                // std::cerr << "Key not found: " << k << " in " << key << std::endl;
                 throw std::runtime_error("Key not found: " + k + " in " + key);
             }
         }

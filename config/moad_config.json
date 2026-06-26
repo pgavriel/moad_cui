@@ -27,20 +27,20 @@
         "manual_check": false
     },
     "num_moves": 72,
-    "object_name": "yyy",
+    "object_name": "scripttest",
     "output_dir": "/home/csrobot/MOAD_DATA",
     "prev_state": {
-        "current_move": 27,
+        "current_move": 72,
         "current_object": "",
         "current_pose": 97,
-        "turntable_pos": 135
+        "turntable_pos": 360
     },
     "realsense": {
         "align_to_color": false,
         "collect_color": true,
         "collect_depth": true,
         "collect_pointcloud": true,
-        "collect_realsense": true,
+        "collect_realsense": false,
         "compute_normals": true,
         "filter": {
             "sor": {
@@ -241,5 +241,6 @@
         "force": true,
         "visualize": true
     },
-    "turntable_delay_ms": 10000
+    "turntable_delay_ms": 200,
+    "turntable_timeout_s": 30
 }

@@ -15,15 +15,17 @@
 #include <opencv2/opencv.hpp>
 #include <nlohmann/json.hpp>
 
-#include "MenuHandler.h"
-#include "ConfigHandler.h"
-#include "CanonHandler.h"
-#include "RealSenseHandler.h"
-#include "ThreadPool.h"
-#include "DebugUtils.h" // used with logfile global variable for now - GS 8/12
+#include "MenuHandler.h"  		// CUI Menu functionality
+#include "tabulate.hpp"			// Renders CUI menus
+#include "ConfigHandler.h" 		// Handles the global config data loaded from moad_config.json
+#include "CanonHandler.h" 		// Handles initialization and  data collection from the DSLR camera
+#include "RealSenseHandler.h" 	// Handles initialization and data collection from realsense
+#include "ThreadPool.h" 		// Thread pool implementation for parallel data collection
+#include "DebugUtils.h" 		// Handles terminal output and logging
+#include "ScriptRunner.h" 		// Runs external python scripts
+#include "SerialCommunication.h"// Handles serial communication for turntable control 
 
-// #include <windows.h> // commented out for linux port
-#include "tabulate.hpp"
+// Canon SDK Headers
 #include "EDSDK.h"
 #include "EDSDKTypes.h"
 #include "Download.h"
@@ -32,8 +34,6 @@
 #include "PressShutter.h"
 #include "Property.h"
 #include "TakePicture.h"
-
-#include "SerialCommunication.h" 
 #include "CameraException.h"
 
 
@@ -94,9 +94,13 @@ void initializeCanon();
 void initializeRealsense();
 bool WaitForCameraReady(EdsCameraRef camera, int timeoutMs);
 void rotate_turntable(int degree_inc);
-bool run_filecount_check(); // Calls ./scripts/filecount_test.py (Copying/downscaling images for NeRF)
 int create_folder(std::string path, bool quiet);
 
+// Function wrapper so run_filecount_check(scan_folder) can be 
+// bound to the menu, which only accepts plain bool(*)() function pointers.
+bool runFilecountCheck() {
+    return run_filecount_check(scan_folder);
+}
 
 
 // functions for writing to config.json ==========================================================================================================
@@ -274,8 +278,7 @@ bool reloadConfig() {
 
 
 void saveCameraConfig(std::string path) {
-DebugUtils::logFileSys("Saving camera_config.json to : " + path);
-// std::cout << "path in saveCamConfig: " + path << std::endl;// declaration was missing before 10/29 - GS
+	DebugUtils::logFileSys("Saving camera_config.json to : " + path);
 
 	std::vector<std::tuple<EdsPropertyID, std::map<EdsUInt32, const char*>>> propertyIDs = {
 		std::tuple<EdsPropertyID, std::map<EdsUInt32, const char*>> (kEdsPropID_ISOSpeed, iso_table),
@@ -284,15 +287,8 @@ DebugUtils::logFileSys("Saving camera_config.json to : " + path);
 		std::tuple<EdsPropertyID, std::map<EdsUInt32, const char*>> (kEdsPropID_WhiteBalance, whitebalance_table),
 	};
 
-// std::cout << "getting confighandler: " << std::endl;
 	ConfigHandler& config = ConfigHandler::getInstance();
-// std::cout << "successfully got instance " << std::endl;
 	nlohmann::json json_data;
-// std::cout << "successfulyl got json data" << std::endl;
-
-
-	// check camera array to prevent segfault:
-	
 
 	// Get the model and focal length for each camera
 	for (auto& camera : canonhandle.cameraArray) {
@@ -330,13 +326,15 @@ DebugUtils::logFileSys("Saving camera_config.json to : " + path);
         file << json_data.dump(4); // Pretty print with 4 spaces indentation
         file.close();
 		DebugUtils::logDebug("Camera configuration saved to " + output_file);
-        // std::cout << "Camera configuration saved to " << output_file << std::endl;
     } else {
 		DebugUtils::logError("Failed to open file for writing: " + output_file);
-        // std::cerr << "Failed to open file for writing: " << output_file << std::endl;
 	}
 }
 
+/*
+Loads the camera_config.json for the previous scan (assumes the file is already created),
+then appends the scan data collection time and saves it.
+*/
 void saveScanTime(std::chrono::milliseconds duration, std::string path) {
 	// Get the given duration in minutes and seconds
 	std::string minutes = std::to_string(duration.count() / 60000);
@@ -346,7 +344,6 @@ void saveScanTime(std::chrono::milliseconds duration, std::string path) {
 	std::string full_path = path + PATH_SEP + "camera_config.json";
 	std::ifstream file(full_path);
 	if (!file.is_open()) {
-		// std::cerr << "Failed to open file for writing: " << full_path << std::endl;
 		DebugUtils::logError("Failed to open file for writing: " + full_path);
 		return;
 	}
@@ -362,17 +359,17 @@ void saveScanTime(std::chrono::milliseconds duration, std::string path) {
 		output_file << json_data.dump(4); // Pretty print with 4 spaces indentation
 		output_file.close();
 		DebugUtils::logDebug("Scan time saved to camera_config.json");
-		// std::cout << "Scan time saved to camera_config.json" << std::endl;
 	} else {
 		DebugUtils::logError("Failed to open file for writing: " + full_path);
-		// std::cerr << "Failed to open file for writing: " << full_path << std::endl;
 	}
 
 	// Close the file
 	file.close();
 }
 
-
+/* -----------------------------------------------------------------------------
+	FUNCTIONS FOR HANDLING USER INPUT
+----------------------------------------------------------------------------- */
 void CheckKey()// After key is entered, _ endthread is automatically called.
 {
 	std::cin >> control_number;
@@ -393,70 +390,6 @@ EdsInt32 getvalue()
 	return -1;
 }
 
-
-
-// definition
-// takes string of path and bool for printout statements
-// also checks if path already exists before attempting to create
-int create_folder(std::string path, bool quiet=false) {
-
-	// yellow colored text to notify of folder creations:
-    // std::cout << "\033[1;33m" << "creating folder: " << path << "\033[0m" << std::endl;
-	DebugUtils::logFileSys("Creating Folder: " + path);
-
-	if (!fs::exists(path)) {
-        // Create the folder and any necessary higher level folders
-        if (fs::create_directories(path)) {
-			DebugUtils::logFileSys("Folder created: " + path);
-            //  std::cout << "\033[1;33m" << "Folder created: " << path << "\033[0m\n";
-        } else {
-			DebugUtils::logError("Failed to create folder: " + path);
-            // std::cerr << "Failed to create folder: " << path << std::endl;
-            return 1;
-        }
-    } else { 
-		// DebugUtils::logFileSys("Folder already exists: " + path);
-		DebugUtils::logWarning("Folder already exists: " + path + " (You may accidentally overwrite data.)");
-		// std::cout << "\033[1;33m" << "WARNING!: Folder already exists: " << path << std::endl
-		// 	<< "\tYou may accidentally overwrite data.\n" << "\033[0m\n";
-    }
-	return 0;
-}
-
-
-// TODO: Move to python script file
-void create_obj_info_json(std::string path) {
-	std::string object_name = object_info["Object Name"];
-	DebugUtils::logInfo("Creating object info JSON file: " + object_name);
-	// std::cout << "Creating object info JSON file: " << object_name << std::endl;
-
-	// Check if the path exists
-	if (fs::exists(path)){
-		std::string full_path = path + PATH_SEP + object_name + PATH_SEP + "object_info.json";
-		if(fs::exists(full_path)){
-			DebugUtils::logDebug("Object info file already exists. Skipping...");
-			return;
-		}
-		// Generate the command to execute scripts\create_object_info.py
-		std::stringstream command_stream;
-		command_stream 
-			<< "python3 " 
-			<< "scripts/create_object_info.py "
-			<< object_name << " "
-			<< "-p " << path << " ";
-
-		// Execute command
-		std::string command = command_stream.str(); 
-		const char* c_command = command.c_str();
-		// std::cout << "\nExecuting Command: " << command; 
-		system(c_command);
-	}
-	else {
-		DebugUtils::logWarning("Folder \'" + path + "\' does not exist.");
-		// std::cout << "WARNING: folder " << path << " does not exist." << std::endl;
-	}
-}
-
 void validate_input(std::string text, std::string& input, std::regex validation) {
 	bool validated = false;
 	do {
@@ -471,6 +404,27 @@ void validate_input(std::string text, std::string& input, std::regex validation)
 	}
 	while (!validated);
 }
+
+// definition
+// takes string of path and bool for printout statements
+// also checks if path already exists before attempting to create
+int create_folder(std::string path, bool quiet=false) {
+	DebugUtils::logFileSys("Creating Folder: " + path);
+
+	if (!fs::exists(path)) {
+        // Create the folder and any necessary higher level folders
+        if (fs::create_directories(path)) {
+			DebugUtils::logFileSys("Folder created: " + path);
+        } else {
+			DebugUtils::logError("Failed to create folder: " + path);
+            return 1;
+        }
+    } else { 
+		DebugUtils::logWarning("Folder already exists: " + path + " (You may accidentally overwrite data.)");
+    }
+	return 0;
+}
+
 
 char get_last_pose() {
 	ConfigHandler& config = ConfigHandler::getInstance();
@@ -533,6 +487,35 @@ char get_last_pose() {
 }
 
 
+/* -----------------------------------------------------------------------------
+	FUNCTIONS FOR SCANNING / DATA COLLECTION
+----------------------------------------------------------------------------- */
+
+// Creates necessary output folders for data collection
+void prepare_scan_output_folders() {
+	DebugUtils::logInfo("Preparing for data collection...");
+
+	ConfigHandler& config = ConfigHandler::getInstance();
+
+	if(config.getValue<bool>("realsense.collect_realsense")) {
+		DebugUtils::logDebug("Creating output folder for RealSense data.");
+
+		// Create RS Scan Folder
+		rshandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "realsense";
+		create_folder(rshandle.save_dir, true);
+	}
+
+	if(config.getValue<bool>("dslr.collect_dslr")) {
+		DebugUtils::logDebug("Creating output folder for DSLR data.");
+
+		// Create DSLR Scan Folder
+		canonhandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "DSLR";
+		create_folder(canonhandle.save_dir,true);
+	}
+
+	DebugUtils::logWhitespace();
+}
+
 /*
 Master scan function which is called by other scan functions (full,custom,from state)
 	- Creates necessary output folders depending on the data being collected
@@ -553,15 +536,15 @@ bool scan(ThreadPool* pool = nullptr) {
 		safe_take_picture = true;
 	}
 
-	DebugUtils::logDebug("entering scan() code under location " + scan_folder);
+	DebugUtils::logDebug("Collecting data for location " + scan_folder);
 
 	// Collect RealSense Data
 	if(config.getValue<bool>("realsense.collect_realsense")) {
 
 		// Create RS Scan Folder
-		rshandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "realsense";
+		// rshandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "realsense";
 
-		create_folder(rshandle.save_dir, true);
+		// create_folder(rshandle.save_dir, true);
 
 		DebugUtils::logDebug("Getting RealSense Data...");
 
@@ -583,9 +566,9 @@ bool scan(ThreadPool* pool = nullptr) {
 	// Collect DSLR Data
 	if(config.getValue<bool>("dslr.collect_dslr")) {
 		canonhandle.images_downloaded = 0;
-		canonhandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "DSLR";
+		// canonhandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "DSLR";
 
-		create_folder(canonhandle.save_dir,true);
+		// create_folder(canonhandle.save_dir,true);
 	
 		// std::cout << "Getting DSLR Data...\n";
 		DebugUtils::logDebug("Getting DSLR Data...");
@@ -630,94 +613,6 @@ bool scan(ThreadPool* pool = nullptr) {
 		}
 	}
 	return true;
-}
-
-
-/*
-Writes the proper command over serial connection to move the turntable a specified number of degrees.
-TODO: Currently has hardcoded wait time, and I think it just continues if it times out, which breaks data collection for large 
-		degree increments. Need to test this.
-*/
-void rotate_turntable(int degree_inc) {
-
-	std::string degree_inc_str = std::to_string(degree_inc);
-
-	char *send = &degree_inc_str[0];
-
-	// actual command sent to arduino, must be sent as a string/char
-	bool is_sent = Serial->WriteSerialPort(send);
-
-	if (is_sent) {
-
-
-		// int wait_time = std::ceil(((abs(degree_inc)*200)+500)/1000) + 5; // faster????
-		int wait_time = 30; // 2 is probably fastest/safest
-		// std::cout << "Message sent, moving: " << degree_inc << " degrees, waiting up to " << wait_time << " seconds.\n";
-		DebugUtils::logTurntable("Message sent: MOVING " + std::to_string(degree_inc) + " degrees, WAITING up to " + std::to_string(wait_time) + " seconds...");
-		
-		std::string incoming = Serial->ReadSerialPort(wait_time, "json");
-		// std::cout << "Incoming: " << incoming;// << std::endl;
-		DebugUtils::logTurntable("Read from turntable serial: " + incoming);
-		
-		// DebugUtils::logTurntable("Message sent, moving: " + std::to_string(degree_inc) + " degrees, waiting up to " + std::to_string(wait_time) + " seconds.");
-		// std::this_thread::sleep_for(250ms);
-		
-		// int turntable_delay_ms = config.getValue<int>("turntable_delay_ms");
-		// std::this_thread::sleep_for(std::chrono::milliseconds(turntable_delay_ms));
-
-	} else {
-		// std::cout << "WARNING: Serial command not sent, something went wrong.\n";
-		DebugUtils::logTurntable("WARNING: Serial command not sent, something went wrong.");
-	}
-}
-
-
-
-
-bool generateTransform(int degree_inc, int num_moves) {
-	DebugUtils::logWhitespace();
-	DebugUtils::logInfo("Generating transforms.json...");
-	ConfigHandler& config = ConfigHandler::getInstance();
-
-	// Collect parameters from config
-	bool force = config.getValue<bool>("transform_generator.force");
-	bool visualize = config.getValue<bool>("transform_generator.visualize");
-	std::string calibration_dir = config.getValue<std::string>("transform_generator.calibration_dir");
-	std::string calibration = config.getValue<std::string>("transform_generator.calibration_mode");
-	std::string output_dir = config.getValue<std::string>("output_dir");
-	std::string object_name = config.getValue<std::string>("object_name");
-
-	// Prepare command to execute scripts/transform_generator.py
-	int range = degree_inc * num_moves;
-	std::stringstream command_stream;
-	command_stream 
-		<< "python3 " 
-		<< "scripts/transform_generator.py " // relative path
-		<< object_name << " "
-		<< "-d " << degree_inc << " "
-		<< "-r " << range << " "
-		<< "-c " << calibration << " "
-		<< "--calibration_dir " << calibration_dir << " "
-		<< "-p " << output_dir << " "
-		<< "--pose " << "pose-" << curr_pose;
- 
-	if (visualize) {
-		command_stream << " -v";
-	}
-
-	if (force) {
-		command_stream << " -f";
-	}
-
-	// Execute command
-	std::string command = command_stream.str(); 
-	const char* c_command = command.c_str();
-	DebugUtils::logInfo("Executing Command: " + command);
-	std::this_thread::sleep_for(500ms);
-	// std::cout << "\nExecuting Command: " << command; 
-	system(c_command);
-
-	return false;
 }
 
 
@@ -768,6 +663,9 @@ bool fullScan() {
 
 	DebugUtils::logInfo("========Starting a full scan========");
 	DebugUtils::logInfo("\n\tcurrent pose: " + std::to_string(curr_pose));
+
+	// Create necessary output folders
+	prepare_scan_output_folders();
 
 	// Create thread pool
 	// currently unsafe i think, we also use another set of threads inside the scan() function itself
@@ -828,14 +726,12 @@ bool fullScan() {
 	// Convert the duration to minutes, seconds, and milliseconds
 	int minutes = duration.count() / 60000;
 	int seconds = (duration.count() % 60000) / 1000;
+
+	// End of scan output
 	std::ostringstream oss;
 	oss << "Scan Time: "
 		<< std::setw(2) << std::setfill('0') << minutes << ":"
 		<< std::setw(2) << std::setfill('0') << seconds << "  [mm:ss]";
-	// std::cout << "Scan Time: " << std::setfill('0') << std::setw(2) << minutes << ":" 
-	// << std::setfill('0') << std::setw(2) << seconds << std::endl;
-	// std::cout << "RS Fail Count: " << rshandle.fail_count << std::endl;
-
 	DebugUtils::logDebug(oss.str());
 	DebugUtils::logDebug("RS Fail Count: " + std::to_string(rshandle.fail_count));
 	DebugUtils::logWhitespace();
@@ -843,17 +739,11 @@ bool fullScan() {
 	//std::this_thread::sleep_for(3000ms);
 	
 	// Save camera configurations in a json file
-	// NOTE: this occurs at the END of the full rotation. this might cause saving bugs - GS 7/24
-	// saveCameraConfig(scan_folder + "\\pose-" + curr_pose);
-	// std::cout << "================\nsaved to" << scan_folder + "\\pose-" + curr_pose << "\n================\n";
-	// saveScanTime(duration, scan_folder + "\\pose-" + curr_pose);
-
-	// Save camera configurations in a json file
 	if (config.getValue<bool>("dslr.collect_dslr")) {
 		saveCameraConfig(scan_folder + PATH_SEP + "pose-" + curr_pose);
 		saveScanTime(duration, scan_folder + PATH_SEP + "pose-" + curr_pose);
 		if (config.getValue<bool>("transform_generator.enabled"))
-			generateTransform(degree_inc, num_moves);
+			generate_transforms(degree_inc, num_moves, curr_pose);
 	}
 
 	// Recalculate angle
@@ -868,7 +758,8 @@ bool fullScan() {
 
 	write_pose_to_moadfig(curr_pose); // write pose to moadfig
 	
-	run_filecount_check();
+	// Skips if disabled in config
+	run_filecount_check(scan_folder);
 
 	MenuHandler::WaitUntilKeypress();
 
@@ -890,6 +781,9 @@ bool customScan() {
 
 	DebugUtils::logInfo("========Starting a custom scan========");
 	DebugUtils::logInfo("Current pose: " + std::to_string(curr_pose));
+
+	// Create necessary output folders
+	prepare_scan_output_folders();
 
 	// Create the thread pool
 	int thread_num = config.getValue<int>("thread_num");
@@ -961,11 +855,11 @@ bool customScan() {
 		saveCameraConfig(scan_folder + PATH_SEP + "pose-" + curr_pose);
 		saveScanTime(duration, scan_folder + PATH_SEP + "pose-" + curr_pose);
 		if (config.getValue<bool>("transform_generator.enabled"))
-			generateTransform(degree_inc, num_moves);
+			generate_transforms(degree_inc, num_moves, curr_pose);
 	}
 
 	// Generate transform
-	// generateTransform(degree_inc, num_moves);
+	generate_transforms(degree_inc, num_moves, curr_pose);
 
 	// Recalculate angle
 	degree_tracker = degree_tracker % 360;
@@ -1027,6 +921,9 @@ bool scanFromSaveState() {
 	DebugUtils::logInfo("========Starting scan from saved state========");
 	DebugUtils::logInfo("\n\tcurrent pose: " + std::to_string(curr_pose));
 
+	// Create necessary output folders
+	prepare_scan_output_folders();
+
 	// Create the thread pool
 	int thread_num = config.getValue<int>("thread_num");
 	ThreadPool pool(thread_num);
@@ -1079,14 +976,7 @@ bool scanFromSaveState() {
 	}
 
 
-	// debug messages
-	// std::cout << "Starting scan from saved state..." << std::endl;
-	// std::cout << "Previous Turntable Position: " << prev_inc << std::endl;
-	// std::cout << "Current Degree Tracker: " << degree_tracker << std::endl;
-	// std::cout << "Number of Moves Left: " << num_moves_left << std::endl;
-	// std::cout << "Total Number of Moves: " << num_moves << std::endl;
-
-
+	// Debug messages
 	DebugUtils::logDebug("Starting scan from saved state...");
 	DebugUtils::logDebug("Current Degree Tracker: " + std::to_string(degree_tracker));
 	DebugUtils::logDebug("Previous Turntable Position: " + std::to_string(prev_inc));
@@ -1145,11 +1035,11 @@ bool scanFromSaveState() {
 		saveCameraConfig(scan_folder + PATH_SEP + "pose-" + curr_pose);
 		saveScanTime(duration, scan_folder + PATH_SEP + "pose-" + curr_pose);
 		if (config.getValue<bool>("transform_generator.enabled"))
-			generateTransform(degree_inc, num_moves);
+			generate_transforms(degree_inc, num_moves, curr_pose);
 	}
 
 	// Generate transform
-	// generateTransform(degree_inc, num_moves);
+	// generate_transforms(degree_inc, num_moves, curr_pose);
 
 	// Recalculate angle
 	degree_tracker = degree_tracker % 360;
@@ -1168,7 +1058,9 @@ bool scanFromSaveState() {
 
 
 
-// single scan
+/*
+Collect a single data frame from all enabled sensors
+*/
 bool collectSampleData() {
 	ConfigHandler& config = ConfigHandler::getInstance();
 	if (liveview_active){
@@ -1178,6 +1070,9 @@ bool collectSampleData() {
 
 	DebugUtils::logInfo("========Starting single scan========");
 
+	// Create necessary output folders
+	prepare_scan_output_folders();
+
 	// Create thread pool
 	int thread_num = config.getValue<int>("thread_num");
 	ThreadPool pool(thread_num);
@@ -1186,20 +1081,19 @@ bool collectSampleData() {
 	scan(&pool);
 
 	// I think this only makes sense to call for full scans...
-	// run_filecount_check();
+	// Skips if disabled in config
+	// run_filecount_check(scan_folder);
 
 	DebugUtils::logInfo("========Single scan completed========");
 	return false;
 }
 
 
-
-
-
 /*
 Sets the name for the object being scanned / data being collected.
 	- creates the necessary output folders
 	- sets the global "scan_folder"
+	- Opens the debug log for that object.
 	- creates and object_info.json template file
 	- determines the last pose
 	- updates the moad config file with the new object name / pose
@@ -1222,9 +1116,13 @@ void setObjectName(std::string object_name) {
 	// Create base Object data Folder
 	create_folder(scan_folder);
 
+	// Start new debug log within the object folder
+	std::string debug_log_dir = scan_folder + PATH_SEP + "debug_log.txt";
+	DebugUtils::initLogFile(debug_log_dir);
+
 	// Create object info.json (template)
 	object_info["Object Name"] = object_name;
-	create_obj_info_json(config.getValue<std::string>("output_dir"));
+	create_obj_info_json(config.getValue<std::string>("output_dir"), object_info["Object Name"]);
 	DebugUtils::logWhitespace();
 
 	// save the object name to the moadfig file
@@ -1237,25 +1135,9 @@ void setObjectName(std::string object_name) {
 	object_info["Pose"] = curr_pose;
 	write_pose_to_moadfig(curr_pose); // write pose to moadfig
 
-
-
-
-
-
-
-	// NOTE: 10/29 GS
-	// - this redundantly calls create_folder for realsense and DSLR when they
-	// 	have been previously called in the realsense and DSLR intialize function
-
-
-	// std::cout << "scan_folder inside setObjectName doesnt exist?: " << scan_folder << std::endl;
-
-	// Update the save directories for RealSense and DSLR
+	// Update the save directories for RealSense and DSLR (folders are created upon data collection)
 	rshandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "realsense";
-	// create_folder(rshandle.save_dir,true);
 	canonhandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "DSLR";
-	// create_folder(canonhandle.save_dir,true);
-
 }
 
 bool setObjectName() {
@@ -1760,8 +1642,48 @@ bool liveViewMenu() {
 	return true;
 }
 
+
+/* ----------------------------------------------------------------------
+	TURNTABLE FUNCTIONS
+---------------------------------------------------------------------- */
+/*
+Writes the proper command over serial connection to move the turntable a specified number of degrees.
+*/
+void rotate_turntable(int degree_inc) {
+
+	ConfigHandler& config = ConfigHandler::getInstance();
+
+	std::string degree_inc_str = std::to_string(degree_inc);
+
+	// Serial commmand sent to arduino, must be sent as a string/char
+	char *send = &degree_inc_str[0];
+	bool is_sent = Serial->WriteSerialPort(send);
+
+	if (is_sent) {
+		// Max wait time (s) before timing out 
+		int wait_time = config.getValue<int>("turntable_timeout_s");
+		// int wait_time = 30; 
+		DebugUtils::logTurntable("Message sent: MOVING " + std::to_string(degree_inc) + " degrees, WAITING up to " + std::to_string(wait_time) + " seconds...");
+		
+		// Log message recieved from turntable
+		std::string incoming = Serial->ReadSerialPort(wait_time, "json");
+		DebugUtils::logTurntable("Read from turntable serial: " + incoming);
+		
+		// Configurable delay after turntable stops moving before collecting data
+		int turntable_delay_ms = config.getValue<int>("turntable_delay_ms");
+		if (turntable_delay_ms > 0){
+			DebugUtils::logTurntable("Turntable delay before collection: " + std::to_string(turntable_delay_ms) + "ms",2);
+			std::this_thread::sleep_for(std::chrono::milliseconds(turntable_delay_ms));
+		}
+	} else {
+		DebugUtils::logTurntable("WARNING: Serial command not sent, something went wrong.");
+	}
+}
+
+// Gets user input to manually move the turntable
 bool turntableControl() {
-	std::cout << "\n\n\nTURNTABLE CONTROL\n\n";
+	// std::cout << "\n\n\nTURNTABLE CONTROL\n\n";
+	DebugUtils::logInfo("Entered Manual Turntable Control");
 	std::string degree_inc;
 	while(degree_inc != "r"){
 		// Prompt for degrees to move
@@ -1772,20 +1694,9 @@ bool turntableControl() {
 		if (degree_inc == "r")
 			break;
 		
-		// Send the degree increment to the turntable
-		char *send = &degree_inc[0];
-		bool is_sent = Serial->WriteSerialPort(send);
-		
-		// TODO: Calculate wait time based on degrees entered and motor speed 
-		if (is_sent) {
-			// Calculate wait time based on the degree increment
-			int wait_time = std::ceil(((abs(stoi(degree_inc))*200)+500)/1000)+5;
-			std::cout << "Message sent, waiting up to " << wait_time << " seconds.\n";
-			
-			// Check if the message matched the expected format
-			std::string incoming = Serial->ReadSerialPort(wait_time, "json");
-			std::cout << "Incoming: " << incoming << std::endl;
-		} 
+		// TODO: Validate this input before sending it over serial
+		// Send motor command over serial
+		rotate_turntable(std::stoi(degree_inc));
 
 		// Update degree tracker
 		degree_tracker += std::stoi(degree_inc);
@@ -1798,6 +1709,7 @@ bool turntableControl() {
 	return false;
 }
 
+// Sets the INTERNAL turntable position (does not move the turntable)
 bool turntablePosition() {
 	// Prompt for the turntable position
 	std::cout << "\n\nEnter Turntable Position: ";
@@ -1997,82 +1909,11 @@ void initializeCanon() {
 }
 
 
-
-/*
-	COMMENTS for run_filecount_check():
-		args: none
-		returns: void
-	(For now no parameters used, hardcoded args for a python script)
-
-	THIS IS THE CONNECTION POINT TO THE PYTHON SCRIPT
-
-	Runs /scripts/filecount_test.py via CLI args with preset args
-	Note: args available are --count, --create, --prog-delay, --delay=<seconds> (see comments in filecount_test.py)
-	TODO: add function parameters that setup CLI args the script is called with (personally i dont see an immediate need for this)
-	- GS 7/15
-*/
-bool run_filecount_check() {
-	
-	// Sleep(200); // wait a bit for realsense to save, otherwise jumbled console output
-
-	ConfigHandler& config = ConfigHandler::getInstance();
-	if (config.getValue<bool>("filecount_testing.enabled") == false) {
-		std::cout << "Filecount testing disabled in config, skipping..." << std::endl;
-		return false;
-	}
-	
-	DebugUtils::logWhitespace();
-	DebugUtils::logInfo("Running file count checking script...");
-	// std::cout << "Running file count checking script: " << std::endl;
-
-	// ex. python3.12.exe .\filecount_test.py --count --create --manual_check
-
-	// Prepare command to execute scripts/filecount_test.py
-	std::stringstream command_stream;
-	command_stream 
-		<< "python3 "
-		<< "scripts/filecount_test.py ";
-		// << "--count "
-
-	if (config.getValue<bool>("filecount_testing.count") == true) {
-		command_stream << "--count ";
-	}
-
-	if (config.getValue<bool>("filecount_testing.create") == true) {
-		command_stream << "--create ";
-	}
-
-	if (config.getValue<bool>("filecount_testing.manual_check") == true) {
-		command_stream << "--manual_check ";
-	}
-
-	if (config.getValue<bool>("filecount_testing.delay") == true) {
-		command_stream << "--prog_delay " << "--delay=0.1 "; // hardcoded delay for now
-	}
-
-	// add current object directory:
-	command_stream << "--directory=\"" << scan_folder << "\" ";
-
-	if (config.getValue<bool>("filecount_testing.check_single_object") == true) {
-		command_stream << "--check_single_object ";
-	}
-
-	// Execute command
-	// convert to string for output debug message
-	std::string command = command_stream.str(); 
-	std::cout << "\nExecuting Command: " << command; 
-	
-	// system requires c string
-	const char* c_command = command.c_str();
-	system(c_command);
-
-	return true;
-}
-
-
+/* ----------------------------------------------------------------------------------
+	MAIN FUNCTION
+---------------------------------------------------------------------------------- */
 int main(int argc, char* argv[]) 
 {	
-	// std::cout << "\033[1;44m" << "[ START OF MAIN ]" << "\033[0m\n";	
 	DebugUtils::logInfo("START OF MAIN");
 
 	// SETUP ----------------------------------------------------------------------------------------------
@@ -2150,7 +1991,7 @@ int main(int argc, char* argv[])
 		{"9", liveViewMenu},
 		{"p", scanFromSaveState}, // TODO: "10" seemed to not work??
 		{"0", reloadConfig},
-		{"f", run_filecount_check}
+		{"f", runFilecountCheck}
 	}, object_info);
 	menu_handler.setTitle("MOAD - CLI Menu");
 	menu_handler.ClearScreen();
@@ -2165,8 +2006,6 @@ int main(int argc, char* argv[])
 	// Close log file
 	DebugUtils::closeLogFile();
 	DebugUtils::notifyConfigReady(false);
-
-
 
 	return false;
 }
