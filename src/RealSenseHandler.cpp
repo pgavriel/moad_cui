@@ -430,14 +430,10 @@ void RealSenseHandler::get_frames(int num_frames, int timeout_ms) {
 void RealSenseHandler::get_current_frame(int degree, int timeout_ms, ThreadPool* pool) {
     // ConfigHandler& config = ConfigHandler::getInstance();
 
-    // cout << "\n\033[1;46m" << "Getting RealSense Data..." << "\033[0m\n";
     DebugUtils::logRS("Getting RealSense data at angle " + std::to_string(degree) + " degrees...");
 
     // Create a rotation matrix for the current turntable position
-    // cout << "\033[1;46m" << "Getting rotation matrix for " << turntable_position << " degress..." << "\033[0m\n";
     DebugUtils::logRS("Getting rotation matrix for " + std::to_string(turntable_position) + " degrees...");
-
-
     rot_matrix = createRotationMatrix(turntable_position);
 
     // Check if the functon is being called with a thread pool
@@ -471,6 +467,11 @@ void RealSenseHandler::get_current_frame(int degree, int timeout_ms, ThreadPool*
     DebugUtils::logRS("Got frames from all RealSense at angle " + std::to_string(degree) + ", saving in the background...");
 }
 
+/* ==============================================================================================================
+Handles data aquisition and filtering for a single frame of one device. 
+Normally this function is called as a separate thread within a threadpool for parallel data colleciton. 
+Reads settings from the config to determine what data to collect, which filters to apply, etc.
+============================================================================================================== */
 void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeout_ms) {
     ConfigHandler& config = ConfigHandler::getInstance();
     std::stringstream out_file;
@@ -483,36 +484,31 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
     // Get serial number for this camera
     std::string serial_number = pipe.get_active_profile().get_device().get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
 
-    // cout << "\033[1;46m" << "Processing " << camera_names[serial_number] << " at angle " << degree << "..." << "\033[0m\n";
     // DebugUtils::logRS("Processing " + camera_names[serial_number] + " at angle " + std::to_string(degree) + "...");
     DebugUtils::logThread("[ID:"+thr_id_str+"] Processing " + camera_names[serial_number]+ " at angle " + std::to_string(degree) + "...");
     
-    // Collect frameset from camera
+    // ===========================================================
+    // Collect frameset from camera 
     rs2::frameset fs;
     try {
         // Wait for frames
         fs = pipe.wait_for_frames(timeout_ms);
     } catch (const rs2::error& e) {
         fail_count++;
-        // std::cerr << camera_names[serial_number] << ": RS error occurred: " << e.what() << std::endl;
-        // cout << "WARNING: " << camera_names[serial_number] << " did not get frames.\n";
         DebugUtils::logWarning(camera_names[serial_number] + " did not get frames.");
         DebugUtils::logError(camera_names[serial_number] + ": RS error occurred: " + std::string(e.what()));
         return;
     } catch (const std::exception& ex) {
-        // std::cerr << camera_names[serial_number] << ": An error occurred: " << ex.what() << std::endl;
         DebugUtils::logError(camera_names[serial_number] + ": An error occurred: " + std::string(ex.what()));
     } catch (...) {
-        DebugUtils::logError("ERROR: ????");
+        DebugUtils::logError("Realsense ERROR: ????");
     }
 
     // fs = pipe.wait_for_frames(timeout_ms);
     if (fs.size() == 0) {
-        // cout << "WARNING: " << camera_names[serial_number] << " did not get frames.\n";
         DebugUtils::logWarning(camera_names[serial_number] + ": Did not get frames.");
         return;
     }
-    
 
     // function to swap between data collection strategies (color/depth)
      if (config.getValue<bool>("realsense.align_to_color")) {
@@ -551,7 +547,7 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
     depth = temporal_filter.process(depth);
 
     // === COLOR IMAGE COLLECTION =====================================================================================================
-    // //Testing: Create the color/depth images before processing/filtering
+    // Testing: Create the color/depth images before processing/filtering
     // Check if collecting color images is enabled
     // Convert the color frame to OpenCV Mat
     if (config.getValue<bool>("realsense.collect_color")) {
@@ -590,14 +586,6 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
         cv::imwrite(out_file.str(), depth_mat);
         DebugUtils::logSaveLoop(camera_names[serial_number] + "(Depth): "+ out_file.str());
     }
-
-    // At this point, we should throw the rest of the process in a thread pool 
-
-    // Apply filters to depth frame
-    // depth = threshold_filter.process(depth);
-    // depth = spatial_filter.process(depth);
-    // depth = temporal_filter.process(depth);
-
 
     // this check must be outside of the below if statements and for loop!! - GS 8/22
     bool COLOR_ORDER_BGR = config.getValue<bool>("realsense.collect_color");
@@ -819,12 +807,7 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
         // Generate pointcloud name and save
         out_file.str("");
 
-
-
-
-
-
-        // should not be hardcoded as "/"
+        // TODO: should not be hardcoded as "/"
         out_file << save_dir << "/" << camera_names[serial_number] << "_"
              << std::setfill('0') << std::setw(3) << degree << "_cloud.ply";
         std::cout.copyfmt(std::ios(nullptr));
@@ -843,80 +826,40 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
             DebugUtils::logSaveLoop(camera_names[serial_number] + "(Cloud+N): "+ out_file.str());
         }
     }
-
-
-    // cout << "\033[1;46m" << "[" << degree << "][" << camera_names[serial_number] << ":SAVED]" << "\033[0m" << "\n";
-
-
-
-    
-    // }
-    
-    // // Check if collecting color images is enabled
-    // if (config.getValue<bool>("realsense.collect_color")) {
-    //     // Convert the color frame to OpenCV Mat
-    //     cv::Mat color_mat(color.get_height(), color.get_width(), CV_8UC3, (void*)color.get_data(), cv::Mat::AUTO_STEP);
-    //     cv::cvtColor(color_mat, color_mat, cv::COLOR_RGB2BGR);
-
-    //     // Generate image name
-    //     out_file.str("");
-    //     out_file << save_dir << "\\" << camera_names[serial_number] << "_"
-    //         << std::setfill('0') << std::setw(3) << turntable_position << "_color.png";
-
-    //     // Save the color image
-    //     cv::imwrite(out_file.str(), color_mat);
-    // }
-
-    // // Check if collecting depth images is enabled
-    // if (config.getValue<bool>("realsense.collect_depth")) {
-    //     // Convert the depth frame to OpenCV Mat
-    //     cv::Mat depth_mat(cv::Size(depth.get_width(), depth.get_height()), CV_16UC1, (void*)depth.get_data(), cv::Mat::AUTO_STEP);
-    //     cv::normalize(depth_mat, depth_mat, 0, 255, cv::NORM_MINMAX, CV_8UC1);
-        
-    //     // Generate image name
-    //     out_file.str("");
-    //     out_file << save_dir << "\\" << camera_names[serial_number] << "_"
-    //         << std::setfill('0') << std::setw(3) << turntable_position << "_depth.png";
-        
-    //     // Save the depth image
-    //     cv::imwrite(out_file.str(), depth_mat);
-    // }
 }
 
 /* Prints out RealSense device information, if print_streams is true, 
 it will print all available stream formats (it's a lot of text)*/
 void RealSenseHandler::print_device(rs2::device dev, bool print_streams) {
-        cout << "RealSense Device: " << endl;
-        cout << "  Name: " << dev.get_info(RS2_CAMERA_INFO_NAME) << endl;
-        cout << "  Serial number: " << dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER) << endl;
-        cout << "  Firmware version: " << dev.get_info(RS2_CAMERA_INFO_FIRMWARE_VERSION) << endl;
-        // Get the list of available streams
-        if (print_streams) {
-            cout << "  Available streams:" << endl;
-            for (const rs2::sensor& sensor : dev.query_sensors()) {
-                cout << "\n  Sensor: " << sensor.get_info(RS2_CAMERA_INFO_NAME) << endl;
-                int i = 1;
-                for (const rs2::stream_profile& profile : sensor.get_stream_profiles()) {
-                    rs2_stream stream_type = profile.stream_type();
-                    int stream_width = 0, stream_height = 0;
-                    int stream_fps = 0;
-                    rs2_format stream_format = RS2_FORMAT_ANY;
+    cout << "RealSense Device: " << endl;
+    cout << "  Name: " << dev.get_info(RS2_CAMERA_INFO_NAME) << endl;
+    cout << "  Serial number: " << dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER) << endl;
+    cout << "  Firmware version: " << dev.get_info(RS2_CAMERA_INFO_FIRMWARE_VERSION) << endl;
+    // Get the list of available streams
+    if (print_streams) {
+        cout << "  Available streams:" << endl;
+        for (const rs2::sensor& sensor : dev.query_sensors()) {
+            cout << "\n  Sensor: " << sensor.get_info(RS2_CAMERA_INFO_NAME) << endl;
+            int i = 1;
+            for (const rs2::stream_profile& profile : sensor.get_stream_profiles()) {
+                rs2_stream stream_type = profile.stream_type();
+                int stream_width = 0, stream_height = 0;
+                int stream_fps = 0;
+                rs2_format stream_format = RS2_FORMAT_ANY;
 
-                    if (auto video_profile = profile.as<rs2::video_stream_profile>())
-                    {
-                        stream_width = video_profile.width();
-                        stream_height = video_profile.height();
-                        stream_fps = video_profile.fps();
-                        stream_format = video_profile.format();
-                    }
-
-                    cout << "[" << rs2_stream_to_string(stream_type) << " : " << stream_width << "x" << stream_height << " : "
-                        << stream_fps << " : " << rs2_format_to_string(stream_format) << "] ";
-                    if (i % 5 == 0) cout << endl;
-                    i++;
+                if (auto video_profile = profile.as<rs2::video_stream_profile>())
+                {
+                    stream_width = video_profile.width();
+                    stream_height = video_profile.height();
+                    stream_fps = video_profile.fps();
+                    stream_format = video_profile.format();
                 }
+
+                cout << "[" << rs2_stream_to_string(stream_type) << " : " << stream_width << "x" << stream_height << " : "
+                    << stream_fps << " : " << rs2_format_to_string(stream_format) << "] ";
+                if (i % 5 == 0) cout << endl;
+                i++;
             }
         }
-        
-
+    }
 }

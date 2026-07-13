@@ -211,21 +211,16 @@ void write_degree_move_to_moadfig(int degree, int current_move) {
 
 }
 
+/* ===========================================================================================
+For reloading the moad_config during runtime. Checks if data collection for DSLR/RS has been enabled,
+and will go through the initialization process if so. 
+=========================================================================================== */
+bool reloadConfig() {
+	if (liveview_active) {
+		std::cout << "Liveview is active, please stop it before reloading the config." << std::endl;
+		return false;
+	}
 
-
-/* 	
-Handles loading/re-loading the moadconfig. If it's called during runtime after the config
-has already been loaded, it checks whether DSLR/RS collection has been enabled and if so,
-initializes the objects responsible for handling their data collection. 
-
-	calls:
-		- loadConfig()
-		- initializeCanon() - if it's been enabled
-		- initializeRealsense() - if it's been enabled
-		- setObjectName()
-*/
-void loadJsonConfig(std::string path) {
-	
 	// If config was already loaded, save current state of collect DSLR/RS.
 	ConfigHandler& config = ConfigHandler::getInstance();
 	std::optional<bool> previous_DSLR;
@@ -233,46 +228,32 @@ void loadJsonConfig(std::string path) {
 	
 	if (!config.emptyConfig()) {
 		DebugUtils::logDebug("Checking previously loaded config...");
-		previous_DSLR = config.getValue<bool>("dslr.collect_dslr");
-		previous_RS = config.getValue<bool>("realsense.collect_realsense");
+		previous_DSLR = config.getValue<bool>("dslr.enable_collection");
+		previous_RS = config.getValue<bool>("realsense.enable_collection");
 	}
 
-	// Reload the config .json file to update all setting values
-	// std::cout << "Path in loadJsonConfig(): " << path << std::endl;
-	config.loadConfig(path);
+	// json_path is a global set within main()
+	config.loadConfig(json_path);
 
 	// Check if the configuration has changed for DSLR, if so, initialize Canon Handler
-	if (!previous_DSLR.has_value() || previous_DSLR != config.getValue<bool>("dslr.collect_dslr")) {
-		// std::cout << "Initializing CanonHandler" << std::endl;
-		if (config.getValue<bool>("dslr.collect_dslr") && !canonhandle.isSDKLoaded) {
+	if (!previous_DSLR.has_value() || previous_DSLR != config.getValue<bool>("dslr.enable_collection")) {
+		if (config.getValue<bool>("dslr.enable_collection") && !canonhandle.isSDKLoaded) {
 			initializeCanon();
-			DebugUtils::logWhitespace();
 		}
 	}
 	
 	// Check if the configuration has changed for RealSense, if so, initialize RS handler
-	if (!previous_RS.has_value() || previous_RS != config.getValue<bool>("realsense.collect_realsense")) {
-		// std::cout << "Initializing RealSenseHandler" << std::endl;
-		if (config.getValue<bool>("realsense.collect_realsense")) {
+	if (!previous_RS.has_value() || previous_RS != config.getValue<bool>("realsense.enable_collection")) {
+		if (config.getValue<bool>("realsense.enable_collection")) {
 			initializeRealsense();
-			DebugUtils::logWhitespace();
 		}
 	}
-	
 
 	// Set the object name from the configuration
 	std::string object_name = config.getValue<std::string>("object_name");
 	setObjectName(object_name);
 	DebugUtils::logWhitespace();
-}
 
-bool reloadConfig() {
-	if (liveview_active) {
-		std::cout << "Liveview is active, please stop it before reloading the config." << std::endl;
-		return false;
-	}
-
-	loadJsonConfig(json_path);
 	return false;
 }
 
@@ -497,7 +478,7 @@ void prepare_scan_output_folders() {
 
 	ConfigHandler& config = ConfigHandler::getInstance();
 
-	if(config.getValue<bool>("realsense.collect_realsense")) {
+	if(config.getValue<bool>("realsense.enable_collection")) {
 		DebugUtils::logDebug("Creating output folder for RealSense data.");
 
 		// Create RS Scan Folder
@@ -505,7 +486,7 @@ void prepare_scan_output_folders() {
 		create_folder(rshandle.save_dir, true);
 	}
 
-	if(config.getValue<bool>("dslr.collect_dslr")) {
+	if(config.getValue<bool>("dslr.enable_collection")) {
 		DebugUtils::logDebug("Creating output folder for DSLR data.");
 
 		// Create DSLR Scan Folder
@@ -539,7 +520,7 @@ bool scan(ThreadPool* pool = nullptr) {
 	DebugUtils::logDebug("Collecting data for location " + scan_folder);
 
 	// Collect RealSense Data
-	if(config.getValue<bool>("realsense.collect_realsense")) {
+	if(config.getValue<bool>("realsense.enable_collection")) {
 
 		// Create RS Scan Folder
 		// rshandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "realsense";
@@ -564,7 +545,7 @@ bool scan(ThreadPool* pool = nullptr) {
 
 
 	// Collect DSLR Data
-	if(config.getValue<bool>("dslr.collect_dslr")) {
+	if(config.getValue<bool>("dslr.enable_collection")) {
 		canonhandle.images_downloaded = 0;
 		// canonhandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "DSLR";
 
@@ -739,7 +720,7 @@ bool fullScan() {
 	//std::this_thread::sleep_for(3000ms);
 	
 	// Save camera configurations in a json file
-	if (config.getValue<bool>("dslr.collect_dslr")) {
+	if (config.getValue<bool>("dslr.enable_collection")) {
 		saveCameraConfig(scan_folder + PATH_SEP + "pose-" + curr_pose);
 		saveScanTime(duration, scan_folder + PATH_SEP + "pose-" + curr_pose);
 		if (config.getValue<bool>("transform_generator.enabled"))
@@ -851,7 +832,7 @@ bool customScan() {
 
 
 	// Save camera configurations in a json file
-	if (config.getValue<bool>("dslr.collect_dslr")) {
+	if (config.getValue<bool>("dslr.enable_collection")) {
 		saveCameraConfig(scan_folder + PATH_SEP + "pose-" + curr_pose);
 		saveScanTime(duration, scan_folder + PATH_SEP + "pose-" + curr_pose);
 		if (config.getValue<bool>("transform_generator.enabled"))
@@ -1031,7 +1012,7 @@ bool scanFromSaveState() {
 	DebugUtils::logDebug("RS Fail Count: " + std::to_string(rshandle.fail_count));
 
 	// Save camera configurations in a json file
-	if (config.getValue<bool>("dslr.collect_dslr")) {
+	if (config.getValue<bool>("dslr.enable_collection")) {
 		saveCameraConfig(scan_folder + PATH_SEP + "pose-" + curr_pose);
 		saveScanTime(duration, scan_folder + PATH_SEP + "pose-" + curr_pose);
 		if (config.getValue<bool>("transform_generator.enabled"))
@@ -1168,19 +1149,16 @@ bool setPose() {
 */
 bool pressHalfway() {
 	PressShutter(canonhandle.cameraArray, canonhandle.bodyID, kEdsCameraCommand_ShutterButton_Halfway);
-
 	return false;
 }
 
 bool pressCompletely() {
 	PressShutter(canonhandle.cameraArray, canonhandle.bodyID, kEdsCameraCommand_ShutterButton_Completely);
-	
 	return false;
 }
 
 bool pressOff() {
 	PressShutter(canonhandle.cameraArray, canonhandle.bodyID, kEdsCameraCommand_ShutterButton_OFF);
-
 	return false;
 }
 
@@ -1569,7 +1547,7 @@ bool getLiveView() {
 	std::string liveViewDir = moad_dir + PATH_SEP + "live_view_filestream" + PATH_SEP;
 
 
-	if (!config.getValue<bool>("dslr.collect_dslr")){
+	if (!config.getValue<bool>("dslr.enable_collection")){
 		std::cout << "DSLR option is set to false, Liveview unavaliable" << std::endl;
 		return false;
 	}
@@ -1607,7 +1585,7 @@ bool getLiveView() {
 bool endLiveView() {
 	ConfigHandler& config = ConfigHandler::getInstance();
 	// Check if the DSLR option is enabled
-	if (!config.getValue<bool>("dslr.collect_dslr")) {
+	if (!config.getValue<bool>("dslr.enable_collection")) {
 		std::cout << "DSLR option is set to false, Liveview unavaliable" << std::endl;
 		return false;
 	}
@@ -1661,7 +1639,7 @@ void rotate_turntable(int degree_inc) {
 
 	if (is_sent) {
 		// Max wait time (s) before timing out 
-		int wait_time = config.getValue<int>("turntable_timeout_s");
+		int wait_time = config.getValue<int>("turntable_control.command_timeout_s");
 		// int wait_time = 30; 
 		DebugUtils::logTurntable("Message sent: MOVING " + std::to_string(degree_inc) + " degrees, WAITING up to " + std::to_string(wait_time) + " seconds...");
 		
@@ -1670,7 +1648,7 @@ void rotate_turntable(int degree_inc) {
 		DebugUtils::logTurntable("Read from turntable serial: " + incoming);
 		
 		// Configurable delay after turntable stops moving before collecting data
-		int turntable_delay_ms = config.getValue<int>("turntable_delay_ms");
+		int turntable_delay_ms = config.getValue<int>("turntable_control.delay_after_move_ms");
 		if (turntable_delay_ms > 0){
 			DebugUtils::logTurntable("Turntable delay before collection: " + std::to_string(turntable_delay_ms) + "ms",2);
 			std::this_thread::sleep_for(std::chrono::milliseconds(turntable_delay_ms));
@@ -1783,34 +1761,28 @@ bool TurntableSubMenu(){
 	InitializeRealsense()
 		args: none
 		returns: void
-
-	TODO: this adds a lot of possibly unneeded info to the console upon startup, clear this up
-		or add a verbose flag in the config for info toggling.
 */
 void initializeRealsense() {
 	ConfigHandler& config = ConfigHandler::getInstance();
 
-	if (config.getValue<bool>("realsense.collect_realsense")) {
+	if (config.getValue<bool>("realsense.enable_collection")) {
 
-		// scan_folder is not set when this is first intialized TODO
+		// Set RS save directory (scan_folder/curr_pose is set after the config is loaded)
 		rshandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "realsense";
-		// create_folder(rshandle.save_dir,true);
-
-		// Get some frames to settle autoexposure.
-		// std::cout << "Getting frames..." << std::endl;
-
-	
+		
+		// Discover RS devices and enable data streams according to config
 		rshandle.initialize(json_path);
 
-		// Get some frames to settle autoexposure and verify stream.
+		// Get some frames to settle auto-exposure and verify stream.
 		int test_frames = 10;
 		DebugUtils::logRS("Getting " + std::to_string(test_frames) + " frames to verify data...");
 		rshandle.get_frames(test_frames); // make 30 later
-		// rshandle.get_current_frame();
 
 	} else {
-		std::cout << "\nSkipping RealSense setup, 'collect_rs=0'.\n";
+		DebugUtils::logRS("Skipping RealSense setup, (realsense.enable_collection=false in config).");
 	}
+
+	DebugUtils::logWhitespace();
 }
 
 
@@ -1818,11 +1790,6 @@ void initializeRealsense() {
 	InitializeCanon()
 		args: none
 		returns: void
-	
-	TODO: This should be edited to be more prominent on startup so the user is aware of
-			how many cameras are connected.
-	COMPLETED: added yellow text on startup that displays number of connected cameras - GS 10/3
-	
 */
 void initializeCanon() {
 	ConfigHandler& config = ConfigHandler::getInstance();
@@ -1833,16 +1800,14 @@ void initializeCanon() {
 	std::string cam3 = config.getValue<std::string>("dslr.camera_ids.CAMERA_3");
 	std::string cam4 = config.getValue<std::string>("dslr.camera_ids.CAMERA_4");
 	std::string cam5 = config.getValue<std::string>("dslr.camera_ids.CAMERA_5");
-
 	
-	if (config.getValue<bool>("dslr.collect_dslr")) {
+	if (config.getValue<bool>("dslr.enable_collection")) {
 
 		// CanonHandler canonhandle;
 		canonhandle.initialize();
 
-		// scan_folder is not set when this is first intialized TODO
+		// scan_folder is set by setObjectName
 		canonhandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "DSLR";
-		// create_folder(canonhandle.save_dir,true);
 		PreSetting(canonhandle.cameraArray, canonhandle.bodyID);
 		// Naming of the camera
 		DebugUtils::logCanon("Remapping Camera Names...");
@@ -1902,10 +1867,12 @@ void initializeCanon() {
 			DebugUtils::logCanon(cam_message.str());
 			index++;
 		}
+
 	} else {
-		std::cout << "\nSkipping DSLR setup, 'collect_dslr=0'." << "\033[0m" << std::endl;
+		DebugUtils::logCanon("Skipping DSLR setup, (dslr.enable_collection=false in config).");
 	}
 
+	DebugUtils::logWhitespace();
 }
 
 
@@ -1930,26 +1897,27 @@ int main(int argc, char* argv[])
 	// Load the JSON Config file
 	// NOTE: this a global variable...
 	json_path = (moad_dir + PATH_SEP + "config" + PATH_SEP + "moad_config.json");
-	
-	// This function also handles setting the initial object name, 
-	// creating the object folder, and getting the last pose.
-	// Also notifies DebugUtils that a config has been loaded.
-	// DebugUtils::logDebug("Loading Config...");
-	loadJsonConfig(json_path);
-	// DebugUtils::notifyConfigReady(); // Flag to DebugUtils that a config has been loaded
-
 	// Provides global config access
 	ConfigHandler& config = ConfigHandler::getInstance();
-	
-	// Initialize Debug Log File
-	// NOTE: 'scan_folder' is initialized when the config is loaded, which calls setObjectName()
-	// NOTE/TODO: Currently, DebugUtils cannot be used until config is initialized.
-	std::string debug_log_dir = scan_folder + PATH_SEP + "debug_log.txt";
-	DebugUtils::initLogFile(debug_log_dir);
+	// Loads json config into handler object
+	config.loadConfig(json_path);
+
+	// Set the object name from the configuration
+	/* NOTE: the setObjectName function is currently quite overloaded. It set's the 
+	internal object name, but also handles setting/creating global output folders for that object,
+	creating an object_info.json template file, and starting a new Debug Log in that object folder. */
+	std::string object_name = config.getValue<std::string>("object_name");
+	setObjectName(object_name);
+	DebugUtils::logWhitespace();
+
+	// Initialize Sensors (internally checks the config to decide whether to really connect)
+	// TODO: transition these functions to their respective handler class
+	initializeCanon();
+	initializeRealsense();
 
 	// Setup Arduino serial port connection
 	std::string com_port;
-	com_port = config.getValue<std::string>("serial_com_port");
+	com_port = config.getValue<std::string>("turntable_control.serial_com_port");
 
 	typedef unsigned long DWORD;
 	DWORD COM_BAUD_RATE = B9600; // Serial baud rate currently hardcoded
@@ -1995,8 +1963,9 @@ int main(int argc, char* argv[])
 	}, object_info);
 	menu_handler.setTitle("MOAD - CLI Menu");
 	menu_handler.ClearScreen();
-	menu_handler.initialize(curr_menu);
 
+	// Run the CUI Interface
+	menu_handler.initialize(curr_menu);
 
 	// Cleanly shutdown sensor handlers
 	DebugUtils::log("END","Shutting down...\n",0,true);

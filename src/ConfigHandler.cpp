@@ -7,7 +7,6 @@
 ConfigHandler::ConfigHandler() {
     // Constructor
     DebugUtils::logInfo("Initializing ConfigHandler...");
-    // std::cout << "Instance Created: ConfigHandler" << std::endl;
 }
 
 ConfigHandler::~ConfigHandler() {
@@ -17,19 +16,10 @@ ConfigHandler::~ConfigHandler() {
 void ConfigHandler::loadConfig(const std::string& filepath) {
 
     DebugUtils::logDebug("Loading Config File: " + filepath);
-    // std::cout << "Loading Config File: " << filepath << std::endl;
-    // std::cout << "=============================== " << std::endl; // isolate this msg 
-    
-    // NOTE: this debugutils statement actually cant be here, since the function defintion
-    //       needs to check the config before writing to the log file and the config
-    //       hasnt actually been created yet and the debug utils havent actaully been instantiated
-    // TODO: have debugutils be the first thing loaded, and the statement written out to
-    //       logfile afterwards (though this is probably fixable in the MOADCui main function)
-    // DebugUtils::logConfig("Loading config from " + filepath);
-
 
     std::ifstream json_file(filepath);
-	config = nlohmann::json::parse(json_file);
+	// config = nlohmann::json::parse(json_file);
+	config = nlohmann::ordered_json::parse(json_file);
 	json_file.close();
     DebugUtils::logDebug("Config loaded.");
     DebugUtils::logWhitespace();
@@ -42,11 +32,9 @@ void ConfigHandler::saveConfig(const std::string& filepath) const {
         file << config.dump(4); // Pretty print with 4 spaces indentation
         file.close();
 
-        // std::cout << "ConfigHandler saving to: " << filepath << std::endl;
         DebugUtils::logConfig("ConfigHandler saving to: "  + filepath);
 
     } else {
-        // std::cerr << "Failed to open file for writing: " << filepath << std::endl;
         DebugUtils::logConfig("Failed to open file for writing: " + filepath);
 	}
 }

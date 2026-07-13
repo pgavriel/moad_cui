@@ -1,10 +1,16 @@
 {
+    "output_dir": "/home/csrobot/MOAD_DATA",
+    "object_name": "scripttestz",
+    "degree_inc": 5,
+    "num_moves": 72,
+    "thread_num": 5,
     "debug": {
         "debug_verbosity": 2,
         "log": true
     },
-    "degree_inc": 5,
     "dslr": {
+        "enable_collection": false,
+        "dslr_timeout_sec": 20,
         "camera_ids": {
             "CAMERA_1": "352074022019",
             "CAMERA_2": "352074022024",
@@ -12,36 +18,21 @@
             "CAMERA_4": "602075011474",
             "CAMERA_5": "602075011361"
         },
-        "collect_dslr": true,
         "display_liveview_windows": false,
-        "dslr_timeout_sec": 20,
         "safe_take_picture": false
     },
-    "filecount_testing": {
-        "check_all": false,
-        "check_single_object": true,
-        "count": true,
-        "create": true,
-        "delay": true,
-        "enabled": true,
-        "manual_check": false
-    },
-    "num_moves": 72,
-    "object_name": "scripttest",
-    "output_dir": "/home/csrobot/MOAD_DATA",
-    "prev_state": {
-        "current_move": 72,
-        "current_object": "",
-        "current_pose": 97,
-        "turntable_pos": 360
-    },
     "realsense": {
-        "align_to_color": false,
+        "enable_collection": true,
+        "high_res": true,
+        "collect_pointcloud": true,
         "collect_color": true,
         "collect_depth": true,
-        "collect_pointcloud": true,
-        "collect_realsense": false,
+        "normalize_depth_image": false,
         "compute_normals": true,
+        "normals_threads": 1,
+        "raw_pointcloud": false,
+        "align_to_color": false,
+        "realsense_timeout_sec": 9,
         "filter": {
             "sor": {
                 "apply": true,
@@ -68,11 +59,6 @@
                 "min": 0
             }
         },
-        "high_res": true,
-        "normalize_depth_image": false,
-        "normals_threads": 1,
-        "raw_pointcloud": false,
-        "realsense_timeout_sec": 9,
         "rs_info": {
             "rs1": {
                 "serial": "215122257111",
@@ -221,26 +207,31 @@
             }
         }
     },
-    "scene_replication": {
-        "intrinsics_file": "dslr_intrinsics_55mm.json",
-        "out_file": "scene_anchors.json",
-        "tag_family": "tag36h11",
-        "tag_global_offset": [
-            0.0,
-            0.0,
-            0.0
-        ],
-        "tag_size_cm": 0.12
+    "turntable_control": {
+        "serial_com_port": "/dev/ttyACM0",
+        "delay_after_move_ms": 200,
+        "command_timeout_s": 60
     },
-    "serial_com_port": "/dev/ttyACM0",
-    "thread_num": 5,
+    "prev_state": {
+        "current_move": 72,
+        "current_object": "",
+        "current_pose": 97,
+        "turntable_pos": 360
+    },
     "transform_generator": {
+        "enabled": true,
         "calibration_dir": "/home/csrobot/moad_control/moad_cui/calibration",
         "calibration_mode": "55mm",
-        "enabled": true,
         "force": true,
         "visualize": true
     },
-    "turntable_delay_ms": 200,
-    "turntable_timeout_s": 30
+    "filecount_testing": {
+        "enabled": true,
+        "check_all": false,
+        "check_single_object": true,
+        "count": true,
+        "create": true,
+        "delay": true,
+        "manual_check": false
+    }
 }

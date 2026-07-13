@@ -32,7 +32,7 @@ public:
         // For example: config["camera"]["resolution"]
         // Split the key by '.' to access nested values
         std::vector<std::string> keys = split(key, '.');
-        nlohmann::json* current = &config;
+        nlohmann::ordered_json* current = &config;
         
         for (const auto& k : keys) {
             if (current->contains(k)) {
@@ -52,7 +52,7 @@ public:
         // For example: config["camera"]["resolution"]
         // Split the key by '.' to access nested values
         std::vector<std::string> keys = split(key, '.');
-        nlohmann::json* current = &config;
+        nlohmann::ordered_json* current = &config;
         
         for (const auto& k : keys) {
             if (current->contains(k)) {
@@ -69,7 +69,7 @@ public:
 
 
 private:
-    nlohmann::json config;
+    nlohmann::ordered_json config;
 
     ConfigHandler();
     ~ConfigHandler();

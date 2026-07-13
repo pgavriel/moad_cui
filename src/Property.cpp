@@ -63,7 +63,7 @@ EdsError GetProperty(EdsCameraRef const& camera, EdsUInt64 const& bodyID, EdsPro
 	EdsError	 err = EDS_ERR_OK;
 	EdsDataType	dataType = EdsDataType::kEdsDataType_Unknown;
 	EdsUInt32   dataSize = 0;
-	int i;
+	
 	err = EdsGetPropertySize(camera,
 		kEdsPropID_Tv,
 		0,
@@ -118,7 +118,7 @@ EdsError GetProperty(std::vector<EdsCameraRef> const& cameraArray, std::vector<E
 	EdsError	 err = EDS_ERR_OK;
 	std::vector<std::string> output_arr;
 	
-	for (int i = 0; i < cameraArray.size(); i++) {
+	for (unsigned int i = 0; i < cameraArray.size(); i++) {
 		std::string output_data;
 		err = GetProperty(cameraArray[i], bodyID[i], propertyID, iso_table, output_data);
 		output_arr.push_back(output_data);
@@ -146,7 +146,7 @@ EdsError GetPropertyDesc(EdsCameraRef const& camera, EdsUInt64 const& bodyID, Ed
 		table.add_row({std::get<0>(propertyType) + " Possible Values: "});
 		table.add_row({std::get<1>(propertyType)});
 
-		int k = 12;
+		unsigned int k = 12;
 		switch (propertyID)
 		{
 			case kEdsPropID_DriveMode:
@@ -160,7 +160,7 @@ EdsError GetPropertyDesc(EdsCameraRef const& camera, EdsUInt64 const& bodyID, Ed
 			default:
 				break;
 		}
-		int i = 0;
+		unsigned int i = 0;
 		tabulate::Table optionRow;
 		tabulate::Table::Row_t options;
 		for (const auto& pair : prop_table) {
@@ -178,7 +178,7 @@ EdsError GetPropertyDesc(EdsCameraRef const& camera, EdsUInt64 const& bodyID, Ed
 			}
 			std::stringstream ss; 
 
-			int first = pair.first;
+			// int first = pair.first;
 			std::string second = pair.second;
 
 			ss << i << ": (" << second << ")";
@@ -206,7 +206,7 @@ EdsError GetPropertyDesc(EdsCameraRef const& camera, EdsUInt64 const& bodyID, Ed
 EdsError GetPropertyDesc(std::vector<EdsCameraRef> const& cameraArray, std::vector<EdsUInt64> const& bodyID, EdsPropertyID propertyID, std::map<EdsUInt32, const char*> prop_table, std::map<EdsUInt32, const char*>& out_table, bool print_table = true)
 {
 	EdsError	 err = EDS_ERR_OK;
-	EdsPropertyDesc	 propertyDesc = { 0 };
+	// EdsPropertyDesc	 propertyDesc = { 0 };
 	int i = 0;
 	err = GetPropertyDesc(cameraArray[i], bodyID[i], propertyID, prop_table, out_table, print_table);
 	return err;
@@ -274,8 +274,8 @@ EdsError SetProperty(std::vector<EdsCameraRef> const& cameraArray, std::vector<E
 {
 	EdsError	 err = EDS_ERR_OK;
 
-	EdsPropertyDesc	 propertyDesc = { 0 };
-	int i;
+	// EdsPropertyDesc	 propertyDesc = { 0 };
+	unsigned int i;
 	for (i = 0; i < cameraArray.size(); i++) {
 		err = SetProperty(cameraArray[i], bodyID[i], propertyID, data, prop_table);
 	}

@@ -37,6 +37,7 @@
 #include "ConfigHandler.h"
 
 // ANSI terminal color codes — only ever applied to terminal output, never logged to file
+// Associations between log message tags and colors are defined in DebugUtils.cpp
 namespace LogColor {
     // Reset
     constexpr const char* RESET          = "\033[0m";
