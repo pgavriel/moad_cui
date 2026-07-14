@@ -1,6 +1,6 @@
 {
     "output_dir": "/home/csrobot/MOAD_DATA",
-    "object_name": "scripttestz",
+    "object_name": "testing",
     "degree_inc": 5,
     "num_moves": 72,
     "thread_num": 5,
@@ -216,7 +216,7 @@
     "prev_state": {
         "current_move": 72,
         "current_object": "",
-        "current_pose": 97,
+        "current_pose": 98,
         "turntable_pos": 360
     },
     "transform_generator": {

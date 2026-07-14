@@ -15,6 +15,7 @@
 #include <opencv2/opencv.hpp>
 #include <nlohmann/json.hpp>
 
+#include "ScanManager.h"		// Functions for coordinating data collection
 #include "MenuHandler.h"  		// CUI Menu functionality
 #include "tabulate.hpp"			// Renders CUI menus
 #include "ConfigHandler.h" 		// Handles the global config data loaded from moad_config.json
@@ -147,96 +148,6 @@ bool reloadConfig() {
 }
 
 
-void saveCameraConfig(std::string path) {
-	DebugUtils::logFileSys("Saving camera_config.json to : " + path);
-
-	std::vector<std::tuple<EdsPropertyID, std::map<EdsUInt32, const char*>>> propertyIDs = {
-		std::tuple<EdsPropertyID, std::map<EdsUInt32, const char*>> (kEdsPropID_ISOSpeed, iso_table),
-		std::tuple<EdsPropertyID, std::map<EdsUInt32, const char*>> (kEdsPropID_Tv, tv_table),
-		std::tuple<EdsPropertyID, std::map<EdsUInt32, const char*>> (kEdsPropID_Av, av_table),
-		std::tuple<EdsPropertyID, std::map<EdsUInt32, const char*>> (kEdsPropID_WhiteBalance, whitebalance_table),
-	};
-
-	ConfigHandler& config = ConfigHandler::getInstance();
-	nlohmann::json json_data;
-
-	// Get the model and focal length for each camera
-	for (auto& camera : canonhandle.cameraArray) {
-
-		// segfaults since camera is empty
-		std::string cam = canonhandle.camera_name[camera];
-		DebugUtils::logDebug("Getting config for " + cam);
-		// std::cout << "camera " + cam << std::endl;
-
-		EdsDeviceInfo deviceInfo;
-		EdsGetDeviceInfo(camera, &deviceInfo);
-
-		json_data[cam]["Model"] = deviceInfo.szDeviceDescription; 
-		json_data[cam]["Focal Length"] = config.getValue<std::string>("transform_generator.calibration_mode");
-	}
-
-	// Get the configuration properties for each camera
-	for (auto propertyID : propertyIDs) {
-		std::string name = std::get<0>(getPropertyString(std::get<0>(propertyID)));
-		std::map<EdsUInt32, const char*> out_table;
-		GetPropertyDesc(canonhandle.cameraArray, canonhandle.bodyID, std::get<0>(propertyID), std::get<1>(propertyID), out_table, false);
-		std::vector<std::string> value_arr;
-		GetProperty(canonhandle.cameraArray, canonhandle.bodyID, std::get<0>(propertyID), out_table, value_arr);
-		
-		for (auto& camera : canonhandle.cameraArray) {
-			std::string cam = canonhandle.camera_name[camera];
-			json_data[cam][name] = value_arr[0];
-		}
-	}
-
-	// Save the file as a JSON file
-	std::string output_file = "/camera_config.json";
-    std::ofstream file(path + output_file);
-    if (file.is_open()) {
-        file << json_data.dump(4); // Pretty print with 4 spaces indentation
-        file.close();
-		DebugUtils::logDebug("Camera configuration saved to " + output_file);
-    } else {
-		DebugUtils::logError("Failed to open file for writing: " + output_file);
-	}
-}
-
-/*
-Loads the camera_config.json for the previous scan (assumes the file is already created),
-then appends the scan data collection time and saves it.
-*/
-void saveScanTime(std::chrono::milliseconds duration, std::string path) {
-	// Get the given duration in minutes and seconds
-	std::string minutes = std::to_string(duration.count() / 60000);
-	std::string seconds = std::to_string((duration.count() % 60000) / 1000);
-
-	// Open the JSON file for writing
-	std::string full_path = path + PATH_SEP + "camera_config.json";
-	std::ifstream file(full_path);
-	if (!file.is_open()) {
-		DebugUtils::logError("Failed to open file for writing: " + full_path);
-		return;
-	}
-	nlohmann::json json_data;
-	file >> json_data;
-
-	// Add the scan time to the JSON data
-	json_data["Scan Time"] = minutes + ":" + seconds;
-
-	// Save the updated JSON data back to the file
-	std::ofstream output_file(full_path);
-	if (output_file.is_open()) {
-		output_file << json_data.dump(4); // Pretty print with 4 spaces indentation
-		output_file.close();
-		DebugUtils::logDebug("Scan time saved to camera_config.json");
-	} else {
-		DebugUtils::logError("Failed to open file for writing: " + full_path);
-	}
-
-	// Close the file
-	file.close();
-}
-
 /* -----------------------------------------------------------------------------
 	FUNCTIONS FOR HANDLING USER INPUT
 ----------------------------------------------------------------------------- */
@@ -357,613 +268,6 @@ char get_last_pose() {
 }
 
 
-/* -----------------------------------------------------------------------------
-	FUNCTIONS FOR SCANNING / DATA COLLECTION
------------------------------------------------------------------------------ */
-
-// Creates necessary output folders for data collection
-void prepare_scan_output_folders() {
-	DebugUtils::logInfo("Preparing for data collection...");
-
-	ConfigHandler& config = ConfigHandler::getInstance();
-
-	if(config.getValue<bool>("realsense.enable_collection")) {
-		DebugUtils::logDebug("Creating output folder for RealSense data.");
-
-		// Create RS Scan Folder
-		rshandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "realsense";
-		create_folder(rshandle.save_dir, true);
-	}
-
-	if(config.getValue<bool>("dslr.enable_collection")) {
-		DebugUtils::logDebug("Creating output folder for DSLR data.");
-
-		// Create DSLR Scan Folder
-		canonhandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "DSLR";
-		create_folder(canonhandle.save_dir,true);
-	}
-
-	DebugUtils::logWhitespace();
-}
-
-/*
-Master scan function which is called by other scan functions (full,custom,from state)
-	- Creates necessary output folders depending on the data being collected
-	- Collects a single data frame from each enabled sensor
-*/
-bool scan(ThreadPool* pool = nullptr) {
-	// Get current config and setup local variables
-	ConfigHandler& config = ConfigHandler::getInstance();
-	std::string object_name = config.getValue<std::string>("object_name");
-	std::string output_dir = config.getValue<std::string>("output_dir");
-	scan_folder = output_dir + PATH_SEP + object_name;
-
-	// thread locking and timings to discern every piece of thread usage
-	bool safe_take_picture = false;
-	if (config.getValue<bool>("dslr.safe_take_picture")) {
-		// std::cout << "Safe TakePicture() is enabled." << std::endl;
-		DebugUtils::logConfig("Safe TakePicture() is enabled.");
-		safe_take_picture = true;
-	}
-
-	DebugUtils::logDebug("Collecting data for location " + scan_folder);
-
-	// Collect RealSense Data
-	if(config.getValue<bool>("realsense.enable_collection")) {
-
-		// Create RS Scan Folder
-		// rshandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "realsense";
-
-		// create_folder(rshandle.save_dir, true);
-
-		DebugUtils::logDebug("Getting RealSense Data...");
-
-		// Get the current frame from RealSense
-		int rs_timeout = config.getValue<int>("realsense.realsense_timeout_sec") * 1000;
-		rshandle.turntable_position = degree_tracker;
-		rshandle.get_current_frame(degree_tracker, rs_timeout, pool);
-
-		DebugUtils::logDebug("RealSense frame captured successfully.");
-
-		if (rshandle.fail_count > 0) {
-			std::cout << "RS Failure - " << rshandle.fail_count << std::endl;
-			DebugUtils::logError("RealSense failed to get frames.");
-			return false; // Return false if RealSense failed to get frames
-		}
-	}
-
-
-	// Collect DSLR Data
-	if(config.getValue<bool>("dslr.enable_collection")) {
-		canonhandle.images_downloaded = 0;
-		// canonhandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "DSLR";
-
-		// create_folder(canonhandle.save_dir,true);
-	
-		// std::cout << "Getting DSLR Data...\n";
-		DebugUtils::logDebug("Getting DSLR Data...");
-		canonhandle.turntable_position = degree_tracker;
-
-		// Create thread vector
-		std::vector<std::thread> threads;
-
-		for (auto& camera : canonhandle.cameraArray) {
-			std::string cam_name = canonhandle.camera_name[camera];
-
-			threads.emplace_back([&, camera, cam_name]() {
-				EdsError err = EDS_ERR_OK;
-
-				if (safe_take_picture)
-					err = TakePicture(camera, cam_name);
-				else
-					err = TakePictureNoWait(camera, cam_name);
-
-				if (err != EDS_ERR_OK)
-					// std::cout << "Error taking picture with camera: " << cam_name << std::endl;
-					DebugUtils::logError("Error taking picture with camera: " + cam_name );
-
-				// DebugUtils::logPictureLoop("running DSLR picture loop, : " + std::to_string(err));
-			});
-		}
-
-		// Wait for all threads to finish
-		DebugUtils::logDebug("Waiting for threads to join...");
-		for (auto& t : threads) {
-			t.join();
-		}
-
-		// Wait until all Canon images have been downloaded.
-		while(canonhandle.images_downloaded != canonhandle.cameras_found) {
-			EdsError err = EDS_ERR_OK;
-			err = EdsGetEvent(); // NOTE: this does not save the cmaeras, this just asks for current event
-			// std::cout << err; // this line meant to prevent annoying unsed variable error
-			DebugUtils::logDebug("Waiting for Canon images... (Error = " + std::to_string(err) + ")");
-			std::this_thread::sleep_for(100ms);
-			// std::cerr << "waiting: " << canonhandle.images_downloaded << "/" << canonhandle.cameras_found << " images downloaded" << std::endl;
-		}
-	}
-	return true;
-}
-
-
-
-/*
-	COMMENTS FOR fullScan(), customScan(), and scanFromSaveState()
-		args: none
-		returns: previously void as of 7/24/2025, now bool (UPDATE THIS COMMENT LATER ONCE APPROPRIATE PARTIES NOTIFIED)
-
-		or rather, three functions that run scan() and rotate_turntable()
-
-	added interrupt for if NOT 5 images were downloaded
-	this checks off of "canonhandle.images_downloaded" INSIDE scan(...) which i dont quite know where canonhandle 
-		comes from… possibly a global variable somewhere? i looked for it for several seconds but couldnt find it
-
-	considering the threading part, any attempt to exit or return in the scan() function itself didnt stop the 
-		overall process, so this required me to change the scan() function to bool and just run the check in the loop 
-		that calls the scan method
-
-	this means that each time scan() is called, it will check if the return is false and break from the loop
-
-	notably, due to placement of the check:
-		- degree_tracker does not increment
-		- turntable does not rotate
-		- moad config file is not updated
-		- images ARE saved
-		- realsense data IS saved
-		- transforms ARE generated
-		- file count check IS run
-	which is desired functionality (i think) since the scanFromSaveState function will pickup scanning and saving
-		from the last successful state
-
-	bugs:
-		- degree tracker calculation outside of for loop?
-		- possible index out of range error occurs at the end BUT as of 7/25 when i wrote this one of the cameras
-			does not work so i havent managed to hit the end of the image collection
-
-	- GS 7/25/2025
-
-*/
-bool fullScan() {
-	ConfigHandler& config = ConfigHandler::getInstance();
-
-	if (liveview_active){
-		std::cout << "Liveview is active, please stop it before scanning." << std::endl;
-		return false;
-	}
-
-	DebugUtils::logInfo("========Starting a full scan========");
-	DebugUtils::logInfo("\n\tcurrent pose: " + std::to_string(curr_pose));
-
-	// Create necessary output folders
-	prepare_scan_output_folders();
-
-	// Create thread pool
-	// currently unsafe i think, we also use another set of threads inside the scan() function itself
-	//	that is DIFFERENT from the ThreadPool created here.
-	// note quite sure the original purpose of ThreadPool tbh - gs 11/7
-	int thread_num = config.getValue<int>("thread_num");
-	ThreadPool pool(thread_num);
-
-
-	// zero the degree_tracker since we are starting a new scan...
-	// ...not entirely sure if this is necessary, should only affect the naming scheme for the files?
-	//	- gs 11/7
-	degree_tracker = 0;
-
-
-	int degree_inc = config.getValue<int>("degree_inc");
-	int num_moves = config.getValue<int>("num_moves");
-	
-	// Sleep(200);
-	// Start the loop timer
-	auto start = std::chrono::high_resolution_clock::now();
-	for (int rots = 0; rots < num_moves; rots++)
-	{
-		DebugUtils::logWhitespace(2);
-		DebugUtils::logDebug("Starting move " + std::to_string(rots + 1) + "/" + std::to_string(num_moves));
-
-		if(scan(&pool) == false) {
-			std::cerr << "\n============================================================" << std::endl;
-			std::cerr << "!!! ERROR: scan() failed at move " << rots + 1 << "/" << num_moves << ". Aborting scan. !!!" << std::endl;
-			std::cerr << "============================================================\n" << std::endl;
-			// add delay
-
-			DebugUtils::logError("Failed scan at move " + std::to_string(rots + 1) + " of " + std::to_string(num_moves));
-
-			// std::this_thread::sleep_for(3000ms);
-			break;
-		}
-
-		
-		// IMPORTANT: rotation must be done AFTER saving occurs since the cameras MAY NEED LONGER
-		//	to get full exposure
-		rotate_turntable(degree_inc);
-		
-		// Update the degree tracker
-		degree_tracker += degree_inc;
-
-		// write_degree_move_to_moadfig(degree_tracker, rots + 1);
-		config.writeDegreeMove(degree_tracker, rots + 1);
-		
-		// std::cout << "Image " << rots+1 << "/" << num_moves << " taken. " << std::endl;
-		DebugUtils::logDebug("Image " + std::to_string(rots + 1) + "/" + std::to_string(num_moves) + " taken.");
-	}
-
-
-	// Stop the loop timer
-	auto end = std::chrono::high_resolution_clock::now();
-	// Calculate the elapsed time
-	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-	// Convert the duration to minutes, seconds, and milliseconds
-	int minutes = duration.count() / 60000;
-	int seconds = (duration.count() % 60000) / 1000;
-
-	// End of scan output
-	std::ostringstream oss;
-	oss << "Scan Time: "
-		<< std::setw(2) << std::setfill('0') << minutes << ":"
-		<< std::setw(2) << std::setfill('0') << seconds << "  [mm:ss]";
-	DebugUtils::logDebug(oss.str());
-	DebugUtils::logDebug("RS Fail Count: " + std::to_string(rshandle.fail_count));
-	DebugUtils::logWhitespace();
-	DebugUtils::logInfo("=== Full Scan Finished ===");
-	//std::this_thread::sleep_for(3000ms);
-	
-	// Save camera configurations in a json file
-	if (config.getValue<bool>("dslr.enable_collection")) {
-		saveCameraConfig(scan_folder + PATH_SEP + "pose-" + curr_pose);
-		saveScanTime(duration, scan_folder + PATH_SEP + "pose-" + curr_pose);
-		if (config.getValue<bool>("transform_generator.enabled"))
-			generate_transforms(degree_inc, num_moves, curr_pose);
-	}
-
-	// Recalculate angle
-	degree_tracker = degree_tracker % 360; // why is this needed? - GS 7/24
-	std::cout << "\nRecalculated degree_tracker: " << degree_tracker << std::endl;
-	
-	object_info["Turntable Pos"] = std::to_string(degree_tracker);
-
-	// Change Pose
-	curr_pose++; // TODO: last pose QoL bug, this line potentially not needed?
-	object_info["Pose"] = curr_pose;
-
-	// write_pose_to_moadfig(curr_pose); // write pose to moadfig
-	config.writePose(curr_pose);
-	
-	// Skips if disabled in config
-	run_filecount_check(scan_folder);
-
-	MenuHandler::WaitUntilKeypress();
-
-	DebugUtils::logInfo("======Full scan for pose " + std::to_string(curr_pose) + " completed.======");
-	return true;
-}
-
-
-/*
-Initiate a scan with terminal prompts to manually set the degrees per move and number of moves.
-*/
-bool customScan() {
-	ConfigHandler& config = ConfigHandler::getInstance();
-	if (liveview_active){
-		DebugUtils::logWarning("Liveview is active, please stop it before scanning.");
-		// std::cout << "Liveview is active, please stop it before scanning." << std::endl;
-		return false;
-	}
-
-	DebugUtils::logInfo("========Starting a custom scan========");
-	DebugUtils::logInfo("Current pose: " + std::to_string(curr_pose));
-
-	// Create necessary output folders
-	prepare_scan_output_folders();
-
-	// Create the thread pool
-	int thread_num = config.getValue<int>("thread_num");
-	ThreadPool pool(thread_num);
-	int degree_inc;
-	int num_moves = 0;
-
-	// Ask for the user to input the degree increment and number of moves
-	std::cout << "Enter degrees per move: ";
-	std::cin >> degree_inc;
-	std::cout << "Enter number of moves: ";
-	std::cin >> num_moves;
-	
-	DebugUtils::logDebug("Custom scan with degree increment: " + std::to_string(degree_inc) + 
-		" and number of moves: " + std::to_string(num_moves));
-
-	// Sleep(200);
-	// Start the loop timer
-	auto start = std::chrono::high_resolution_clock::now();
-	for (int rots = 0; rots < num_moves; rots++)
-	{
-		DebugUtils::logWhitespace(2);
-		DebugUtils::logInfo("Getting data " + std::to_string(rots + 1) + "/" + std::to_string(num_moves));
-
-		// Scan function is given thread pool to collect all sensor data for a single frame, returns true when successful
-		if(scan(&pool) == false) {
-			std::cerr << "\n============================================================" << std::endl;
-			std::cerr << "!!! ERROR: scan() failed at move " << rots + 1 << "/" << num_moves << ". Aborting scan. !!!" << std::endl;
-			std::cerr << "============================================================\n" << std::endl;
-
-			DebugUtils::logError("Failed scan at move " + std::to_string(rots + 1) + " of " + std::to_string(num_moves));
-
-			// add delay
-			std::this_thread::sleep_for(3000ms);
-			break;
-		}
-
-		// std::cout << "Image " << rots+1 << "/" << num_moves << " taken. " << std::endl;
-		DebugUtils::logInfo("Data frame " + std::to_string(rots + 1) + "/" + std::to_string(num_moves) + " captured.");
-		DebugUtils::logWhitespace(1);
-		// Rotate the turntable
-		rotate_turntable(degree_inc);
-		
-		// Update the degree tracker 
-		degree_tracker += degree_inc;
-	}
-
-	// Stop the loop timer
-	auto end = std::chrono::high_resolution_clock::now();
-	// Calculate the elapsed time
-	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-	// Convert the duration to minutes, seconds, and milliseconds
-	int minutes = duration.count() / 60000;
-	int seconds = (duration.count() % 60000) / 1000;
-	std::ostringstream oss;
-	oss << "Scan Time: "
-		<< std::setw(2) << std::setfill('0') << minutes << ":"
-		<< std::setw(2) << std::setfill('0') << seconds << "  [mm:ss]";
-	// Log time and fail count
-	DebugUtils::logDebug(oss.str());
-	DebugUtils::logDebug("RS Fail Count: " + std::to_string(rshandle.fail_count));
-	DebugUtils::logWhitespace();
-	DebugUtils::logInfo("=== Custom Scan Finished ===");
-	std::this_thread::sleep_for(3000ms);
-
-
-	// Save camera configurations in a json file
-	if (config.getValue<bool>("dslr.enable_collection")) {
-		saveCameraConfig(scan_folder + PATH_SEP + "pose-" + curr_pose);
-		saveScanTime(duration, scan_folder + PATH_SEP + "pose-" + curr_pose);
-		if (config.getValue<bool>("transform_generator.enabled"))
-			generate_transforms(degree_inc, num_moves, curr_pose);
-	}
-
-	// Generate transform
-	generate_transforms(degree_inc, num_moves, curr_pose);
-
-	// Recalculate angle
-	degree_tracker = degree_tracker % 360;
-	object_info["Turntable Pos"] = std::to_string(degree_tracker);
-
-	// Change Pose
-	curr_pose++;
-	object_info["Pose"] = curr_pose;
-	// write_pose_to_moadfig(curr_pose); // write pose to moadfig
-	config.writePose(curr_pose);
-
-	MenuHandler::WaitUntilKeypress();
-
-	DebugUtils::logDebug("======Custom scan for pose " + std::to_string(curr_pose) + " completed.======");
-	return true;
-}
-
-
-
-/*
-	COMMENTS FOR scanFromSaveState():
-		args: none
-		returns: bool (as per other scan functions)
-
-	Runs a scan based on previous state recorded in moad_config.json
-	This should only be run if a camera fails like err 30 (see devlog)
-
-	- the turntable should have stopped turning after camera fail and the rotational
-			position saved in config
-	- apparently degree_tracker is a global variable but for this function
-			we will use the recorded item in config
-	- we will also set the degree_tracker to the current position and ideally
-			this will rename the images correctly and start creating them from
-			the current rotation
-
-	OR TODO IMPORTANT:
-	- change away from global variable to use the config and only reset for fullscan or custom
-			which should always start at 0
-	
-	NOTE: we cannot really account for the situation where:
-	1. camera fails and then
-	2. turntable moves OR object moves
-
-	since the rotation is based off each previous movement
-
-	bugs:
-	- possible index our of range error occurs at the end BUT as of 7/24 when i wrote this one of the cameras
-			does not work so i havent managed to hit the end of the image collection (same possible bug AS fullScan() 
-			and customScan())
-
-	- GS 7/25/2025
-*/
-bool scanFromSaveState() {
-	ConfigHandler& config = ConfigHandler::getInstance();
-	if (liveview_active){
-		std::cout << "Liveview is active, please stop it before scanning." << std::endl;
-		return false;
-	}
-
-	DebugUtils::logInfo("========Starting scan from saved state========");
-	DebugUtils::logInfo("\n\tcurrent pose: " + std::to_string(curr_pose));
-
-	// Create necessary output folders
-	prepare_scan_output_folders();
-
-	// Create the thread pool
-	int thread_num = config.getValue<int>("thread_num");
-	ThreadPool pool(thread_num);
-
-	// get previous state STRAIGHT FROM THE CONFIG FILE (instead of global variable stuff)
-	int prev_inc = 0;
-	// Read previous turntable position from config
-	std::ifstream config_file(json_path);
-	nlohmann::json config_json;
-	if (config_file.is_open()) {
-		config_file >> config_json;
-		config_file.close();
-		if (config_json.contains("prev_state") && config_json["prev_state"].contains("turntable_pos")) {
-			prev_inc = config_json["prev_state"]["turntable_pos"].get<int>();
-			degree_tracker = prev_inc;
-			std::cout << "Loaded previous turntable position: " << prev_inc << std::endl;
-		} else {
-			std::cout << "No previous turntable position found in config." << std::endl;
-		}
-	} else {
-		std::cerr << "Failed to open config file: " << json_path << std::endl;
-	}
-
-	// get the previous number of moves from config
-	int num_moves_left = 0;
-	if (config_json.contains("prev_state") && config_json["prev_state"].contains("current_move")) {
-		num_moves_left = config_json["prev_state"]["current_move"].get<int>();
-		std::cout << "Loaded previous number of moves: " << num_moves_left << std::endl;
-	} else {
-		std::cout << "No previous number of moves found in config." << std::endl;
-	}
-
-	// get total number of moves from config
-	int num_moves = config.getValue<int>("num_moves");
-	// get the degree increment and number of moves from config
-	int degree_inc = config.getValue<int>("degree_inc");
-
-	// validity checks
-	if (degree_inc <= 0) {
-		std::cerr << "Invalid degree increment: " << degree_inc << ". It must be greater than 0." << std::endl;
-		return false;
-	}
-	if (num_moves_left > num_moves) {	
-		std::cout << "WARNING: Previous number of moves exceeds total number of moves. Resetting to 0." << std::endl;
-		num_moves_left = 0; // Reset to 0 if it exceeds total moves
-	}
-	if (num_moves <= 0) {
-		std::cerr << "Invalid number of moves: " << num_moves << ". It must be greater than 0." << std::endl;
-		return false;
-	}
-
-
-	// Debug messages
-	DebugUtils::logDebug("Starting scan from saved state...");
-	DebugUtils::logDebug("Current Degree Tracker: " + std::to_string(degree_tracker));
-	DebugUtils::logDebug("Previous Turntable Position: " + std::to_string(prev_inc));
-	DebugUtils::logDebug("Number of Moves Left: " + std::to_string(num_moves_left));
-	DebugUtils::logDebug("Total Number of Moves: " + std::to_string(num_moves));
-
-
-	// Sleep(200);
-	// Start the loop timer
-	auto start = std::chrono::high_resolution_clock::now();
-	for (int rots = num_moves_left; rots < num_moves; rots++)
-	{
-		if(scan(&pool) == false) {
-			std::cerr << "\n============================================================" << std::endl;
-			std::cerr << "!!! ERROR: scan() failed at move " << rots + 1 << "/" << num_moves << ". Aborting scan. !!!" << std::endl;
-			std::cerr << "=======================================================\\pose=====\n" << std::endl;
-
-			DebugUtils::logError("Failed scan at move " + std::to_string(rots + 1) + " of " + std::to_string(num_moves));
-
-			// add delay
-			std::this_thread::sleep_for(3000ms);
-			break;
-		}
-
-		// Rotate the turntable
-		rotate_turntable(degree_inc);
-
-		// Update the degree tracker
-		degree_tracker += degree_inc;
-		// std::cout << "\n==========write to moadfig here===========" << std::endl; // debug msgs delete these
-		// write_degree_move_to_moadfig(degree_tracker, rots + 1); // NOTE: double check 0 indexing for this +1
-		config.writeDegreeMove(degree_tracker, rots + 1);
-		// std::cout << "==========write to moadfig here===========\n" << std::endl;
-		
-		std::cout << "Image " << rots+1 << "/" << num_moves << " taken. " << std::endl;
-		DebugUtils::logDebug("Image " + std::to_string(rots + 1) + "/" + std::to_string(num_moves) + " taken.");
-	}
-
-
-	// Stop the loop timer
-	auto end = std::chrono::high_resolution_clock::now();
-	// Calculate the elapsed time
-	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-	// Convert the duration to minutes, seconds, and milliseconds
-	int minutes = duration.count() / 60000;
-	int seconds = (duration.count() % 60000) / 1000;
-	std::cout << "Scan Time: " << std::setfill('0') << std::setw(2) << minutes << ":" 
-		<< std::setfill('0') << std::setw(2) << seconds << std::endl;
-	std::cout << "RS Fail Count: " << rshandle.fail_count << std::endl;
-	std::this_thread::sleep_for(3000ms);
-
-	DebugUtils::logDebug("Scan Time: " + std::to_string(duration.count()) + " ms");
-	DebugUtils::logDebug("RS Fail Count: " + std::to_string(rshandle.fail_count));
-
-	// Save camera configurations in a json file
-	if (config.getValue<bool>("dslr.enable_collection")) {
-		saveCameraConfig(scan_folder + PATH_SEP + "pose-" + curr_pose);
-		saveScanTime(duration, scan_folder + PATH_SEP + "pose-" + curr_pose);
-		if (config.getValue<bool>("transform_generator.enabled"))
-			generate_transforms(degree_inc, num_moves, curr_pose);
-	}
-
-	// Generate transform
-	// generate_transforms(degree_inc, num_moves, curr_pose);
-
-	// Recalculate angle
-	degree_tracker = degree_tracker % 360;
-	object_info["Turntable Pos"] = std::to_string(degree_tracker);
-
-	// Change Pose
-	curr_pose++;
-	object_info["Pose"] = curr_pose;
-	// write_pose_to_moadfig(curr_pose); // write pose to moadfig
-	config.writePose(curr_pose);
-
-	MenuHandler::WaitUntilKeypress();
-
-	DebugUtils::logInfo("========Scan from saved state completed========");
-	return true;
-}
-
-
-
-/*
-Collect a single data frame from all enabled sensors
-*/
-bool collectSampleData() {
-	ConfigHandler& config = ConfigHandler::getInstance();
-	if (liveview_active){
-		std::cout << "Liveview is active, please stop it before scanning." << std::endl;
-		return false;
-	}
-
-	DebugUtils::logInfo("========Starting single scan========");
-
-	// Create necessary output folders
-	prepare_scan_output_folders();
-
-	// Create thread pool
-	int thread_num = config.getValue<int>("thread_num");
-	ThreadPool pool(thread_num);
-
-	// Scan all the cameras
-	scan(&pool);
-
-	// I think this only makes sense to call for full scans...
-	// Skips if disabled in config
-	// run_filecount_check(scan_folder);
-
-	DebugUtils::logInfo("========Single scan completed========");
-	return false;
-}
-
-
 /*
 Sets the name for the object being scanned / data being collected.
 	- creates the necessary output folders
@@ -977,12 +281,6 @@ void setObjectName(std::string object_name) {
 	ConfigHandler& config = ConfigHandler::getInstance();
 
 	DebugUtils::logInfo("Setting object name to: " + object_name);
-
-	// this does something weird where templated setValue calls an inner "saveConfig" function that was
-	//	previously hardcoded and saved the config in the wrong location. should be fixed with fs::canonical
-	//	(see comments in main)
-
-	config.setValue<std::string>("object_name", object_name, json_path);
 
 	// Get the scan folder path
 	std::string output_dir = config.getValue<std::string>("output_dir");
@@ -1002,7 +300,6 @@ void setObjectName(std::string object_name) {
 
 	// save the object name to the moadfig file
 	DebugUtils::logInfo("Updating moad_config.json file...");
-	// write_obj_to_moadfig(object_name); // write object name to moadfig
 	config.writeObjectName(object_name);
 
 	// Change pose
@@ -1042,9 +339,10 @@ bool setPose() {
 	return false;
 }
 
-/*
+/* ----------------------------------------------------------------------
 	CAMERA BUTTON CONTROL
-*/
+---------------------------------------------------------------------- */
+
 bool pressHalfway() {
 	PressShutter(canonhandle.cameraArray, canonhandle.bodyID, kEdsCameraCommand_ShutterButton_Halfway);
 	return false;
@@ -1060,9 +358,11 @@ bool pressOff() {
 	return false;
 }
 
-/*
+
+/* ----------------------------------------------------------------------
 	CAMERA SETTINGS MENUS
-*/
+---------------------------------------------------------------------- */
+
 void _getCurrCameraValue(const std::vector<std::string>& value_arr) {
 	tabulate::Table table;
 	table.add_row({"Current Value:"});
@@ -1393,6 +693,8 @@ bool setAEMode() {
 	return false;
 }
 
+// Sets which cameras have their settings changes in the menus.
+// Useful for changing the settings on a single camera.
 bool changeCamera() {
 	int option = -1;
 	std::cout << "Change Camera. Select which camera to use (0 = all camera):" << std::endl;
@@ -1434,9 +736,11 @@ bool changeCamera() {
 	return false;
 }
 
-/*
+
+/* ----------------------------------------------------------------------
 	LIVE VIEW MENUS
-*/
+---------------------------------------------------------------------- */
+
 bool getLiveView() {
 	ConfigHandler& config = ConfigHandler::getInstance();
 
@@ -1522,39 +826,8 @@ bool liveViewMenu() {
 /* ----------------------------------------------------------------------
 	TURNTABLE FUNCTIONS
 ---------------------------------------------------------------------- */
-/*
-Writes the proper command over serial connection to move the turntable a specified number of degrees.
-*/
-void rotate_turntable(int degree_inc) {
-
-	ConfigHandler& config = ConfigHandler::getInstance();
-
-	std::string degree_inc_str = std::to_string(degree_inc);
-
-	// Serial commmand sent to arduino, must be sent as a string/char
-	char *send = &degree_inc_str[0];
-	bool is_sent = Serial->WriteSerialPort(send);
-
-	if (is_sent) {
-		// Max wait time (s) before timing out 
-		int wait_time = config.getValue<int>("turntable_control.command_timeout_s");
-		// int wait_time = 30; 
-		DebugUtils::logTurntable("Message sent: MOVING " + std::to_string(degree_inc) + " degrees, WAITING up to " + std::to_string(wait_time) + " seconds...");
-		
-		// Log message recieved from turntable
-		std::string incoming = Serial->ReadSerialPort(wait_time, "json");
-		DebugUtils::logTurntable("Read from turntable serial: " + incoming);
-		
-		// Configurable delay after turntable stops moving before collecting data
-		int turntable_delay_ms = config.getValue<int>("turntable_control.delay_after_move_ms");
-		if (turntable_delay_ms > 0){
-			DebugUtils::logTurntable("Turntable delay before collection: " + std::to_string(turntable_delay_ms) + "ms",2);
-			std::this_thread::sleep_for(std::chrono::milliseconds(turntable_delay_ms));
-		}
-	} else {
-		DebugUtils::logTurntable("WARNING: Serial command not sent, something went wrong.");
-	}
-}
+// NOTE: The function to send serial commands that actually move the turntable
+// are defined in ScanManager.cpp
 
 // Gets user input to manually move the turntable
 bool turntableControl() {
@@ -1570,7 +843,7 @@ bool turntableControl() {
 			break;
 		
 		// TODO: Validate this input before sending it over serial
-		// Send motor command over serial
+		// Send motor command over serial (Defined in ScanManager.cpp)
 		rotate_turntable(std::stoi(degree_inc));
 
 		// Update degree tracker
@@ -1707,7 +980,7 @@ int main(int argc, char* argv[])
 	DebugUtils::logDebug("Current Pose: " + object_info["Pose"]);
 	DebugUtils::logDebug("Current Turntable Position: " + object_info["Turntable Pos"]);
 	DebugUtils::logDebug("Current Scan Folder: " + scan_folder);
-	DebugUtils::logDebug("Current JSON Path: " + json_path);
+	DebugUtils::logDebug("Current JSON Path: " + config.getConfigPath());
 
 	// Main Menu initialization - maps menu options to function calls
 	MenuHandler menu_handler({

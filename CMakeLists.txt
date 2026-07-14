@@ -86,6 +86,7 @@ add_executable (MultiCamCui
     ${SRC_DIR}/CanonHandler.cpp
     ${SRC_DIR}/SerialCommunication.cpp
     ${SRC_DIR}/ScriptRunner.cpp
+    ${SRC_DIR}/ScanManager.cpp
     
     ${SRC_DIR}/CameraEvent.cpp
     ${SRC_DIR}/Download.cpp
@@ -99,10 +100,6 @@ add_executable (MultiCamCui
     ${SRC_DIR}/ConfigHandler.cpp
     ${SRC_DIR}/ThreadPool.cpp
     ${SRC_DIR}/DebugUtils.cpp
-    
-    
-    #${SRC_DIR}/MultiCamCui.cpp
-    #${SRC_DIR}/MOADCui.cpp
 )
 
 set_target_properties(MultiCamCui PROPERTIES
@@ -155,7 +152,7 @@ elseif(APPLE)
 else()
 endif()
 
-message(WARN ${EDSDK_LDIR})
+message(STATUS "Canon EDSDK Dir: " ${EDSDK_LDIR})
 if(MSVC)
     add_custom_command(TARGET MultiCamCui POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${EDSDK_LDIR}/Dll/EDSDK.dll" $<TARGET_FILE_DIR:MultiCamCui>
@@ -175,7 +172,7 @@ add_custom_command(TARGET MultiCamCui POST_BUILD        # Adds a post-build even
         $<TARGET_FILE_DIR:MultiCamCui>)                 # <--this is out-file path
 endif()
 
-message(WARN ${CMAKE_INSTALL_PREFIX})
+message(STATUS "CMake Install Prefix: " ${CMAKE_INSTALL_PREFIX})
 install(
     TARGETS
 
