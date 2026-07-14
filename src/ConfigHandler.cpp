@@ -16,7 +16,8 @@ ConfigHandler::~ConfigHandler() {
 void ConfigHandler::loadConfig(const std::string& filepath) {
 
     DebugUtils::logDebug("Loading Config File: " + filepath);
-
+    // Save config path internally
+    config_path = filepath;
     std::ifstream json_file(filepath);
 	// config = nlohmann::json::parse(json_file);
 	config = nlohmann::ordered_json::parse(json_file);
@@ -53,4 +54,21 @@ std::vector<std::string> ConfigHandler::split(std::string str, char delimiter) {
         res.push_back(str.substr(start, end - start));
     }
     return res;
+}
+
+void ConfigHandler::writeObjectName(const std::string& object_name) {
+    DebugUtils::logConfig("Updating object_name: " + object_name);
+    setValue<std::string>("object_name", object_name, config_path);
+}
+
+void ConfigHandler::writePose(char pose) {
+    DebugUtils::logConfig("Updating prev_state.current_pose: " + std::string(1, pose));
+    setValue<int>("prev_state.current_pose", static_cast<int>(pose), config_path);
+}
+
+void ConfigHandler::writeDegreeMove(int degree, int current_move) {
+    DebugUtils::logConfig("Updating prev_state.turntable_pos/current_move: "
+        + std::to_string(degree) + " / " + std::to_string(current_move));
+    setValue<int>("prev_state.turntable_pos", degree, config_path);
+    setValue<int>("prev_state.current_move", current_move, config_path);
 }

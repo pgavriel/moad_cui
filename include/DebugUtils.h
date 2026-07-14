@@ -156,7 +156,7 @@ public:
         char time_buf[32];
         std::strftime(time_buf, sizeof(time_buf), "%H:%M:%S", &local_tm);
 
-        log("END", std::string("Closing log at: ") + log_path, 0);
+        log("END", std::string("Closing log at: ") + log_path + "\n\n", 0);
         log_file.close();
         log("END", std::string("Debug logging ended at ") + time_buf + "\n", 0);
     }

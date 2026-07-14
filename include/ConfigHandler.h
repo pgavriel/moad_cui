@@ -22,9 +22,15 @@ public:
         return instance;
     }
 
+    const std::string& getConfigPath() const { return config_path; }
+
     void loadConfig(const std::string&);
     void saveConfig(const std::string&) const;
     bool emptyConfig();
+
+    void writeObjectName(const std::string& object_name);
+    void writePose(char pose);
+    void writeDegreeMove(int degree, int current_move);
 
     template <typename T>
     T getValue(const std::string& key) {
@@ -70,6 +76,7 @@ public:
 
 private:
     nlohmann::ordered_json config;
+    std::string config_path;
 
     ConfigHandler();
     ~ConfigHandler();

@@ -100,114 +100,6 @@ bool runFilecountCheck() {
 }
 
 
-// functions for writing to config.json ==========================================================================================================
-//   TODO: can be one function? deterministic on args?
-//	 NOTE: REWRITES the config each time, though should only change 1 value each call
-
-// void write_obj_to_moadfig(std::string object_name);
-void write_obj_to_moadfig(std::string object_name) {
-	std::ifstream config_file(json_path);
-
-	// std::cout << "Writing object to moadfig, path is " << json_path << std::endl;
-	DebugUtils::logConfig("Updating Object Name: " + json_path);
-
-	ordered_json config_json;
-
-	if (config_file.is_open()) {
-		config_file >> config_json;
-		config_file.close();
-	} else {
-		// std::cerr << "Failed to open config file: " << json_path << std::endl;
-		DebugUtils::logError("Failed to open config file: " + json_path);
-		return;
-	}
-
-	// set object name
-	config_json["object_name"] = object_name;
-
-	// write out
-	std::ofstream out_file(json_path);
-	if (out_file.is_open()) {
-		out_file << config_json.dump(4);
-		out_file.close();
-		// std::cout << "Updated object_name in moad_config.json" << std::endl;
-		DebugUtils::logConfig("Updated Object Name: " + object_name);
-	} else {
-		// std::cerr << "Failed to write to config file: " << json_path << std::endl;
-		DebugUtils::logError("Failed to write to config file: " + json_path);
-	}
-}
-
-// void write_pose_to_moadfig(char pose);
-void write_pose_to_moadfig(char pose) {
-	std::ifstream config_file(json_path);
-
-	// std::cout << "Writing pose to moadfig, path is " << json_path << std::endl;
-	DebugUtils::logConfig("Updating Previous Pose: " + json_path);
-
-	ordered_json config_json;
-	if (config_file.is_open()) {
-		config_file >> config_json;
-		config_file.close();
-	} else {
-		// std::cerr << "Failed to open config file: " << json_path << std::endl;
-		DebugUtils::logError("Failed to open config file: " + json_path);
-		return;
-	}
-
-	// set object name
-	config_json["prev_state"]["current_pose"] = pose;
-	std::string pose_str{pose};
-
-	// write out
-	std::ofstream out_file(json_path);
-	if (out_file.is_open()) {
-		out_file << config_json.dump(4);
-		out_file.close();
-		// std::cout << "Updated prev_state.current_pose in moad_config.json" << std::endl;
-		DebugUtils::logConfig("Updated prev_state.current_pose in moad_config.json: " + pose_str);
-	} else {
-		// std::cerr << "Failed to write to config file: " << json_path << std::endl;
-		DebugUtils::logError("Failed to write to config file: " + json_path);
-	}
-}
-
-// void write_degree_move_to_moadfig(int degree, int current_move); // template this later for int item
-void write_degree_move_to_moadfig(int degree, int current_move) {
-	
-	std::ifstream config_file(json_path);
-
-	DebugUtils::logConfig("Updating Previous Turntable Position: " + json_path);
-
-	ordered_json config_json;
-	if (config_file.is_open()) {
-		config_file >> config_json;
-		config_file.close();
-	} else {
-		DebugUtils::logError("Failed to open config file: " + json_path);
-		return;
-	}
-
-	// Set prev_state.turntable_pos
-	config_json["prev_state"]["turntable_pos"] = degree;
-
-	// Set prev_state.current_move to current_move
-	config_json["prev_state"]["current_move"] = current_move;
-
-	// write out
-	std::ofstream out_file(json_path);
-	if (out_file.is_open()) {
-		out_file << config_json.dump(4);
-		out_file.close();
-		// std::cout << "Updated prev_state.turntable_pos in moad_config.json" << std::endl;
-		DebugUtils::logConfig("Updated prev_state.turntable_pos/current_move in moad_config.json:: " + std::to_string(degree) + " / " + std::to_string(current_move));
-	} else {
-		// std::cerr << "Failed to write to config file: " << json_path << std::endl;
-		DebugUtils::logError("Failed to write to config file: " + json_path);
-	}
-
-}
-
 /* ===========================================================================================
 For reloading the moad_config during runtime. Checks if data collection for DSLR/RS has been enabled,
 and will go through the initialization process if so. 
@@ -690,7 +582,8 @@ bool fullScan() {
 		// Update the degree tracker
 		degree_tracker += degree_inc;
 
-		write_degree_move_to_moadfig(degree_tracker, rots + 1);
+		// write_degree_move_to_moadfig(degree_tracker, rots + 1);
+		config.writeDegreeMove(degree_tracker, rots + 1);
 		
 		// std::cout << "Image " << rots+1 << "/" << num_moves << " taken. " << std::endl;
 		DebugUtils::logDebug("Image " + std::to_string(rots + 1) + "/" + std::to_string(num_moves) + " taken.");
@@ -734,7 +627,8 @@ bool fullScan() {
 	curr_pose++; // TODO: last pose QoL bug, this line potentially not needed?
 	object_info["Pose"] = curr_pose;
 
-	write_pose_to_moadfig(curr_pose); // write pose to moadfig
+	// write_pose_to_moadfig(curr_pose); // write pose to moadfig
+	config.writePose(curr_pose);
 	
 	// Skips if disabled in config
 	run_filecount_check(scan_folder);
@@ -846,7 +740,8 @@ bool customScan() {
 	// Change Pose
 	curr_pose++;
 	object_info["Pose"] = curr_pose;
-	write_pose_to_moadfig(curr_pose); // write pose to moadfig
+	// write_pose_to_moadfig(curr_pose); // write pose to moadfig
+	config.writePose(curr_pose);
 
 	MenuHandler::WaitUntilKeypress();
 
@@ -985,7 +880,8 @@ bool scanFromSaveState() {
 		// Update the degree tracker
 		degree_tracker += degree_inc;
 		// std::cout << "\n==========write to moadfig here===========" << std::endl; // debug msgs delete these
-		write_degree_move_to_moadfig(degree_tracker, rots + 1); // NOTE: double check 0 indexing for this +1
+		// write_degree_move_to_moadfig(degree_tracker, rots + 1); // NOTE: double check 0 indexing for this +1
+		config.writeDegreeMove(degree_tracker, rots + 1);
 		// std::cout << "==========write to moadfig here===========\n" << std::endl;
 		
 		std::cout << "Image " << rots+1 << "/" << num_moves << " taken. " << std::endl;
@@ -1026,7 +922,8 @@ bool scanFromSaveState() {
 	// Change Pose
 	curr_pose++;
 	object_info["Pose"] = curr_pose;
-	write_pose_to_moadfig(curr_pose); // write pose to moadfig
+	// write_pose_to_moadfig(curr_pose); // write pose to moadfig
+	config.writePose(curr_pose);
 
 	MenuHandler::WaitUntilKeypress();
 
@@ -1105,13 +1002,15 @@ void setObjectName(std::string object_name) {
 
 	// save the object name to the moadfig file
 	DebugUtils::logInfo("Updating moad_config.json file...");
-	write_obj_to_moadfig(object_name); // write object name to moadfig
+	// write_obj_to_moadfig(object_name); // write object name to moadfig
+	config.writeObjectName(object_name);
 
 	// Change pose
 	// POSSIBLE EXTRA POSE CHANGE? - GS 8/7
 	curr_pose = get_last_pose();
 	object_info["Pose"] = curr_pose;
-	write_pose_to_moadfig(curr_pose); // write pose to moadfig
+	// write_pose_to_moadfig(curr_pose); // write pose to moadfig
+	config.writePose(curr_pose);
 
 	// Update the save directories for RealSense and DSLR (folders are created upon data collection)
 	rshandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "realsense";
@@ -1131,11 +1030,13 @@ bool setObjectName() {
 }
 
 bool setPose() {
+	ConfigHandler& config = ConfigHandler::getInstance();
 	char last_pose = get_last_pose();
 	std::cout << "Enter Pose (Last pose: '" << last_pose << "'): ";
 	std::cin >> curr_pose;
 	object_info["Pose"] = curr_pose;
-	write_pose_to_moadfig(curr_pose); // write pose to moadfig
+	// write_pose_to_moadfig(curr_pose); // write pose to moadfig
+	config.writePose(curr_pose);
 
 
 	return false;
