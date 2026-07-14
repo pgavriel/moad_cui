@@ -36,6 +36,8 @@ public:
 
     bool rename_cameras = true;
     std::map<std::string, std::string> camera_names;
+    // TODO: Bad naming, but was originally in MOADCui.cpp, mostly just used for nice printing.
+    std::map<EdsCameraRef, std::string> camera_name;
 };
 
 extern CanonHandler canonhandle;

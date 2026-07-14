@@ -1,8 +1,11 @@
 #include <CanonHandler.h>
 #include "DebugUtils.h" 
+#include "ConfigHandler.h"
+
+#include "PreSetting.h"
 
 CanonHandler::CanonHandler() {
-    // std::cout << "\033[1;45m" << "Canon Handle created." << "\033[0m\n";
+    // DebugUtils::logCanon("CanonHandler created...");
 }
 
 CanonHandler::~CanonHandler() {
@@ -12,7 +15,6 @@ CanonHandler::~CanonHandler() {
 void CanonHandler::shutdown() {
     if (!isSDKLoaded) return;  // guard against double-calls
     
-    // std::cout << "\033[1;45m" << "Shutting down canonhandler." << "\033[0m\n";
     DebugUtils::logCanon("Shutting down canonhandler...");
     // Release camera list
     if (cameraList != NULL) {
@@ -35,11 +37,11 @@ void CanonHandler::shutdown() {
     DebugUtils::logCanon("Terminating SDK.");
     EdsTerminateSDK();
 
-    // std::cout << "Done.\n";
     DebugUtils::logCanon("Done.");
     isSDKLoaded = false;       // flag prevents destructor from repeating it
 }
 
+// Discover and connect to all available cameras
 int CanonHandler::camera_check() {
     cameraArray.clear();
     bodyID.clear();
@@ -101,19 +103,14 @@ int CanonHandler::camera_check() {
             cam_info << "[" << i + 1 << "]\t" << deviceInfo.szDeviceDescription 
                 << "\t" << "(Serial # not accessible until session started)";
             DebugUtils::logCanon(cam_info.str());
-            // Sleep(1000);
-            // if  (serial == 3435973836 ) std::cout << "true!\n";
         }else{ 
-            // std::cout << "SOMETHING WRONG: Error Code "<< err << "\n";
             DebugUtils::logWarning("Something went wrong... Error: " + std::to_string(err));
         }
     }
     DebugUtils::logWhitespace();
-    // std::cout << "--------------------------------" << std::endl;
 
     //Connect to all available cameras
     if (err == EDS_ERR_OK) {
-        // std::cout << "\033[1;45m" << "Connecting to all cameras..." << "\033[0m" << std::endl;
         DebugUtils::logCanon("Creating camera array...");
         for (unsigned int i = 0; i < count; i++)
         {
@@ -127,18 +124,96 @@ int CanonHandler::camera_check() {
 }
 
 void CanonHandler::initialize() {
-
-	// std::cout << "\033[1;45m" << "Entering DSLR Setup..." << "\033[0m" << std::endl;
+    ConfigHandler& config = ConfigHandler::getInstance();
+    // Early return if DSLR data collection not enabled.
+    if (!config.getValue<bool>("dslr.enable_collection")) {
+        DebugUtils::logRS("Skipping DSLR setup, (dslr.enable_collection=false in config).");
+        DebugUtils::logWhitespace();
+        return;
+    }
+    
     DebugUtils::logInfo("Initializing DSLR Cameras...");
+
+    // Gather Camera Serials from config
+    std::string cam1 = config.getValue<std::string>("dslr.camera_ids.CAMERA_1");
+	std::string cam2 = config.getValue<std::string>("dslr.camera_ids.CAMERA_2");
+	std::string cam3 = config.getValue<std::string>("dslr.camera_ids.CAMERA_3");
+	std::string cam4 = config.getValue<std::string>("dslr.camera_ids.CAMERA_4");
+	std::string cam5 = config.getValue<std::string>("dslr.camera_ids.CAMERA_5");
+
     // Initialize SDK
     err = EdsInitializeSDK();
     if (err == EDS_ERR_OK)
 	{
 		isSDKLoaded = true;
-        // std::cout << "SDK Initialized...\n";
+        DebugUtils::logCanon("SDK Initialized...");
 	}
     
+    // Discover and connect to all cameras
     cameras_found = camera_check();
+
+    PreSetting(cameraArray, bodyID);
+
+    // Automatic remapping of camera names from moad_config
+    DebugUtils::logCanon("Remapping Camera Names...");
+    EdsChar serial[13];
+    EdsError err;
+    std::stringstream cam_message;
+    int index = 1;
+    for (const auto& camera: cameraArray) {
+        // Fetch the serial number
+        err = EdsGetPropertyData(camera, kEdsPropID_BodyIDEx, 0, sizeof(serial), &serial);
+        if (err != 0)  {
+            // std::cout << "canon initialization err: " << err << std::endl;
+            DebugUtils::logError("Canon initialization error: " + std::to_string(err));
+        }
+
+        // Convert it into string
+        std::string serial_str = "";
+        for (size_t i = 0; i < sizeof(serial) - 1; i++){
+            serial_str += serial[i];
+        }
+
+        cam_message.str("");
+        cam_message.clear();
+        cam_message << "Camera " << index << " (Serial Number: " << serial_str <<"):";
+
+
+        if (serial_str == cam1) {
+            cam_message << "\n\t\t|- Renamed to Camera 1";
+            camera_names[std::to_string(index)] = "1";
+            camera_name[camera] = "Camera 1";
+        }
+        else if (serial_str == cam2) {
+            cam_message << "\n\t\t|- Renamed to Camera 2";
+            camera_names[std::to_string(index)] = "2";
+            camera_name[camera] = "Camera 2";
+        }
+        else if (serial_str == cam3) {
+            cam_message << "\n\t\t|- Renamed to Camera 3";
+            camera_names[std::to_string(index)] = "3";
+            camera_name[camera] = "Camera 3";
+        }
+        else if (serial_str == cam4) {
+            cam_message << "\n\t\t|- Renamed to Camera 4";
+            camera_names[std::to_string(index)] = "4";
+            camera_name[camera] = "Camera 4";
+        }
+        else if (serial_str == cam5) {
+            cam_message << "\n\t\t|- Renamed to Camera 5";
+            camera_names[std::to_string(index)] = "5";
+            camera_name[camera] = "Camera 5";
+        }else {
+            // If serial number is not matched, set the camera name to it's serial number.
+            cam_message << "\n\t\t|- NO MATCHING SERIAL NUMBER FOUND IN CONFIG (dslr/camera_ids), setting name to serial...";
+            camera_names[std::to_string(index)] = serial_str;
+            camera_name[camera] = "Camera " + serial_str;
+        }
+        
+        DebugUtils::logCanon(cam_message.str());
+        index++;
+    }
+    DebugUtils::logWhitespace();
 }
 
 

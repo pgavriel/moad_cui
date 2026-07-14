@@ -72,7 +72,6 @@ std::atomic<bool> liveview_active = false;
 std::thread::id liveview_thread_id;
 
 // Camera
-std::map<EdsCameraRef, std::string> camera_name;
 bool all_cameras = true;
 EdsCameraRef activeCamera;
 
@@ -90,8 +89,6 @@ std::string moad_dir;
 
 // Initialize some functions
 void setObjectName(std::string object_name);
-void initializeCanon();
-void initializeRealsense();
 bool WaitForCameraReady(EdsCameraRef camera, int timeoutMs);
 void rotate_turntable(int degree_inc);
 int create_folder(std::string path, bool quiet);
@@ -238,14 +235,14 @@ bool reloadConfig() {
 	// Check if the configuration has changed for DSLR, if so, initialize Canon Handler
 	if (!previous_DSLR.has_value() || previous_DSLR != config.getValue<bool>("dslr.enable_collection")) {
 		if (config.getValue<bool>("dslr.enable_collection") && !canonhandle.isSDKLoaded) {
-			initializeCanon();
+			canonhandle.initialize();
 		}
 	}
 	
 	// Check if the configuration has changed for RealSense, if so, initialize RS handler
 	if (!previous_RS.has_value() || previous_RS != config.getValue<bool>("realsense.enable_collection")) {
 		if (config.getValue<bool>("realsense.enable_collection")) {
-			initializeRealsense();
+			rshandle.initialize(json_path);
 		}
 	}
 
@@ -275,7 +272,7 @@ void saveCameraConfig(std::string path) {
 	for (auto& camera : canonhandle.cameraArray) {
 
 		// segfaults since camera is empty
-		std::string cam = camera_name[camera];
+		std::string cam = canonhandle.camera_name[camera];
 		DebugUtils::logDebug("Getting config for " + cam);
 		// std::cout << "camera " + cam << std::endl;
 
@@ -295,7 +292,7 @@ void saveCameraConfig(std::string path) {
 		GetProperty(canonhandle.cameraArray, canonhandle.bodyID, std::get<0>(propertyID), out_table, value_arr);
 		
 		for (auto& camera : canonhandle.cameraArray) {
-			std::string cam = camera_name[camera];
+			std::string cam = canonhandle.camera_name[camera];
 			json_data[cam][name] = value_arr[0];
 		}
 	}
@@ -559,7 +556,7 @@ bool scan(ThreadPool* pool = nullptr) {
 		std::vector<std::thread> threads;
 
 		for (auto& camera : canonhandle.cameraArray) {
-			std::string cam_name = camera_name[camera];
+			std::string cam_name = canonhandle.camera_name[camera];
 
 			threads.emplace_back([&, camera, cam_name]() {
 				EdsError err = EDS_ERR_OK;
@@ -1225,7 +1222,7 @@ bool setTV() {
 		std::string value;
 		GetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_Tv, out_table, value);
 		
-		std::cout << "Modifing " << camera_name[activeCamera] << std::endl;
+		std::cout << "Modifing " << canonhandle.camera_name[activeCamera] << std::endl;
 		std::cout << "Current Value: " << value << std::endl;
 		std::cout << "input no. (ex. 54 = 1/250)" << std::endl;
 		std::cout << ">";
@@ -1282,7 +1279,7 @@ bool setAV() {
 		GetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_Av, out_table, value);
 		
 
-		std::cout << "Modifing " << camera_name[activeCamera] << std::endl;
+		std::cout << "Modifing " << canonhandle.camera_name[activeCamera] << std::endl;
 		std::cout << "Current Value: " << value << std::endl;
 		std::cout << "input Av (ex. 21 = 5.6)" << std::endl;
 		std::cout << ">";
@@ -1341,7 +1338,7 @@ bool setISO() {
 		std::string value;
 		GetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_ISOSpeed, out_table, value);
 		
-		std::cout << "Modifing " << camera_name[activeCamera] << std::endl;
+		std::cout << "Modifing " << canonhandle.camera_name[activeCamera] << std::endl;
 		std::cout << "Current Value: " << value << std::endl;
 		std::cout << "input ISOSpeed (ex. 8 = ISO 200)" << std::endl;
 		std::cout << ">";
@@ -1400,7 +1397,7 @@ bool setWhiteBalance() {
 		std::string value;
 		GetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_WhiteBalance, out_table, value);
 		
-		std::cout << "Modifing " << camera_name[activeCamera] << std::endl;
+		std::cout << "Modifing " << canonhandle.camera_name[activeCamera] << std::endl;
 		std::cout << "Current Value: " << value << std::endl;
 		std::cout << "input WhiteBalance (ex. 0 = Auto)" << std::endl;
 		std::cout << ">";
@@ -1461,7 +1458,7 @@ bool setDriveMode() {
 		std::string value;
 		GetProperty(activeCamera, canonhandle.bodyID[0], kEdsPropID_DriveMode, out_table, value);
 		
-		std::cout << "Modifing " << camera_name[activeCamera] << std::endl;
+		std::cout << "Modifing " << canonhandle.camera_name[activeCamera] << std::endl;
 		std::cout << "Current Value: " << value << std::endl;
 		std::cout << "input Drive Mode (ex. 0 = Single shooting)" << std::endl;
 		std::cout << ">";
@@ -1503,7 +1500,7 @@ bool changeCamera() {
 	// Display all available cameras 
 	std::cout << "0. All cameras" << std::endl;
 	for (const auto& camera : canonhandle.cameraArray) {
-		std::cout << i << ". " << camera_name[camera] << std::endl;
+		std::cout << i << ". " << canonhandle.camera_name[camera] << std::endl;
 		i++; 
 	}
 	option = getvalue();
@@ -1568,7 +1565,7 @@ bool getLiveView() {
 		for (auto& camera : canonhandle.cameraArray) {
 			// Download the image from the camera
 			liveview_th.push_back(std::thread([&]() {
-				DownloadEvfCommand(camera, liveViewDir + camera_name[camera], liveview_thread_id);
+				DownloadEvfCommand(camera, liveViewDir + canonhandle.camera_name[camera], liveview_thread_id);
 			}));
 			std::this_thread::sleep_for(.5s);
 			i++;
@@ -1660,7 +1657,6 @@ void rotate_turntable(int degree_inc) {
 
 // Gets user input to manually move the turntable
 bool turntableControl() {
-	// std::cout << "\n\n\nTURNTABLE CONTROL\n\n";
 	DebugUtils::logInfo("Entered Manual Turntable Control");
 	std::string degree_inc;
 	while(degree_inc != "r"){
@@ -1757,125 +1753,6 @@ bool TurntableSubMenu(){
 }
 
 
-/*
-	InitializeRealsense()
-		args: none
-		returns: void
-*/
-void initializeRealsense() {
-	ConfigHandler& config = ConfigHandler::getInstance();
-
-	if (config.getValue<bool>("realsense.enable_collection")) {
-
-		// Set RS save directory (scan_folder/curr_pose is set after the config is loaded)
-		rshandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "realsense";
-		
-		// Discover RS devices and enable data streams according to config
-		rshandle.initialize(json_path);
-
-		// Get some frames to settle auto-exposure and verify stream.
-		int test_frames = 10;
-		DebugUtils::logRS("Getting " + std::to_string(test_frames) + " frames to verify data...");
-		rshandle.get_frames(test_frames); // make 30 later
-
-	} else {
-		DebugUtils::logRS("Skipping RealSense setup, (realsense.enable_collection=false in config).");
-	}
-
-	DebugUtils::logWhitespace();
-}
-
-
-/*
-	InitializeCanon()
-		args: none
-		returns: void
-*/
-void initializeCanon() {
-	ConfigHandler& config = ConfigHandler::getInstance();
-
-	// get camera ids from config (previously they were hardcoded) - gs 11/7
-	std::string cam1 = config.getValue<std::string>("dslr.camera_ids.CAMERA_1");
-	std::string cam2 = config.getValue<std::string>("dslr.camera_ids.CAMERA_2");
-	std::string cam3 = config.getValue<std::string>("dslr.camera_ids.CAMERA_3");
-	std::string cam4 = config.getValue<std::string>("dslr.camera_ids.CAMERA_4");
-	std::string cam5 = config.getValue<std::string>("dslr.camera_ids.CAMERA_5");
-	
-	if (config.getValue<bool>("dslr.enable_collection")) {
-
-		// CanonHandler canonhandle;
-		canonhandle.initialize();
-
-		// scan_folder is set by setObjectName
-		canonhandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "DSLR";
-		PreSetting(canonhandle.cameraArray, canonhandle.bodyID);
-		// Naming of the camera
-		DebugUtils::logCanon("Remapping Camera Names...");
-		EdsChar serial[13];
-		EdsError err;
-		std::stringstream cam_message;
-		int index = 1;
-		for (const auto& camera: canonhandle.cameraArray) {
-			// Fetch the serial number
-			err = EdsGetPropertyData(camera, kEdsPropID_BodyIDEx, 0, sizeof(serial), &serial);
-			if (err != 0)  {
-				std::cout << "canon initialization err: " << err << std::endl;
-			}
-
-			// Convert it into string
-			std::string serial_str = "";
-			for (size_t i = 0; i < sizeof(serial) - 1; i++){
-				serial_str += serial[i];
-			}
-
-			cam_message.str("");
-			cam_message.clear();
-			cam_message << "Camera " << index << " (Serial Number: " << serial_str <<"):";
-
-
-			if (serial_str == cam1) {
-				cam_message << "\n\t\t|- Renamed to Camera 1";
-				canonhandle.camera_names[std::to_string(index)] = "1";
-				camera_name[camera] = "Camera 1";
-			}
-			else if (serial_str == cam2) {
-				cam_message << "\n\t\t|- Renamed to Camera 2";
-				canonhandle.camera_names[std::to_string(index)] = "2";
-				camera_name[camera] = "Camera 2";
-			}
-			else if (serial_str == cam3) {
-				cam_message << "\n\t\t|- Renamed to Camera 3";
-				canonhandle.camera_names[std::to_string(index)] = "3";
-				camera_name[camera] = "Camera 3";
-			}
-			else if (serial_str == cam4) {
-				cam_message << "\n\t\t|- Renamed to Camera 4";
-				canonhandle.camera_names[std::to_string(index)] = "4";
-				camera_name[camera] = "Camera 4";
-			}
-			else if (serial_str == cam5) {
-				cam_message << "\n\t\t|- Renamed to Camera 5";
-				canonhandle.camera_names[std::to_string(index)] = "5";
-				camera_name[camera] = "Camera 5";
-			}else {
-				// If serial number is not matched, set the camera name to it's serial number.
-				cam_message << "\n\t\t|- NO MATCHING SERIAL NUMBER FOUND IN CONFIG (dslr/camera_ids), setting name to serial...";
-				canonhandle.camera_names[std::to_string(index)] = serial_str;
-				camera_name[camera] = "Camera " + serial_str;
-			}
-			
-			DebugUtils::logCanon(cam_message.str());
-			index++;
-		}
-
-	} else {
-		DebugUtils::logCanon("Skipping DSLR setup, (dslr.enable_collection=false in config).");
-	}
-
-	DebugUtils::logWhitespace();
-}
-
-
 /* ----------------------------------------------------------------------------------
 	MAIN FUNCTION
 ---------------------------------------------------------------------------------- */
@@ -1911,9 +1788,8 @@ int main(int argc, char* argv[])
 	DebugUtils::logWhitespace();
 
 	// Initialize Sensors (internally checks the config to decide whether to really connect)
-	// TODO: transition these functions to their respective handler class
-	initializeCanon();
-	initializeRealsense();
+	canonhandle.initialize();
+	rshandle.initialize(json_path);
 
 	// Setup Arduino serial port connection
 	std::string com_port;

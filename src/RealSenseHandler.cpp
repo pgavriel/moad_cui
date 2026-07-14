@@ -1,12 +1,3 @@
-/*
-TODO: complete adding DebugUtils logging to all couts...
-
-- GS 8/26
-
-*/
-
-
-
 #include <iostream>
 #include <thread>
 #include <mutex>
@@ -31,6 +22,7 @@ TODO: complete adding DebugUtils logging to all couts...
 
 #include "RealSenseHandler.h"
 #include "DebugUtils.h"
+#include "ConfigHandler.h"
 
 using std::string;
 using std::cout;
@@ -96,15 +88,22 @@ void RealSenseHandler::shutdown() {
         args: none
         returns: void
 
-    TODO: Clear up some of the console spam on startup via verbose flag?
+    TODO: The config path is redundant, and comes from when the RS calibration was held
+    in a different calibration file. I'll keep this implementation for now instead of using the 
+    config directly, because I might actually want to put the Realsense transforms back in a 
+    separate calibration file later, as it takes up a lot of space in the moad_config.
 */
 void RealSenseHandler::initialize(std::string config_path) {
 
+    ConfigHandler& config = ConfigHandler::getInstance();
+    if (!config.getValue<bool>("realsense.enable_collection")) {
+        DebugUtils::logRS("Skipping RealSense setup, (realsense.enable_collection=false in config).");
+        DebugUtils::logWhitespace();
+        return;
+    }
+    
     DebugUtils::logInfo("Initializing RealSense Cameras...");
-    // std::cout << "\033[1;46m" << "Initializing RealSense Handler..." << "\033[0m\n";
-    // std::cout << "\033[1;46m" << "Searching for rs_info in " + config_path << "\033[0m\n"; 
 
-    // ConfigHandler& config = ConfigHandler::getInstance();
 
     // Get Realsense camera transforms from JSON file
     nlohmann::json realsense_json;
@@ -131,7 +130,6 @@ void RealSenseHandler::initialize(std::string config_path) {
     }
     else {
         DebugUtils::logWarning("No RealSense IDs were found in " + config_path);
-        // std::cout << "Warning, no realsense ids were found in " + config_path << std::endl;
     }
 
     // Quick sanity check: warn if no device-like keys were found (keys starting with "rs")
@@ -144,7 +142,6 @@ void RealSenseHandler::initialize(std::string config_path) {
     }
     if (!found_rs_entry) {
         DebugUtils::logError("Warning: no 'rs*' entries found in realsense JSON. Check file structure: expected realsense.rs_info->{\"rs1\":..., ...} or realsense->{\"rs1\":..., ...}.");
-        // std::cerr << "Warning: no 'rs*' entries found in realsense JSON. Check file structure: expected realsense.rs_info->{\"rs1\":..., ...} or realsense->{\"rs1\":..., ...}.\n";
     }
 
 
@@ -199,50 +196,29 @@ void RealSenseHandler::initialize(std::string config_path) {
         //      than the two camera_names/camera_transforms maps
         camera_info_map[id] = std::make_pair(serial, transform);
     }
-
-    // KEEP THIS IN CASE OF DEBUG EMERGENCY
-    // Pretty-print maps for debugging
-    // std::cout << "\033[1;46m" << "Camera info map contents:" << "\033[0m\n";
-    // for (const auto& kv : camera_info_map) {
-    //     const auto& id = kv.first;
-    //     const auto& serial = kv.second.first;
-    //     const auto& mat = kv.second.second;
-    //     std::cout << "ID: " << id << "  Serial: " << serial << "\n";
-    //     std::cout << "Transform:\n";
-    //     for (int r = 0; r < 4; ++r) {
-    //         for (int c = 0; c < 4; ++c) {
-    //             std::cout << std::setw(10) << std::fixed << std::setprecision(4) << mat(r, c) << " ";
-    //         }
-    //         std::cout << "\n";
-    //     }
-    //     std::cout << "----\n";
-    // }
-
-    // std::cout << "\033[1;46m" << "Serial -> id (camera_names) map:" << "\033[0m\n";
-    // for (const auto& p : camera_names) {
-    //     std::cout << "  \"" << p.first << "\" -> \"" << p.second << "\"\n";
-    // }
-
-    // std::cout << "\033[1;46m" << "camera_transforms (by serial):" << "\033[0m\n";
-    // for (const auto& p : camera_transforms) {
-    //     std::cout << "Serial: " << p.first << "\n";
-    //     const auto& mat = p.second;
-    //     for (int r = 0; r < 4; ++r) {
-    //         for (int c = 0; c < 4; ++c) {
-    //             std::cout << std::setw(10) << std::fixed << std::setprecision(4) << mat(r, c) << " ";
-    //         }
-    //         std::cout << "\n";
-    //     }
-    //     std::cout << "----\n";
-    // }
     
-    // Check if the device is returning frames
+    // Check available devices and start data pipelines for each one
     try {
         device_check();
     }
     catch(const rs2::error & e) {
         std::cerr << "RealSense error calling " << e.get_failed_function() << "(" << e.get_failed_args() << "):\n " << e.what() << endl;
     }
+
+    // After starting all devices, collect test frames from each device.
+    // This MAY not be necessary, but I believe it helps to settle the autoexposure
+    // TODO: Test this ^
+    // Get some frames to settle auto-exposure and verify stream.
+    int test_frames = config.getValue<int>("realsense.init_test_frames");
+    if (test_frames > 0){
+        // DebugUtils::logRS("Getting " + std::to_string(test_frames) + " frames to verify data & settle autoexposure...");
+        get_frames(test_frames); // make 30 later
+        // DebugUtils::logRS("Success.");
+    }else{
+        DebugUtils::logRS("Skipping frame stream test... (Config: realsense/init_test_frames)");
+    }
+    
+    DebugUtils::logWhitespace();
 }
 
 
@@ -254,7 +230,6 @@ int RealSenseHandler::device_check() {
     device_count = devices_list.size();
 
     // check physical devices detected versus devices listed in moad_config.json
-    // std::cout << "\033[1;46m" << device_count << " physical realsense devices detected with ids:\n";
     DebugUtils::logRS("Detected " + std::to_string(device_count) + " RealSense devices.");
     int i = 1;
     std::stringstream msg_stream;
@@ -281,37 +256,6 @@ int RealSenseHandler::device_check() {
         DebugUtils::logRS(msg_stream.str());
         i++;
     }
-
-    // std::cout << "\033[0m\n" << std::endl;
-
-
-
-
-
-    // // temporarily moving the "high resolution" console statement to here to
-    // //  clean up console output
-    // // TODO: verbose flag in console
-    // if (ConfigHandler::getInstance().getValue<bool>("realsense.high_res")) {
-    //     std::cout << "\033[1;46m" << "High resolution mode enabled for all RealSense cameras." << "\033[0m\n";
-    // } else {
-    //     std::cout << "\033[1;46m" << "Low resolution mode enabled for all RealSense cameras." << "\033[0m\n";
-    // }
-
-    // for (auto&& dev : devices_list) {
-    //     // Print Device Information
-    //     bool print_available_streams = false;
-    //     // TODO: add to verbose flagging
-    //     // print_device(dev,print_available_streams);
-
-
-    //     // list all config ones
-
-    //     // list all physical
-
-
-    //     // Start device data streams
-    //     std::string serial = dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
-    // }
 
     return device_count;
 }
@@ -404,25 +348,11 @@ void RealSenseHandler::get_frames(int num_frames, int timeout_ms) {
         for (const auto& pipe : pipeline_map) {
             rs2::frameset fs;
             fs = pipe.second.wait_for_frames(timeout_ms);
-            cout << "- ";
-            // DebugUtils::logRS("- ");
+            cout << "-" << std::flush; // Visual marker for each collected frame
             std::this_thread::sleep_for(std::chrono::milliseconds(25));
         }
-        // if (frameset_map.size() == 0) break;
-        // else cout << "FS Map Size: " << frameset_map.size() << endl;
-        // Iterate through the map
-        // std::unique_lock<std::mutex> lock(framesetMutex);
-        // for (const auto& fs : frameset_map) {
-            // rs2::frameset fs;
-            // fs = pipe.second.wait_for_frames(timeout_ms);
-            // cout << "- ";
-        // }
-        // lock.unlock();
-        // cout << endl;
     }
-
     cout << endl;
-    // cout << " [DONE]\n" << "\033[0m\n";
     DebugUtils::logRS("Finished getting frames from all connected devices.");
 }
 

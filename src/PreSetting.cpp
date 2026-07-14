@@ -12,7 +12,6 @@ EdsError PreSetting(std::vector<EdsCameraRef> const& cameraArray, std::vector<Ed
 	// Specify where to save images
 	saveto = kEdsSaveTo_Host;	//kEdsSaveTo_Host or kEdsSaveTo_Camera or kEdsSaveTo_Both;
 
-	// std::cout << "session opening" << std::endl;
 	DebugUtils::logCanon("Openening Session for each camera (PreSetting.cpp)");
 
 	for (EdsUInt32 i = 0; i < cameraArray.size(); i++)

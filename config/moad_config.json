@@ -9,7 +9,7 @@
         "log": true
     },
     "dslr": {
-        "enable_collection": false,
+        "enable_collection": true,
         "dslr_timeout_sec": 20,
         "camera_ids": {
             "CAMERA_1": "352074022019",
@@ -33,6 +33,7 @@
         "raw_pointcloud": false,
         "align_to_color": false,
         "realsense_timeout_sec": 9,
+        "init_test_frames": 10,
         "filter": {
             "sor": {
                 "apply": true,
