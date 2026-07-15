@@ -104,6 +104,7 @@ bool runFilecountCheck() {
 /* ===========================================================================================
 For reloading the moad_config during runtime. Checks if data collection for DSLR/RS has been enabled,
 and will go through the initialization process if so. 
+TODO: Can probably be refactored into the config handler?
 =========================================================================================== */
 bool reloadConfig() {
 	if (liveview_active) {
@@ -308,6 +309,7 @@ void setObjectName(std::string object_name) {
 	object_info["Pose"] = curr_pose;
 	// write_pose_to_moadfig(curr_pose); // write pose to moadfig
 	config.writePose(curr_pose);
+	create_folder(scan_folder + PATH_SEP + "pose-" + curr_pose);
 
 	// Update the save directories for RealSense and DSLR (folders are created upon data collection)
 	rshandle.save_dir = scan_folder + PATH_SEP + "pose-" + curr_pose + PATH_SEP + "realsense";
@@ -750,13 +752,15 @@ bool getLiveView() {
 
 
 	if (!config.getValue<bool>("dslr.enable_collection")){
-		std::cout << "DSLR option is set to false, Liveview unavaliable" << std::endl;
+		DebugUtils::logError("DSLR option is set to false, Liveview unavaliable.");
 		return false;
 	}
 
 	if (!liveview_active) {
 		// Start Live View configuration
-		DebugUtils::logDebug("Starting Live View...");
+		DebugUtils::logInfo("Starting Live View...");
+		DebugUtils::logTimestamp("Starting live view.");
+
 		// liveview_active = true;
 		liveview_thread_id = std::this_thread::get_id();
 
@@ -778,7 +782,7 @@ bool getLiveView() {
 		DebugUtils::logDebug("Live View Threads Created...");
 	}
 	else {
-		std::cout << "The liveview is active" << std::endl;
+		DebugUtils::logWarning("Live View is already active.");
 	}
 
 	return true;
@@ -788,11 +792,12 @@ bool endLiveView() {
 	ConfigHandler& config = ConfigHandler::getInstance();
 	// Check if the DSLR option is enabled
 	if (!config.getValue<bool>("dslr.enable_collection")) {
-		std::cout << "DSLR option is set to false, Liveview unavaliable" << std::endl;
+		DebugUtils::logError("DSLR option is set to false, Liveview unavaliable.");
 		return false;
 	}
-	DebugUtils::logDebug("Ending Live View...");
-	std::cout << "Ending Liveview..." << std::endl;
+	DebugUtils::logInfo("Ending Live View...");
+	DebugUtils::logTimestamp("Ending live view.");
+
 	// Join all liveview threads
 	liveview_active = false;
 	for (auto& th : liveview_th) {
@@ -805,7 +810,7 @@ bool endLiveView() {
 
 	// Revert camera configuration to normal mode
 	EndEvfCommand(canonhandle.cameraArray, canonhandle.bodyID);
-	std::cout << "Liveview sucessfully closed" << std::endl;
+	DebugUtils::logDebug("Liveview sucessfully closed.");
 	return false;
 }
 
@@ -981,6 +986,7 @@ int main(int argc, char* argv[])
 	DebugUtils::logDebug("Current Turntable Position: " + object_info["Turntable Pos"]);
 	DebugUtils::logDebug("Current Scan Folder: " + scan_folder);
 	DebugUtils::logDebug("Current JSON Path: " + config.getConfigPath());
+	DebugUtils::logTimestamp("Ready.");
 
 	// Main Menu initialization - maps menu options to function calls
 	MenuHandler menu_handler({

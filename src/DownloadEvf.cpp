@@ -218,6 +218,8 @@ EdsError DownloadEvfCommand(EdsCameraRef const& camera, std::string const& camer
                 DebugUtils::logWarning(TAG + "Image not ready, attempt "
                     + std::to_string(attempt) + "/" + std::to_string(MAX_DL_RETRIES)
                     + ", retrying in " + std::to_string(DL_RETRY_DELAY.count()) + "ms...");
+                DebugUtils::logTimestamp(TAG + "Not ready.");
+                
                 std::this_thread::sleep_for(DL_RETRY_DELAY);
             } else {
                 // Any other error is not worth retrying
@@ -230,6 +232,7 @@ EdsError DownloadEvfCommand(EdsCameraRef const& camera, std::string const& camer
         if (err != EDS_ERR_OK) {
             DebugUtils::logError(TAG + "EdsDownloadEvfImage failed after all retries. err="
                 + std::to_string(err) + " — exiting liveview loop.");
+            DebugUtils::logTimestamp("Livestream error.");
             ReleaseStream(stream, evfImage);
             throwCameraException(err, (TAG + "EdsDownloadEvfImage failed").c_str());
         }

@@ -134,7 +134,7 @@ public:
         std::strftime(date_buf, sizeof(date_buf), "%Y-%m-%d", &local_tm);
         std::strftime(time_buf, sizeof(time_buf), "%H:%M:%S", &local_tm);
 
-        log("START", std::string("Debug logging started..."
+        log("START", std::string("Debug log file started..."
             "\n\tlog:  ") + file_path +
             "\n\tdate: " + date_buf +
             "\n\ttime: " + time_buf, 0);
@@ -204,7 +204,11 @@ public:
             ConfigHandler& config = ConfigHandler::getInstance();
             const bool file_enabled = always_log || config.getValue<bool>("debug.log");
             if (file_enabled && log_file.is_open()) {
-                log_file << "[" << tag_buf << "][" << debug_level << "] " << message << std::endl;
+                if (tag_len == 0){ //Whitespace line
+                    log_file << message << std::endl;
+                }else{
+                    log_file << "[" << tag_buf << "][" << debug_level << "] " << message << std::endl;
+                }
             }
         }
 
@@ -222,7 +226,9 @@ public:
             const char* reset = (it != tag_colors.end()) ? LogColor::RESET : "";
             if (tag == "ERROR") {
                 fprintf(stderr, "%s[%s][%d] %s%s\n", color, tag_buf, debug_level, message.c_str(), reset);
-            } else {
+            }else if(tag == ""){ // New line (with optional message text)
+                fprintf(stdout, "%s%s%s\n", color, message.c_str(), reset);
+            }else {
                 fprintf(stdout, "%s[%s][%d] %s%s\n", color, tag_buf, debug_level, message.c_str(), reset);
             }
         }
@@ -299,16 +305,26 @@ public:
         log("WARNING", message, 0, /*always_log=*/true);
     }
 
+    static void logTimestamp(const std::string& message) {
+        auto now      = std::chrono::system_clock::now();
+        std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+        std::tm local_tm;
+        localtime_r(&now_time, &local_tm);
+        char time_buf[16];
+        std::strftime(time_buf, sizeof(time_buf), "[%H:%M:%S]", &local_tm);
+
+        log("TIMESTAMP", std::string(time_buf) + " " + message, 0, /*always_log=*/true);
+    }
+
     static void logSerial(const std::string& message, int v_lvl = 0) {
         log("SERIAL", message, v_lvl);
     }
 
     static void logWhitespace(int n = 1) {
-    std::lock_guard<std::mutex> lock(log_mutex);
-    for (int i = 0; i < n; i++) {
-        fprintf(stdout, "\n");
+        for (int i = 0; i < n; i++) {
+            log("","",0,true);
+        }
     }
-}
 
     // -------------------------------------------------------------------------
     // Timer helpers
