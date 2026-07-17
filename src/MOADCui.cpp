@@ -877,6 +877,25 @@ bool turntablePosition() {
 	return false;
 }
 
+// Sets the scene to be loaded for replication
+bool setSceneToLoad() {
+	ConfigHandler& config = ConfigHandler::getInstance();
+	std::string curr_scene = config.getValue<std::string>("scene_replica.scene_folder");
+	DebugUtils::logDebug("Current Scene Folder: "+curr_scene);
+
+	// Prompt for the new scene to load
+	std::cout << "\n\nEnter scene folder to load: ";
+	std::cin >> curr_scene;
+
+	// Update the turntable position
+	config.writeSceneFolder(curr_scene);
+
+	// Add a success message to the current menu
+	curr_menu->addMessage(MenuMessageStatus::SUCCESS, "Scene updated sucessfully.");
+	
+	return false;
+}
+
 
 // DEFINE SUBMENU OPTIONS =============================================================================
 // Calibration submenu for controlling camera shooting button
@@ -930,7 +949,24 @@ bool TurntableSubMenu(){
 	turntable_handler.initialize(curr_menu);
 	return true;
 }
+// Scene Replica submenu
+bool SceneReplicaSubMenu(){
+	MenuHandler replica_menu_handler({
+		{"1", "Set Scene"},
+		{"2", "Live Scene Setup (Start Live View First)"},
+		{"3", "Generate Annotations"}
+	},{
+		{"1", setSceneToLoad},
+		{"2", run_replica_live_view},
+		{"3", replica_generate_annotations}
+	}, object_info);
 
+	ConfigHandler& config = ConfigHandler::getInstance();
+	std::string curr_scene = config.getValue<std::string>("scene_replica.scene_folder");
+	replica_menu_handler.setTitle("Scene Replica Menu\nCurrent Scene: "+curr_scene);
+	replica_menu_handler.initialize(curr_menu);
+	return true;
+}
 
 /* ----------------------------------------------------------------------------------
 	MAIN FUNCTION
@@ -1001,7 +1037,8 @@ int main(int argc, char* argv[])
 		{"9", "Live View..."},
 		{"p", "Scan from saved state"},
 		{"0", "Reload Config"},
-		{"f", "Run Filecount Check Script"}
+		{"f", "Run Filecount Check Script"},
+		{"s", "Scene Replica Menu"}
 	},
 	{
 		{"1", fullScan},
@@ -1015,7 +1052,8 @@ int main(int argc, char* argv[])
 		{"9", liveViewMenu},
 		{"p", scanFromSaveState}, // TODO: "10" seemed to not work??
 		{"0", reloadConfig},
-		{"f", runFilecountCheck}
+		{"f", runFilecountCheck},
+		{"s", SceneReplicaSubMenu}
 	}, object_info);
 	menu_handler.setTitle("MOAD - CLI Menu");
 	menu_handler.ClearScreen();

@@ -440,7 +440,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--data-root",    default="/home/csrobot/MOAD_DATA",
                         help="Root data directory")
-    parser.add_argument("--object",       default="batch1_001",
+    parser.add_argument("--object",       default="batch1_007",
                         help="Object subfolder name")
     parser.add_argument("--pose",         default="pose-a",
                         help="Pose subfolder name")

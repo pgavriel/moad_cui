@@ -72,3 +72,8 @@ void ConfigHandler::writeDegreeMove(int degree, int current_move) {
     setValue<int>("prev_state.turntable_pos", degree, config_path);
     setValue<int>("prev_state.current_move", current_move, config_path);
 }
+
+void ConfigHandler::writeSceneFolder(const std::string& scene_name) {
+    DebugUtils::logConfig("Updating scene_folder: " + scene_name);
+    setValue<std::string>("scene_replica.scene_folder", scene_name, config_path);
+}

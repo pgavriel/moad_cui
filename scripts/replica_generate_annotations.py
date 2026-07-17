@@ -569,7 +569,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--data-root",   default="/home/csrobot/MOAD_DATA",
                         help="Root data directory")
-    parser.add_argument("--object",      default="batch1_001",
+    parser.add_argument("--object",      default="batch1_007",
                         help="Object subfolder name")
     parser.add_argument("--pose",        default="pose-a",
                         help="Pose subfolder name")
@@ -577,7 +577,7 @@ if __name__ == "__main__":
                         help="Root calibration directory")
     parser.add_argument("--calibration",  default="55mm",
                         help="Folder name of camera calibration to use")
-    parser.add_argument("--model-library", default="/home/csrobot/moad_control/scene_replica_moad/assets/object_sets/moad",
+    parser.add_argument("--model-library", default="/home/csrobot/moad_control/scene_replica_moad/assets/object_sets/moad-atb1",
                         help="Folder containing all models referenced by the scene being loaded")
     
     # Output Options

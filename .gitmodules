@@ -1,0 +1,3 @@
+[submodule "scene_replica_moad"]
+	path = scene_replica_moad
+	url = https://github.com/JohnBrann/scene_replica_moad

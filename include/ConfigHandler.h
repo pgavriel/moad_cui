@@ -31,6 +31,7 @@ public:
     void writeObjectName(const std::string& object_name);
     void writePose(char pose);
     void writeDegreeMove(int degree, int current_move);
+    void writeSceneFolder(const std::string& scene_name);
 
     template <typename T>
     T getValue(const std::string& key) {

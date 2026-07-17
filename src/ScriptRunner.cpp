@@ -7,6 +7,7 @@
 #include "ScriptRunner.h"
 #include "ConfigHandler.h"
 #include "DebugUtils.h"
+#include "MOADGlobals.h"
 
 #include <filesystem>
 #include <sstream>
@@ -44,7 +45,7 @@ void create_obj_info_json(const std::string& output_dir, const std::string& obje
 
     std::stringstream cmd;
     cmd << "python3 "
-        << "scripts/create_object_info.py "
+        << moad_dir + "/scripts/create_object_info.py "
         << object_name << " "
         << "-p " << output_dir << " ";
 
@@ -76,7 +77,7 @@ bool generate_transforms(int degree_inc, int num_moves, char curr_pose) {
 
     std::stringstream cmd;
     cmd << "python3 "
-        << "scripts/transform_generator.py "
+        << moad_dir + "/scripts/transform_generator.py "
         << object_name      << " "
         << "-d " << degree_inc      << " "
         << "-r " << range           << " "
@@ -113,7 +114,7 @@ bool run_filecount_check(const std::string& scan_folder) {
     DebugUtils::logInfo("Running file count checking script...");
 
     std::stringstream cmd;
-    cmd << "python3 scripts/filecount_test.py ";
+    cmd << "python3 " + moad_dir +"/scripts/filecount_test.py ";
 
     if (config.getValue<bool>("filecount_testing.count"))
         cmd << "--count ";
@@ -128,6 +129,108 @@ bool run_filecount_check(const std::string& scan_folder) {
 
     if (config.getValue<bool>("filecount_testing.check_single_object"))
         cmd << "--check_single_object ";
+
+    std::string command = cmd.str();
+    DebugUtils::logInfo("Executing: " + command);
+    system(command.c_str());
+
+    return true;
+}
+
+
+/* -----------------------------------------------------------------------------
+Checks that all expected image frames are accounted for (no missing data).
+Additionally handles the image copying/downscaling/renaming required for NeRF training.
+*/
+bool run_replica_live_view() {
+    ConfigHandler& config = ConfigHandler::getInstance();
+
+    // TODO: Check that there are files in the scene_replica folder
+    
+    DebugUtils::logWhitespace();
+    DebugUtils::logInfo("Running Scene Replica Live View...");
+    if (!liveview_active) {
+        DebugUtils::logWarning("Live View must be active for live alignment. Will use fallback images.");
+    }
+
+    //TODO: Right now this gets the current calibration from the TF generator section
+    std::string calibration   = config.getValue<std::string>("transform_generator.calibration_mode");
+    std::string sr_config     = config.getValue<std::string>("scene_replica.config_file");
+    
+    std::string scene_path = config.getValue<std::string>("scene_replica.scene_root") + "/"
+            + config.getValue<std::string>("scene_replica.scene_folder") + "/" 
+            + config.getValue<std::string>("scene_replica.scene_file");
+    DebugUtils::logDebug("Using scene path from MOAD config: " + scene_path);
+
+    // TODO: Change to take scene from moad_config instead of sr_config
+    std::stringstream cmd;
+    cmd << "python3 "
+        << moad_dir + "/scene_replica_moad/replica_live_viewer.py "
+        << "--liveview-root " << moad_dir << "/live_view_filestream "
+        << "--calib-root " << moad_dir << "/calibration "
+        << "--calibration " << calibration << " "
+        << "--scene-config " << moad_dir << "/scene_replica_moad/config/" << sr_config << " "
+        << "--moad-config " << moad_dir << "/config/moad_config.json "
+        << "--fallback-images-dir " << moad_dir << "/scene_replica_moad/assets/fallback_images/" << calibration << " "
+        << "--scene-file " << scene_path;
+
+    std::string command = cmd.str();
+    DebugUtils::logInfo("Executing: " + command);
+    system(command.c_str());
+
+    return true;
+}
+
+
+bool replica_generate_annotations() {
+    ConfigHandler& config = ConfigHandler::getInstance();
+
+    // TODO: Check that there are files in the scene_replica folder
+    
+    DebugUtils::logWhitespace();
+    DebugUtils::logInfo("Generating Scene Replica Annotations...");
+
+    //TODO: Right now this gets the current calibration from the TF generator section
+    std::string calibration   = config.getValue<std::string>("transform_generator.calibration_mode");
+    std::string sr_config     = config.getValue<std::string>("scene_replica.config_file");
+    
+    std::string scene_path = config.getValue<std::string>("scene_replica.scene_root") + "/"
+            + config.getValue<std::string>("scene_replica.scene_folder") + "/" 
+            + config.getValue<std::string>("scene_replica.scene_file");
+    DebugUtils::logDebug("Using scene path from MOAD config: " + scene_path);
+
+    std::string output_dir = config.getValue<std::string>("output_dir");
+    std::string obj_name = config.getValue<std::string>("object_name");
+    char pose = static_cast<char>(config.getValue<int>("prev_state.current_pose"));
+    std::string pose_folder = "pose-" + std::string(1, pose);
+    DebugUtils::logDebug("Pose Folder: "+pose_folder);
+    DebugUtils::logDebug("Generating Annotations for "+output_dir+"/"+obj_name+"/"+pose_folder);
+    std::string model_library = config.getValue<std::string>("scene_replica.annotations.model_library");
+    
+    // TODO: Change to take scene from moad_config instead of sr_config
+    std::stringstream cmd;
+    cmd << "python3 "
+        << moad_dir + "/scripts/replica_generate_annotations.py "
+        << "--data-root " << output_dir << " "
+        << "--object " << obj_name << " "
+        << "--pose " << pose_folder << " "
+        << "--calib-root " << moad_dir << "/calibration "
+        << "--calibration " << calibration << " "
+        << "--model-library " << model_library << " ";
+        // << "--scene-config " << moad_dir << "/scene_replica_moad/config/" << sr_config << " "
+        // << "--moad-config " << moad_dir << "/config/moad_config.json "
+        // << "--fallback-images-dir " << moad_dir << "/scene_replica_moad/assets/fallback_images/" << calibration << " "
+        // << "--scene-file " << scene_path;
+
+    if (config.getValue<bool>("scene_replica.annotations.pose")){
+        cmd << "--generate-poses ";
+    }
+    if (config.getValue<bool>("scene_replica.annotations.bounding_boxes")){
+        cmd << "--generate-bbs ";
+    }
+    if (config.getValue<bool>("scene_replica.annotations.masks")){
+        cmd << "--generate-masks ";
+    }
 
     std::string command = cmd.str();
     DebugUtils::logInfo("Executing: " + command);

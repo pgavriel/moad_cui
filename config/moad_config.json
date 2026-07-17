@@ -1,6 +1,6 @@
 {
     "output_dir": "/home/csrobot/MOAD_DATA",
-    "object_name": "testing",
+    "object_name": "batch1_007",
     "degree_inc": 5,
     "num_moves": 72,
     "thread_num": 5,
@@ -22,7 +22,7 @@
         "safe_take_picture": false
     },
     "realsense": {
-        "enable_collection": true,
+        "enable_collection": false,
         "high_res": true,
         "collect_pointcloud": true,
         "collect_color": true,
@@ -216,7 +216,7 @@
     "prev_state": {
         "current_move": 72,
         "current_object": "",
-        "current_pose": 98,
+        "current_pose": 97,
         "turntable_pos": 360
     },
     "transform_generator": {
@@ -234,5 +234,17 @@
         "create": true,
         "delay": true,
         "manual_check": false
+    },
+    "scene_replica": {
+        "scene_root": "/home/csrobot/moad_control/moad_cui/scene_replica_moad/assets/scenes",
+        "scene_folder": "batch1_007",
+        "scene_file": "scene_replica.npz",
+        "config_file": "scene_cfg_notag_55mm.json",
+        "annotations": {
+            "model_library": "/home/csrobot/moad_control/scene_replica_moad/assets/object_sets/moad-atb1",
+            "pose": true,
+            "bounding_boxes": false,
+            "masks": false
+        }
     }
 }

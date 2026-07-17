@@ -46,3 +46,16 @@ bool generate_transforms(int degree_inc, int num_moves, char curr_pose);
         false if filecount_testing is disabled in config
 */
 bool run_filecount_check(const std::string& scan_folder);
+
+/* ========================================================================
+    SCENE REPLICA SUB-MODULE
+======================================================================== */
+/*
+Scene Replica Live Viewer Script
+*/
+bool run_replica_live_view();
+bool replica_generate_annotations();
+
+/*
+Scene Viewer Script ?
+*/
