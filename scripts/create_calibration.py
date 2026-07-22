@@ -105,7 +105,7 @@ def parse_scaling_yaml(path: str) -> dict:
     info(f"Scaling loaded:")
     info(f"    d_cloud = {d_cloud}")
     info(f"    d_real  = {d_real}  ({units})")
-    info(f"    scale   = {scale:.8f}  (d_real / d_cloud)")
+    info(f"    scale   = {scale}  (d_real / d_cloud)")
 
     return {
         "d_cloud": d_cloud,
@@ -296,8 +296,8 @@ def main():
     if len(sys.argv) != 3:
         print("Usage: python3 create_calibration.py <output_name> <input_folder>")
         print("\tRunning with defaults...")
-        out_dir = os.path.join(script_dir,"../calibration/test_55")
-        in_dir  = "/home/csrobot/MOAD_DATA/calib-55mm-5-7-26"
+        out_dir = os.path.join(script_dir,"../calibration/55mm_joint")
+        in_dir  = "/home/csrobot/MOAD_DATA/calibration_v4/pose-b/calib-test"
         # sys.exit(1)
     else:
         out_dir = os.path.join(script_dir,"../calibration",sys.argv[1])
@@ -380,56 +380,90 @@ def main():
     section("PARSING COLMAP IMAGES  (images.txt)")
     colmap_images = parse_colmap_images(required_files["images.txt"])
 
-    # ── 5. Build cam_parameters.json ─────────────────────────────────────────
-    section("BUILDING cam_parameters.json")
+    # ── 5. Build output camera parameters ────────────────────────────────────
+    section("BUILDING CAMERA PARAMETERS")
 
-    # --- Intrinsics (from cameras.txt, using first camera as shared intrinsics)
-    # If multiple cameras exist with different intrinsics, all are stored under
-    # "intrinsics_per_camera"; the first camera is also stored as "intrinsics"
-    # for convenience / backwards compatibility.
-    first_cam = next(iter(colmap_cameras.values()))
-    shared_intrinsics = {
-        "fx":           first_cam.get("fx"),
-        "fy":           first_cam.get("fy"),
-        "cx":           first_cam.get("cx"),
-        "cy":           first_cam.get("cy"),
-        "width":        first_cam.get("width"),
-        "height":       first_cam.get("height"),
-        "camera_model": first_cam.get("model"),
-        "distortion":   first_cam.get("distortion", {}),
+    # --- Build a per-camera-id intrinsics lookup from cameras.txt.
+    # When all images share one camera model (DSLR-only calibration) only one
+    # entry exists and behaviour is identical to the original code. When a joint
+    # DSLR + RealSense reconstruction is provided, each sensor type gets its own
+    # intrinsics block looked up by the COLMAP camera_id stored in images.txt.
+    def build_intrinsics_block(cam: dict) -> dict:
+        return {
+            "fx":           cam.get("fx"),
+            "fy":           cam.get("fy"),
+            "cx":           cam.get("cx"),
+            "cy":           cam.get("cy"),
+            "width":        cam.get("width"),
+            "height":       cam.get("height"),
+            "camera_model": cam.get("model"),
+            "distortion":   cam.get("distortion", {}),
+        }
+
+    intrinsics_by_id = {
+        cam_id: build_intrinsics_block(cam)
+        for cam_id, cam in colmap_cameras.items()
     }
-    info(f"Shared intrinsics (from first camera model):")
-    info(f"    fx={shared_intrinsics['fx']:.4f}  fy={shared_intrinsics['fy']:.4f}")
-    info(f"    cx={shared_intrinsics['cx']:.4f}  cy={shared_intrinsics['cy']:.4f}")
-    info(f"    distortion: {shared_intrinsics['distortion']}")
 
-    # --- Per-camera extrinsics (aligned)
-    cameras_out = {}
+    info(f"Intrinsic models loaded: {len(intrinsics_by_id)}")
+    for cam_id, intr in intrinsics_by_id.items():
+        info(f"    camera_id={cam_id}  {intr['width']}x{intr['height']}"
+             f"  fx={intr['fx']:.4f}  model={intr['camera_model']}")
+
+    # --- Detect which camera_id belongs to each sensor type by inspecting the
+    # filename prefix of each image in images.txt:
+    #   DSLR images  : start with "cam"  (e.g. cam1_000_img.jpg)
+    #   RealSense    : start with "rs"   (e.g. rs1_000_img.jpg)
+    # This relies on the naming convention established during collection.
+    dslr_camera_id = None
+    rs_camera_id   = None
+
+    for img_name, img_data in colmap_images.items():
+        basename_lower = os.path.basename(img_name).lower()
+        if basename_lower.startswith("cam") and dslr_camera_id is None:
+            dslr_camera_id = img_data["camera_id"]
+            info(f"DSLR camera_id detected: {dslr_camera_id}  (from {os.path.basename(img_name)})")
+        elif basename_lower.startswith("rs") and rs_camera_id is None:
+            rs_camera_id = img_data["camera_id"]
+            info(f"RealSense camera_id detected: {rs_camera_id}  (from {os.path.basename(img_name)})")
+        if dslr_camera_id is not None and rs_camera_id is not None:
+            break
+
+    if dslr_camera_id is None:
+        warn("No DSLR images (cam* prefix) found in images.txt — cam_parameters.json will not be written")
+    if rs_camera_id is None:
+        info("No RealSense images (rs* prefix) found — realsense_cam_parameters.json will not be written")
+
+    # --- Process all images, splitting into DSLR and RealSense output dicts
+    # based on each image's camera_id. The cam_key is derived from the filename
+    # prefix (e.g. "cam1" or "rs3") so output keys match the naming convention.
+    cameras_dslr = {}
+    cameras_rs   = {}
+
     for img_name, img_data in sorted(colmap_images.items(),
                                      key=lambda x: x[1]["image_id"]):
         c2w_raw = img_data["c2w"]
-        w2c_raw = img_data["w2c"]
 
         # Apply alignment transform to c2w
         c2w_aligned = apply_alignment(c2w_raw, align_tf)
 
-        # Recompute w2c from aligned c2w (invert 4×4 rigid transform)
+        # Recompute w2c from aligned c2w (invert 4x4 rigid transform)
         R_aligned = c2w_aligned[:3, :3]
         t_aligned = c2w_aligned[:3,  3]
         w2c_aligned = np.eye(4)
         w2c_aligned[:3, :3] = R_aligned.T
         w2c_aligned[:3,  3] = -R_aligned.T @ t_aligned
 
-        # Derive a short key like "cam1" from the image name
-        basename   = os.path.basename(img_name)                 # cam1_00001.jpg
-        stem       = os.path.splitext(basename)[0]              # cam1_00001
-        cam_key    = stem.split("_")[0] if "_" in stem else stem # cam1
+        # Derive a short key from the filename prefix: "cam1", "rs3", etc.
+        basename = os.path.basename(img_name)
+        stem     = os.path.splitext(basename)[0]
+        cam_key  = stem.split("_")[0] if "_" in stem else stem
 
-        info(f"  Processing image: {img_name}  →  key='{cam_key}'")
+        info(f"  Processing: {img_name}  →  key='{cam_key}'")
         t = c2w_aligned[:3, 3]
         info(f"    Aligned position: ({t[0]:.3f}, {t[1]:.3f}, {t[2]:.3f})\n")
 
-        cameras_out[cam_key] = {
+        entry = {
             "source_file":  img_name,
             "colmap_im_id": img_data["image_id"],
             "camera_id":    img_data["camera_id"],
@@ -439,52 +473,91 @@ def main():
             },
         }
 
-    info(f" Total cameras in output: {len(cameras_out)}")
+        if img_data["camera_id"] == dslr_camera_id:
+            cameras_dslr[cam_key] = entry
+        elif img_data["camera_id"] == rs_camera_id:
+            cameras_rs[cam_key] = entry
+        else:
+            warn(f"  Unknown camera_id {img_data['camera_id']} for {img_name}, skipping")
 
-    # --- Assemble final JSON
-    output = {
-        "_info": {
+    info(f"DSLR cameras processed    : {len(cameras_dslr)}")
+    info(f"RealSense cameras processed: {len(cameras_rs)}")
+
+    # --- Shared _info block — identical for both output files since alignment
+    # and scale are derived from the same reconstruction.
+    info_block = {
+        "description": (
+            "Consolidated camera parameters with alignment transform applied."
+        ),
+        "extrinsic_convention": (
+            "c2w = camera-to-world (aligned). "
+            "w2c = world-to-camera (aligned)."
+        ),
+        "alignment_tf": align_tf_nested,
+        "scaling": {
             "description": (
-                "Consolidated camera parameters with alignment transform applied."
+                "Scale factor derived from reference measurement. "
+                "Multiply cloud-space distances by 'scale' to obtain real-world distances."
             ),
-            "extrinsic_convention": (
-                "c2w = camera-to-world (aligned). "
-                "w2c = world-to-camera (aligned)."
-            ),
-            "intrinsic_note": "Shared intrinsics apply to all cameras.",
-            "alignment_tf":   align_tf_nested,
-            "scaling": {
-                "description": (
-                    "Scale factor derived from reference measurement. "
-                    "Multiply cloud-space distances by 'scale' to obtain real-world distances."
-                ),
-                "d_cloud": scaling["d_cloud"],
-                "d_real":  scaling["d_real"],
-                "units":   scaling["units"],
-                "scale":   scaling["scale"],
-            },
+            "d_cloud": scaling["d_cloud"],
+            "d_real":  scaling["d_real"],
+            "units":   scaling["units"],
+            "scale":   scaling["scale"],
         },
-        "intrinsics": shared_intrinsics,
-        "cameras":    cameras_out,
     }
 
     # TODO: Create transforms.json output file for NeRF training / transform generation
-    
-    # ── 6. Write output JSON ──────────────────────────────────────────────────
+
+    # ── 6. Write output files ─────────────────────────────────────────────────
     section("WRITING OUTPUT FILES")
 
-    json_path = os.path.join(out_dir, "cam_parameters.json")
-    with open(json_path, "w") as f:
-        json.dump(output, f, indent=2)
-    ok(f"cam_parameters.json written  →  {json_path}")
+    # --- cam_parameters.json (DSLR) — filename unchanged so all existing
+    # downstream consumers (transform_generator, scene_replica, etc.) work
+    # without modification.
+    if cameras_dslr and dslr_camera_id is not None:
+        dslr_output = {
+            "_info": {
+                **info_block,
+                "intrinsic_note": "Shared intrinsics apply to all DSLR cameras.",
+            },
+            "intrinsics": intrinsics_by_id[dslr_camera_id],
+            "cameras":    cameras_dslr,
+        }
+        dslr_path = os.path.join(out_dir, "cam_parameters.json")
+        with open(dslr_path, "w") as f:
+            json.dump(dslr_output, f, indent=2)
+        ok(f"cam_parameters.json written  →  {dslr_path}  ({len(cameras_dslr)} cameras)")
+    else:
+        warn("Skipping cam_parameters.json — no DSLR cameras found")
+
+    # --- realsense_cam_parameters.json — only written when rs* images are
+    # present in the reconstruction. Same format as cam_parameters.json so
+    # any future RealSense-aware consumers can use the same reader code.
+    if cameras_rs and rs_camera_id is not None:
+        rs_output = {
+            "_info": {
+                **info_block,
+                "intrinsic_note": "Shared intrinsics apply to all RealSense cameras.",
+            },
+            "intrinsics": intrinsics_by_id[rs_camera_id],
+            "cameras":    cameras_rs,
+        }
+        rs_path = os.path.join(out_dir, "realsense_cam_parameters.json")
+        with open(rs_path, "w") as f:
+            json.dump(rs_output, f, indent=2)
+        ok(f"realsense_cam_parameters.json written  →  {rs_path}  ({len(cameras_rs)} cameras)")
+    else:
+        info("Skipping realsense_cam_parameters.json — no RealSense cameras found")
 
     # ── 7. Summary ────────────────────────────────────────────────────────────
     section("SUMMARY")
-    info(f"Output folder    : {os.path.abspath(out_dir)}")
-    info(f"Base files folder: {os.path.abspath(base_files_dir)}")
-    info(f"Cameras written  : {len(cameras_out)}")
-    info(f"Scale factor     : {scaling['scale']:.8f}  ({scaling['units']})")
+    info(f"Output folder            : {os.path.abspath(out_dir)}")
+    info(f"Base files folder        : {os.path.abspath(base_files_dir)}")
+    info(f"DSLR cameras written     : {len(cameras_dslr)}")
+    info(f"RealSense cameras written: {len(cameras_rs)}")
+    info(f"Scale factor             : {scaling['scale']:.8f}  ({scaling['units']})")
     print(f"\n  ✓  Done.\n")
+
 
 
 if __name__ == "__main__":

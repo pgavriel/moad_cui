@@ -246,8 +246,8 @@ public:
     // -------------------------------------------------------------------------
 
     // debug_level 0 — general debug noise, shown at any verbosity
-    static void logDebug(const std::string& message) {
-        log("DEBUG", message, 0);
+    static void logDebug(const std::string& message, int v_lvl = 0) {
+        log("DEBUG", message, v_lvl);
     }
 
     // debug_level 1 — threading events, slightly more verbose

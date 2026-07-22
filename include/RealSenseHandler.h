@@ -30,6 +30,8 @@ private:
 
     cv::Mat h;
 
+    float scale_factor = 1.0f;
+
     void print_device(rs2::device dev, bool print_streams=true);
     void process_frames(rs2::pipeline pipe, int degree, int timeout_ms=10000);
     void start_device(std::string serial_number);

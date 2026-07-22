@@ -1004,7 +1004,11 @@ int main(int argc, char* argv[])
 
 	// Initialize Sensors (internally checks the config to decide whether to really connect)
 	canonhandle.initialize();
-	rshandle.initialize(json_path);
+	//OLD:
+	// rshandle.initialize(json_path);
+	//NEW:
+	std::string rs_calib_file = config.getValue<std::string>("realsense.calibration_file");
+	rshandle.initialize(rs_calib_file);
 
 	// Setup Arduino serial port connection
 	std::string com_port;

@@ -84,140 +84,207 @@ void RealSenseHandler::shutdown() {
 
 
 /*
-    Initialize the RealSense Handler
-        args: none
-        returns: void
+    RealSenseHandler::initialize()
+    ─────────────────────────────────────────────────────────────────────────────
+    Initializes the RealSense handler by loading camera identities and extrinsic
+    transforms, then starting a capture pipeline for each physically connected
+    and configured device.
 
-    TODO: The config path is redundant, and comes from when the RS calibration was held
-    in a different calibration file. I'll keep this implementation for now instead of using the 
-    config directly, because I might actually want to put the Realsense transforms back in a 
-    separate calibration file later, as it takes up a lot of space in the moad_config.
+    Data is sourced from two places:
+      1. moad_config.json  ("realsense.camera_ids")
+             Maps rs-id → serial number string.
+             e.g. { "rs1": "215122257111", "rs2": "239222302632", ... }
+
+      2. realsense_cam_parameters.json  (path from "realsense.calibration_file")
+             Contains per-camera extrinsics under "cameras.rsN.extrinsics.c2w".
+             The 4x4 c2w matrix is used as the point-cloud transform for each
+             device. This file is produced by create_calibration.py.
+
+    The two sources are joined on the rs-id key ("rs1", "rs2", ...).
+    On a successful join, camera_names[serial] = id and
+    camera_transforms[serial] = c2w_matrix are populated, which is the same
+    internal representation used by process_frames() and device_check() —
+    so nothing downstream needs to change.
+
+    Fails gracefully at each step, logging a clear message and returning early
+    rather than crashing, so the rest of the application can continue running
+    without RealSense if needed.
+
+    Args:
+        calib_path  path to realsense_cam_parameters.json
 */
-void RealSenseHandler::initialize(std::string config_path) {
+void RealSenseHandler::initialize(std::string calib_path) {
 
     ConfigHandler& config = ConfigHandler::getInstance();
+
     if (!config.getValue<bool>("realsense.enable_collection")) {
-        DebugUtils::logRS("Skipping RealSense setup, (realsense.enable_collection=false in config).");
+        DebugUtils::logRS("Skipping RealSense setup (realsense.enable_collection=false).");
         DebugUtils::logWhitespace();
         return;
     }
-    
+
     DebugUtils::logInfo("Initializing RealSense Cameras...");
 
+    // ── 1. Load serial numbers from moad_config  ─────────────────────────────
+    // "realsense.camera_ids" maps rs-id → serial number string.
+    // We invert this into serial → rs-id for the camera_names map that
+    // process_frames() and device_check() look up by serial.
+    DebugUtils::logRS("Reading serial numbers from moad_config (realsense.camera_ids)...");
 
-    // Get Realsense camera transforms from JSON file
-    nlohmann::json realsense_json;
+    nlohmann::json camera_ids_json;
+    try {
+        camera_ids_json = config.getValue<nlohmann::json>("realsense.camera_ids");
+    } catch (const std::exception& e) {
+        DebugUtils::logError("realsense.camera_ids not found in moad_config: " + std::string(e.what()));
+        DebugUtils::logError("Cannot initialize RealSense without serial number mappings.");
+        return;
+    }
 
-    DebugUtils::logDebug("Loading config to find RS info: " + config_path);
-    std::ifstream realsense_file(config_path);
+    // Build rs-id → serial lookup (used to join with calibration data below)
+    std::map<std::string, std::string> id_to_serial;
+    for (auto it = camera_ids_json.begin(); it != camera_ids_json.end(); ++it) {
+        const std::string& rs_id = it.key();
+        std::string serial = it.value().is_string()
+            ? it.value().get<std::string>()
+            : std::to_string(it.value().get<long long>());
+        id_to_serial[rs_id] = serial;
+        DebugUtils::logRS("  " + rs_id + "  →  serial: " + serial);
+    }
 
-    realsense_json = nlohmann::json::parse(realsense_file);
+    if (id_to_serial.empty()) {
+        DebugUtils::logError("realsense.camera_ids is empty. Cannot initialize RealSense.");
+        return;
+    }
 
-    // If the file wraps the camera entries under a "realsense" object, descend into it.
-    // After this, realsense_json will reference the object that contains "rs1", "rs2", ...
-    // Descend into realsense.rs_info.rs1, rs2 ...
-    if (realsense_json.contains("realsense") && realsense_json["realsense"].is_object()) {
-        auto &rs_root = realsense_json["realsense"];
-        if (rs_root.contains("rs_info") && rs_root["rs_info"].is_object()) {
-            realsense_json = rs_root["rs_info"];
-            DebugUtils::logDebug("RealSense mapping info found in config. (ID: [serial, transform])");
-            // std::cout << "Using nested 'realsense.rs_info' object from JSON.\n";
-        } else {
-            // Fallback to older structure realsense->{ "rs1":..., ... }
-            realsense_json = rs_root;
-            // std::cout << "Using nested 'realsense' object from JSON (no rs_info child).\n";
+    // ── 2. Load calibration file  ─────────────────────────────────────────────
+    // realsense_cam_parameters.json contains per-camera c2w extrinsic matrices
+    // produced by create_calibration.py from the joint COLMAP reconstruction.
+    DebugUtils::logRS("Loading RealSense calibration file: " + calib_path);
+
+    nlohmann::json calib_json;
+    try {
+        std::ifstream calib_file(calib_path);
+        if (!calib_file.is_open()) {
+            DebugUtils::logError("Calibration file not found: " + calib_path);
+            DebugUtils::logError("Check realsense.calibration_file in moad_config.");
+            return;
         }
-    }
-    else {
-        DebugUtils::logWarning("No RealSense IDs were found in " + config_path);
-    }
-
-    // Quick sanity check: warn if no device-like keys were found (keys starting with "rs")
-    bool found_rs_entry = false;
-    for (auto it = realsense_json.begin(); it != realsense_json.end(); ++it) {
-        if (!it.key().empty() && it.key().rfind("rs", 0) == 0) { // starts with "rs"
-            found_rs_entry = true;
-            break;
-        }
-    }
-    if (!found_rs_entry) {
-        DebugUtils::logError("Warning: no 'rs*' entries found in realsense JSON. Check file structure: expected realsense.rs_info->{\"rs1\":..., ...} or realsense->{\"rs1\":..., ...}.");
+        calib_json = nlohmann::json::parse(calib_file);
+    } catch (const std::exception& e) {
+        DebugUtils::logError("Failed to parse calibration file: " + std::string(e.what()));
+        return;
     }
 
+    if (!calib_json.contains("cameras") || !calib_json["cameras"].is_object()) {
+        DebugUtils::logError("Calibration file missing required 'cameras' block: " + calib_path);
+        return;
+    }
 
-    // create map of id -> (serial, transform_matrix)
-    // Example JSON entry expected:
-    // "rs1": {
-    //   "serial": "215122257111",
-    //   "transform_matrix": [[...],[...],[...],[...]]
-    // }
-    std::map<std::string, std::pair<std::string, Eigen::Matrix4f>> camera_info_map;
-    for (auto it = realsense_json.begin(); it != realsense_json.end(); ++it) {
+    const auto& cameras_block = calib_json["cameras"];
 
-        const std::string id = it.key(); // will be "rs1/2/3 ..."
-        const auto &val = it.value(); // used for iterating "serial" and "transform_matrix"
+    // ── 3. Join serial numbers with calibration extrinsics  ───────────────────
+    // For each rs-id in moad_config, look up the matching entry in the
+    // calibration file's "cameras" block and extract the c2w matrix.
+    // Populates camera_names and camera_transforms (both keyed by serial),
+    // which is the internal format the rest of the handler expects.
 
-        // std::cout << "id " << id << std::endl;
+    // DebugUtils::logRS("Joining serial numbers with calibration extrinsics...");
 
-        // read serial, should be string but checks incase not
-        std::string serial;
-        if (val.contains("serial")) {
-            if (val["serial"].is_string()) {
-                serial = val["serial"].get<std::string>();
-            } else if (val["serial"].is_number_integer()) {
-                serial = std::to_string(val["serial"].get<long long>());
-            } else {
-                serial = val["serial"].dump();
-            }
+    // Read scale once before the per-camera loop
+    scale_factor = 1.0f; 
+    try {
+        scale_factor = calib_json["_info"]["scaling"]["scale"].get<float>();
+        DebugUtils::logRS("Calibration scale factor: " + std::to_string(scale_factor));
+    } catch (const std::exception& e) {
+        DebugUtils::logWarning("Could not read scale from calibration file, defaulting to 1.0: "
+                            + std::string(e.what()));
+    }
+
+    int loaded_count = 0;
+    for (const auto& [rs_id, serial] : id_to_serial) {
+
+        // Check this rs-id exists in the calibration file
+        if (!cameras_block.contains(rs_id)) {
+            DebugUtils::logWarning("  " + rs_id + ": not found in calibration file — skipping.");
+            continue;
         }
 
-        // must populate camera_names with serial:id
-        camera_names[serial] = id; 
+        const auto& cam_entry = cameras_block[rs_id];
 
-        // read transform matrix, default to identity
+        // Validate the extrinsics block exists and has the expected structure
+        if (!cam_entry.contains("extrinsics") ||
+            !cam_entry["extrinsics"].contains("c2w")) {
+            DebugUtils::logWarning("  " + rs_id + ": missing extrinsics.c2w — skipping.");
+            continue;
+        }
+
+        // Parse the 4x4 c2w matrix, defaulting to identity on any parse error
         Eigen::Matrix4f transform = Eigen::Matrix4f::Identity();
-        if (val.contains("transform_matrix")) {
-            try {
-                for (int r = 0; r < 4; ++r) {
-                    for (int c = 0; c < 4; ++c) {
-                        transform(r, c) = val["transform_matrix"][r][c].get<float>();
-                    }
-                }
-            } catch (...) {
-                // keep identity on parse error
-            }
+        try {
+            const auto& c2w = cam_entry["extrinsics"]["c2w"];
+            for (int r = 0; r < 4; ++r)
+                for (int c = 0; c < 4; ++c)
+                    transform(r, c) = c2w[r][c].get<float>();
+
+            // Apply scaling - Convert from COLMAP calibration scale translation to metric scale
+            // The data itself is already metric scale directly from the sensor.
+            transform(0, 3) *= scale_factor;
+            transform(1, 3) *= scale_factor;
+            transform(2, 3) *= scale_factor;
+        } catch (const std::exception& e) {
+            DebugUtils::logWarning("  " + rs_id + ": c2w parse error, using identity: "
+                                   + std::string(e.what()));
         }
 
-        // must populate camera_transforms with serial:matrix
+        // Populate the internal maps keyed by serial number
+        camera_names[serial]     = rs_id;
         camera_transforms[serial] = transform;
 
-        // reminder, this map is mainly to consolidate all info together
-        // TODO: definitely swap everything to use subslices of this map rather
-        //      than the two camera_names/camera_transforms maps
-        camera_info_map[id] = std::make_pair(serial, transform);
-    }
-    
-    // Check available devices and start data pipelines for each one
-    try {
-        device_check();
-    }
-    catch(const rs2::error & e) {
-        std::cerr << "RealSense error calling " << e.get_failed_function() << "(" << e.get_failed_args() << "):\n " << e.what() << endl;
+        // std::stringstream tf_msg;
+        // tf_msg << "  " << rs_id << " (serial: " << serial << ") loaded.\n"
+        //        << "    c2w row0: ["
+        //        << transform(0,0) << ", " << transform(0,1) << ", "
+        //        << transform(0,2) << ", " << transform(0,3) << "]";
+        // DebugUtils::logRS(tf_msg.str());
+
+        loaded_count++;
     }
 
-    // After starting all devices, collect test frames from each device.
-    // This MAY not be necessary, but I believe it helps to settle the autoexposure
-    // TODO: Test this ^
-    // Get some frames to settle auto-exposure and verify stream.
-    int test_frames = config.getValue<int>("realsense.init_test_frames");
-    if (test_frames > 0){
-        // DebugUtils::logRS("Getting " + std::to_string(test_frames) + " frames to verify data & settle autoexposure...");
-        get_frames(test_frames); // make 30 later
-        // DebugUtils::logRS("Success.");
-    }else{
-        DebugUtils::logRS("Skipping frame stream test... (Config: realsense/init_test_frames)");
+    if (loaded_count == 0) {
+        DebugUtils::logError("No cameras were successfully loaded. "
+                             "Check that camera_ids in moad_config match entries in "
+                             "the calibration file.");
+        return;
     }
-    
+    DebugUtils::logRS(std::to_string(loaded_count) + " / "
+                      + std::to_string(id_to_serial.size())
+                      + " cameras loaded from calibration.");
+
+    // ── 4. Start device pipelines  ────────────────────────────────────────────
+    // device_check() scans physically connected RS devices and starts a pipeline
+    // for each one whose serial number is in camera_names.
+    try {
+        device_check();
+    } catch (const rs2::error& e) {
+        DebugUtils::logError("RealSense SDK error during device_check: "
+                             + std::string(e.get_failed_function())
+                             + "(" + std::string(e.get_failed_args()) + "): "
+                             + std::string(e.what()));
+    }
+
+    // ── 5. Collect warm-up frames  ────────────────────────────────────────────
+    // A short burst of discarded frames allows auto-exposure to settle before
+    // actual data collection begins. Skipped if init_test_frames is 0.
+    int test_frames = config.getValue<int>("realsense.init_test_frames");
+    if (test_frames > 0) {
+        DebugUtils::logRS("Collecting " + std::to_string(test_frames)
+                          + " warm-up frames to settle auto-exposure...");
+        get_frames(test_frames);
+        DebugUtils::logRS("Warm-up complete.");
+    } else {
+        DebugUtils::logRS("Skipping warm-up frames (realsense.init_test_frames = 0).");
+    }
+
     DebugUtils::logWhitespace();
 }
 
@@ -386,9 +453,9 @@ void RealSenseHandler::get_current_frame(int degree, int timeout_ms, ThreadPool*
         for (const auto& pipe : pipeline_map) {
             // Enqueue a task for each pipe in the thread pool
             pool->enqueueTask([&, pipe, timeout_ms, degree]() {
-                DebugUtils::startTimer();
+                // DebugUtils::startTimer();
                 process_frames(pipe.second, degree, timeout_ms);
-                DebugUtils::stopTimer("Processing frames for " + camera_names[pipe.first] + " at angle " + std::to_string(degree));
+                // DebugUtils::stopTimer("Processing frames for " + camera_names[pipe.first] + " at angle " + std::to_string(degree));
             });
         }
     }
@@ -525,7 +592,7 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
     // Check if collecting pointclouds is enabled
     if (config.getValue<bool>("realsense.collect_pointcloud")) {
         // [DEUG] Start Timer for pointcloud creation
-        DebugUtils::startTimer();
+        // DebugUtils::startTimer();
         // Create PCL point cloud
         pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
         pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr normal_cloud(new pcl::PointCloud<pcl::PointXYZRGBNormal>);
@@ -569,25 +636,35 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
         // [DEBUG] Stop Timer for pointcloud creation
         std::stringstream message;
         message << "[" << degree << "]" << camera_names[serial_number] << " PointCloud Created";
-        DebugUtils::stopTimer(message.str());
+        DebugUtils::logDebug(message.str(),3);
+        // DebugUtils::stopTimer(message.str());
 
         // Check for raw pointcloud collection, if enabled, skip the rest of the processing
         if (!config.getValue<bool>("realsense.raw_pointcloud")) {
-            //Apply appropriate pointcloud transform
+            // Apply appropriate pointcloud transforms
             pcl::transformPointCloud(*cloud, *cloud, camera_transforms[serial_number]);
             pcl::transformPointCloud(*cloud, *cloud, rot_matrix);
-            // pcl::transformPointCloud(*normal_cloud, *normal_cloud, camera_transforms[serial_number]);
-            // pcl::transformPointCloud(*normal_cloud, *normal_cloud, rot_matrix);
+            
+            // Camera origin necessary for normal estimation #TODO: Ensure this works with new transform code
             origin = camera_transforms[serial_number] * origin;
             origin = rot_matrix * origin;
+
             //Apply passthrough filters to remove background
             pcl::PassThrough<pcl::PointXYZRGB> pass;
             float fmin, fmax;
 
+            if (config.getValue<bool>("realsense.filter.xpass.apply") || 
+                config.getValue<bool>("realsense.filter.ypass.apply") || 
+                config.getValue<bool>("realsense.filter.zpass.apply")){
+                message.str("");
+                message << "[" << degree << "]" << camera_names[serial_number] << " entering crop block.";
+                DebugUtils::logDebug(message.str(),3);
+            }
+            
             // Check if xpass is enabled
             if (config.getValue<bool>("realsense.filter.xpass.apply")) {
                 // [DEBUG] Start Timer for x-pass filter
-                DebugUtils::startTimer();
+                // DebugUtils::startTimer();
                 
                 // Get the min and max values for the x-pass filter
                 fmin = config.getValue<float>("realsense.filter.xpass.min");
@@ -604,13 +681,13 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
                 // [DEBUG] Stop Timer for x-pass filter
                 std::stringstream x_pass_message;
                 x_pass_message << "[" << degree << "]" << camera_names[serial_number] << " X-pass Filter";
-                DebugUtils::stopTimer(x_pass_message.str());
+                // DebugUtils::stopTimer(x_pass_message.str());
             }
 
             // Check if ypass is enabled
             if (config.getValue<bool>("realsense.filter.ypass.apply")) {
                 // [DEBUG] Start Timer for y-pass filter
-                DebugUtils::startTimer();
+                // DebugUtils::startTimer();
                 
                 // Get the min and max values for the y-pass filter
                 fmin = config.getValue<float>("realsense.filter.ypass.min");
@@ -627,13 +704,13 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
                 // [DEBUG] Stop Timer for y-pass filter
                 std::stringstream y_pass_message;
                 y_pass_message << "[" << degree << "]" << camera_names[serial_number] << " Y-pass Filter";
-                DebugUtils::stopTimer(y_pass_message.str());
+                // DebugUtils::stopTimer(y_pass_message.str());
             }
 
             // Check if zpass is enabled
             if (config.getValue<bool>("realsense.filter.zpass.apply")) {
                 // [DEBUG] Start Timer for z-pass filter
-                DebugUtils::startTimer();
+                // DebugUtils::startTimer();
                 
                 // Get the min and max values for the z-pass filter
                 fmin = config.getValue<float>("realsense.filter.zpass.min");
@@ -650,13 +727,16 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
                 // [DEBUG] Stop Timer for z-pass filter
                 std::stringstream z_pass_message;
                 z_pass_message << "[" << degree << "]" << camera_names[serial_number] << " Z-pass Filter";
-                DebugUtils::stopTimer(z_pass_message.str());
+                // DebugUtils::stopTimer(z_pass_message.str());
             }
             
             // Check if statistical outlier removal (SOR) is enabled
             if (config.getValue<bool>("realsense.filter.sor.apply")) {
                 // [DEBUG] Start Timer for SOR filter
-                DebugUtils::startTimer();
+                // DebugUtils::startTimer();
+                message.str("");
+                message << "[" << degree << "]" << camera_names[serial_number] << " entering SOR block.";
+                DebugUtils::logDebug(message.str(),3);
 
                 // Create a StatisticalOutlierRemoval filter
                 pcl::StatisticalOutlierRemoval<pcl::PointXYZRGB> sor(true);
@@ -676,13 +756,16 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
                 // [DEBUG] Stop Timer for SOR filter
                 std::stringstream sor_message;
                 sor_message << "[" << degree << "]" << camera_names[serial_number] << " SOR Filter";
-                DebugUtils::stopTimer(sor_message.str());
+                // DebugUtils::stopTimer(sor_message.str());
             }
 
             // Check if voxel grid filter is enabled
             if (config.getValue<bool>("realsense.filter.voxel.apply")) {
                 // [DEBUG] Start Timer for voxel grid filter
-                DebugUtils::startTimer();
+                // DebugUtils::startTimer();
+                message.str("");
+                message << "[" << degree << "]" << camera_names[serial_number] << " entering Voxel block.";
+                DebugUtils::logDebug(message.str(),3);
 
                 // Create a VoxelGrid filter
                 pcl::VoxelGrid<pcl::PointXYZRGB> voxel_grid_filter;
@@ -700,14 +783,17 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
                 // [DEBUG] Stop Timer for voxel grid filter
                 std::stringstream voxel_message;
                 voxel_message << "[" << degree << "]" << camera_names[serial_number] << " Voxel Filter";
-                DebugUtils::stopTimer(voxel_message.str());
+                // DebugUtils::stopTimer(voxel_message.str());
             }
         }
 
         // Check if computing normals is enabled
         if (config.getValue<bool>("realsense.compute_normals")) {
             // [DEBUG] Start Timer for normals computation
-            DebugUtils::startTimer();
+            // DebugUtils::startTimer();
+            message.str("");
+            message << "[" << degree << "]" << camera_names[serial_number] << " entering Normals block.";
+            DebugUtils::logDebug(message.str(),3);
 
             // Create a pcl::PointCloud<pcl::Normal> to hold the normals
             pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
@@ -731,7 +817,7 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
             // [DEBUG] Stop Timer for normals computation
             std::stringstream normals_message;
             normals_message << "[" << degree << "]" << camera_names[serial_number] << " Normals Computation";
-            DebugUtils::stopTimer(normals_message.str());
+            // DebugUtils::stopTimer(normals_message.str());
         }
         
         // Generate pointcloud name and save
@@ -746,6 +832,9 @@ void RealSenseHandler::process_frames(rs2::pipeline pipe, int degree, int timeou
         std::locale::global(std::locale("C"));
 
         // Check if normals are computed to save the appropriate point cloud
+        message.str("");
+        message << "[" << degree << "]" << camera_names[serial_number] << " entering save block.";
+        DebugUtils::logDebug(message.str(),3);
         if (!config.getValue<bool>("realsense.compute_normals")) {
             // Save the point cloud without normals as binary PLY
             pcl::io::savePLYFile(out_file.str(), *cloud, true);
