@@ -81,6 +81,7 @@ import glob
 import json
 import argparse
 import itertools
+import time
 import numpy as np
 import pybullet as p
 import cv2
@@ -380,27 +381,209 @@ FRAME_ITER_REGISTRY = {
 # Object pose extraction
 # ---------------------------------------------------------------------------
 
-# Module-level cache: populated once per object model per run.
-# Keyed by body_name; value is the [sx, sy, sz] full extents in metres.
-_size_cache: dict = {}
+# Module-level caches: populated once per object model per run.
+# _size_cache   : body_name → [sx, sy, sz] full extents in metres
+# _vertex_cache : body_name → (N,3) float64 vertices in metres (scaled by mesh_scale)
+_size_cache:   dict = {}
+_vertex_cache: dict = {}
 
 
-def _parse_obj_vertices(obj_path: str) -> np.ndarray:
-    """Extract vertex positions from a .obj file. Returns (N, 3) float64 array."""
+def _parse_obj_vertices(obj_path: str) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Extract vertex positions and triangle face indices from a .obj file.
+    Faces are triangulated — quads and n-gons are fan-triangulated from
+    vertex 0 of each face.
+
+    Returns:
+        verts : (N, 3) float64 vertex positions
+        faces : (M, 3) int32 zero-based triangle indices
+    """
     verts = []
+    faces = []
     with open(obj_path, "r") as f:
         for line in f:
             if line.startswith("v "):
                 parts = line.split()
                 verts.append([float(parts[1]), float(parts[2]), float(parts[3])])
+            elif line.startswith("f "):
+                # OBJ indices are 1-based; entries may be "v/vt/vn" format
+                parts   = line.split()[1:]
+                indices = [int(p.split("/")[0]) - 1 for p in parts]
+                # Fan triangulate: (0,1,2), (0,2,3), (0,3,4) ...
+                for i in range(1, len(indices) - 1):
+                    faces.append([indices[0], indices[i], indices[i + 1]])
     if not verts:
         raise ValueError(f"No vertices found in: {obj_path}")
-    return np.array(verts, dtype=np.float64)
+    return np.array(verts, dtype=np.float64), np.array(faces, dtype=np.int32)
+
+
+def _bbox_from_mask(mask: np.ndarray) -> list[int] | None:
+    """
+    Return [x, y, width, height] (top-left origin, BOP convention) for the
+    bounding box of all non-zero pixels in `mask`, or None if the mask is empty.
+    """
+    rows = np.any(mask, axis=1)
+    cols = np.any(mask, axis=0)
+    if not rows.any():
+        return None
+    row_indices = np.where(rows)[0]
+    col_indices = np.where(cols)[0]
+    rmin, rmax  = int(row_indices[0]),  int(row_indices[-1])
+    cmin, cmax  = int(col_indices[0]),  int(col_indices[-1])
+    return [cmin, rmin, cmax - cmin + 1, rmax - rmin + 1]
+
+
+def compute_visibility_from_seg(
+    seg:      np.ndarray,
+    body_ids: list[int],
+    H:        int,
+    W:        int,
+) -> dict[int, dict]:
+    """
+    Extract visible pixel counts and visible bounding boxes for all objects
+    in a single pass over the PyBullet segmentation image.
+
+    PyBullet's segmentation image has each pixel set to the body_id of the
+    object visible at that pixel, or -1 for background. This is the cheapest
+    possible source of per-object visibility — no extra renders needed.
+
+    Args:
+        seg      : (H, W) int32 segmentation image from PyBullet
+        body_ids : list of body_ids to compute visibility for
+        H, W     : image dimensions
+
+    Returns:
+        dict keyed by body_id, each value:
+            {
+                "px_count_visib": int,
+                "bbox_visib":     [x, y, w, h] or None
+            }
+    """
+    result = {}
+    for body_id in body_ids:
+        mask           = (seg == body_id)
+        px_count_visib = int(mask.sum())
+        bbox_visib     = _bbox_from_mask(mask)
+        result[body_id] = {
+            "px_count_visib": px_count_visib,
+            "bbox_visib":     bbox_visib,
+        }
+    return result
+
+
+def compute_full_silhouette(
+    body_name:  str,
+    R_obj_cam:  np.ndarray,
+    t_obj_cam:  np.ndarray,
+    cam_K:      np.ndarray,
+    H:          int,
+    W:          int,
+    debug_masks: bool = False,
+) -> dict:
+    """
+    Compute the full object silhouette (including occluded parts) by rasterising
+    the projected mesh triangles. More accurate than a convex hull for objects
+    with concave geometry (gears, connectors, etc.).
+
+    For each triangle in the mesh, all three vertices are projected through the
+    camera. Triangles with any vertex behind the camera are skipped. The
+    remaining triangles are filled with cv2.fillConvexPoly (each triangle is
+    trivially convex), building up the complete silhouette mask.
+
+    Args:
+        body_name   : object name (used to look up _vertex_cache)
+        R_obj_cam   : (3,3) object-to-camera rotation
+        t_obj_cam   : (3,)  object-to-camera translation
+        cam_K       : (3,3) camera intrinsic matrix (at render resolution)
+        H, W        : image dimensions
+        debug_masks : if True, show the full silhouette mask in a CV window
+
+    Returns:
+        {
+            "px_count_all" : int,
+            "bbox_obj"     : [x, y, w, h] or None,
+            "full_mask"    : (H,W) uint8 — included when debug_masks=True, else None
+        }
+    """
+    cached = _vertex_cache.get(body_name)
+    if cached is None:
+        return {"px_count_all": 0, "bbox_obj": None, "full_mask": None}
+
+    verts_obj, faces = cached
+    if len(verts_obj) == 0:
+        return {"px_count_all": 0, "bbox_obj": None, "full_mask": None}
+
+    # Project all vertices to image plane in one batched operation
+    verts_cam = (R_obj_cam @ verts_obj.T).T + t_obj_cam     # (N, 3) camera space
+    valid     = verts_cam[:, 2] > 0                          # in-front mask
+
+    px_h = np.zeros((len(verts_obj), 3), dtype=np.float64)
+    if valid.any():
+        px_h[valid] = (cam_K @ verts_cam[valid].T).T
+
+    px_all = np.zeros((len(verts_obj), 2), dtype=np.float32)
+
+    # COUNT PROJECTED PIXELS WHICH ARE OUT OF FRAME INTO THE TOTAL
+    px_all[valid, 0] = px_h[valid, 0] / px_h[valid, 2]   # no clip
+    px_all[valid, 1] = px_h[valid, 1] / px_h[valid, 2]   # no clip
+
+    # Determine how far vertices extend beyond the image
+    x_min = int(np.floor(px_all[valid, 0].min())) if valid.any() else 0
+    y_min = int(np.floor(px_all[valid, 1].min())) if valid.any() else 0
+    x_max = int(np.ceil( px_all[valid, 0].max())) if valid.any() else W
+    y_max = int(np.ceil( px_all[valid, 1].max())) if valid.any() else H
+
+    # Pad the canvas to cover out-of-frame extent
+    pad_left  = max(0, -x_min)
+    pad_top   = max(0, -y_min)
+    pad_right  = max(0, x_max - (W - 1))
+    pad_bottom = max(0, y_max - (H - 1))
+
+    canvas_W = W + pad_left + pad_right
+    canvas_H = H + pad_top  + pad_bottom
+
+    # Offset all projected coordinates into the padded canvas
+    px_canvas = px_all.copy()
+    px_canvas[:, 0] += pad_left
+    px_canvas[:, 1] += pad_top
+
+    # Rasterise into the padded canvas
+    mask_full = np.zeros((canvas_H, canvas_W), dtype=np.uint8)
+    if len(faces) > 0:
+        v0, v1, v2  = faces[:, 0], faces[:, 1], faces[:, 2]
+        tri_valid   = valid[v0] & valid[v1] & valid[v2]
+        for tri in faces[tri_valid]:
+            pts = px_canvas[tri].astype(np.int32)
+            cv2.fillConvexPoly(mask_full, pts, 1)
+
+    px_count_all = int(mask_full.sum())   # true total including out-of-frame
+
+    # For bbox_obj, crop back to image region and use only in-frame pixels
+    mask_inframe = mask_full[pad_top:pad_top + H, pad_left:pad_left + W]
+    bbox_obj = _bbox_from_mask(mask_inframe)
+
+    # Optional: display the silhouette mask for debugging
+    if debug_masks:
+        display = np.zeros((H, W, 3), dtype=np.uint8)
+        display[:, :, 1] = mask_inframe * 255   # green channel = full silhouette
+        cv2.imshow(f"Full silhouette - {body_name}", display)
+        cv2.waitKey(0)
+
+    return {
+        "px_count_all": px_count_all,
+        "bbox_obj":     bbox_obj,
+        "full_mask":    mask_inframe if debug_masks else None,
+    }
 
 
 def get_object_poses_in_camera_frame(
-    R_cw_cv: np.ndarray,
-    t_cw_cv: np.ndarray,
+    R_cw_cv:     np.ndarray,
+    t_cw_cv:     np.ndarray,
+    seg:         np.ndarray | None = None,
+    cam_K:       np.ndarray | None = None,
+    H:           int = 0,
+    W:           int = 0,
+    debug_masks: bool = False,
 ) -> list[dict]:
     """
     Query every named body from PyBullet, transform its pose into the OpenCV
@@ -410,47 +593,115 @@ def get_object_poses_in_camera_frame(
         T_obj_cam = T_cw @ T_obj_world
 
     Object extents are read from the visual mesh via getVisualShapeData(),
-    parsed once and cached in _size_cache.
+    parsed once and cached in _size_cache / _vertex_cache.
+
+    When `seg`, `cam_K`, `H`, and `W` are provided, the following additional
+    fields are computed per object at negligible extra cost:
+        - px_count_visib / bbox_visib  : from the segmentation image (single pass)
+        - px_count_all   / bbox_obj    : from mesh vertex projection (no extra render)
+        - visib_fract                  : px_count_visib / px_count_all
 
     Args:
         R_cw_cv : (3,3) world-to-camera rotation  (OpenCV)
         t_cw_cv : (3,)  world-to-camera translation
+        seg     : (H,W) int32 PyBullet segmentation image, or None to skip
+        cam_K   : (3,3) camera intrinsic matrix at render resolution, or None
+        H, W    : render image dimensions
 
     Returns:
-        List of dicts with keys: object_name, body_id, R, t, size
+        List of dicts with keys: object_name, body_id, R, t, size,
+        and optionally: px_count_all, px_count_visib, visib_fract,
+                        bbox_obj, bbox_visib
     """
-    T_cw = Rt_to_T(R_cw_cv, t_cw_cv)
+    T_cw      = Rt_to_T(R_cw_cv, t_cw_cv)
+    compute_vis = (seg is not None and cam_K is not None and H > 0 and W > 0)
 
-    annotations = []
+    # Collect all named bodies first so we can do the seg pass in one shot
+    named_bodies = []
     for i in range(p.getNumBodies()):
         body_id   = p.getBodyUniqueId(i)
         body_name = p.getBodyInfo(body_id)[1].decode("utf-8")
         if body_name == "":
-            continue  # skip visual-only markers (circles, bars, etc.)
+            continue  # skip visual-only markers
 
-        pos_w, quat_w = p.getBasePositionAndOrientation(body_id)
-        R_mat     = np.array(p.getMatrixFromQuaternion(quat_w)).reshape(3, 3)
-        T_obj_w   = Rt_to_T(R_mat, np.array(pos_w))
-        T_obj_cam = T_cw @ T_obj_w
-
-        # Resolve object extents from visual mesh (cached after first access)
+        # Populate mesh caches on first encounter
         if body_name not in _size_cache:
             visual_shapes = p.getVisualShapeData(body_id)
             shape      = visual_shapes[0]
             mesh_path  = shape[4].decode("utf-8")
             mesh_scale = np.array(shape[3])
-            verts      = _parse_obj_vertices(mesh_path)
-            verts     *= mesh_scale
-            _size_cache[body_name] = (verts.max(axis=0) - verts.min(axis=0)).tolist()
-            print(f"  [SIZE CACHE] {body_name}: {_size_cache[body_name]}")
+            verts, faces = _parse_obj_vertices(mesh_path)
+            verts       *= mesh_scale
+            _size_cache[body_name]   = (verts.max(axis=0) - verts.min(axis=0)).tolist()
+            _vertex_cache[body_name] = (verts, faces)   # (N,3) verts + (M,3) face indices
+            print(f"  [CACHE] {body_name}: size={[f'{v:.4f}' for v in _size_cache[body_name]]}"
+                  f"  verts={len(verts)}  faces={len(faces)}")
 
-        annotations.append({
+        named_bodies.append((body_id, body_name))
+
+    # Single-pass segmentation visibility for all objects at once
+    vis_data = {}
+    if compute_vis:
+        body_ids = [bid for bid, _ in named_bodies]
+        vis_data = compute_visibility_from_seg(seg, body_ids, H, W)
+
+    # Build annotation list
+    annotations = []
+    for body_id, body_name in named_bodies:
+        pos_w, quat_w = p.getBasePositionAndOrientation(body_id)
+        R_mat     = np.array(p.getMatrixFromQuaternion(quat_w)).reshape(3, 3)
+        T_obj_w   = Rt_to_T(R_mat, np.array(pos_w))
+        T_obj_cam = T_cw @ T_obj_w
+
+        R_obj_cam = T_obj_cam[:3, :3]
+        t_obj_cam = T_obj_cam[:3,  3]
+
+        ann = {
             "object_name": body_name,
             "body_id":     body_id,
-            "R":           T_obj_cam[:3, :3].tolist(),
-            "t":           T_obj_cam[:3,  3].tolist(),
+            "R":           R_obj_cam.tolist(),
+            "t":           t_obj_cam.tolist(),
             "size":        _size_cache[body_name],
-        })
+        }
+
+        if compute_vis:
+            # Visible fields from segmentation (free — already computed above)
+            vd = vis_data.get(body_id, {})
+            px_visib = vd.get("px_count_visib", 0)
+            bbox_vis = vd.get("bbox_visib", None)
+
+            # Full silhouette from mesh triangle rasterisation (no extra render)
+            sil = compute_full_silhouette(
+                body_name, R_obj_cam, t_obj_cam, cam_K, H, W,
+                debug_masks=debug_masks,
+            )
+            px_all   = sil["px_count_all"]
+            bbox_obj = sil["bbox_obj"]
+
+            visib_fract = (px_visib / px_all) if px_all > 0 else 0.0
+
+            # Optionally show the visible seg mask alongside the full silhouette
+            if debug_masks:
+                vis_mask = (seg == body_id).astype(np.uint8)
+                display  = np.zeros((H, W, 3), dtype=np.uint8)
+                display[:, :, 1] = sil["full_mask"] * 255 if sil["full_mask"] is not None else 0
+                display[:, :, 2] = vis_mask * 255
+                # Result: green = full silhouette only, yellow = visible (both channels)
+                cv2.imshow(f"Visibility - {body_name}-{body_id}", display)
+                cv2.waitKey(1)
+                print(f"  [DEBUG] {body_name}: "
+                      f"px_all={px_all}  px_visib={px_visib}  "
+                      f"visib_fract={visib_fract:.3f}")
+
+            ann.update({
+                "px_count_all":   px_all,
+                "px_count_visib": px_visib,
+                "visib_fract":    round(visib_fract, 6),
+                "bbox_obj":       bbox_obj,
+                "bbox_visib":     bbox_vis,
+            })
+
+        annotations.append(ann)
 
     return annotations
 
@@ -469,6 +720,7 @@ def generate_pose_data(
     frame_iter,
     output_subdir: str,
     visualize:     bool = False,
+    debug_masks:   bool = False,
 ) -> int:
     """
     Sensor-agnostic annotation engine.
@@ -508,38 +760,71 @@ def generate_pose_data(
 
     global_offset = np.asarray(scene_cfg["CALIBRATION_OFFSET"], dtype=np.float64)
 
-    # ── Resolve render resolution (visualize only) ────────────────────────────
-    if visualize:
-        # Peek at the first frame to determine actual image resolution,
-        # then re-inject it so it still gets annotated.
-        try:
-            first = next(frame_iter)
-        except StopIteration:
-            print("  [WARNING] frame_iter is empty — no annotations generated.")
-            return 0
+    # ── Resolve render resolution ─────────────────────────────────────────────
+    # Always peek at the first frame to determine actual image resolution so
+    # intrinsics are correctly scaled for visibility computation regardless of
+    # whether visualize is enabled.
+    try:
+        first = next(frame_iter)
+    except StopIteration:
+        print("  [WARNING] frame_iter is empty — no annotations generated.")
+        return 0
 
-        first_img_path = first[0]
-        ref_frame = cv2.imread(first_img_path)
-        if ref_frame is None:
-            raise RuntimeError(f"Cannot read reference frame: {first_img_path}")
+    ref_frame = cv2.imread(first[0])
+    if ref_frame is None:
+        raise RuntimeError(f"Cannot read reference frame: {first[0]}")
 
-        scaled_intr = check_and_scale_intrinsics(intrinsics, ref_frame)
-        if scaled_intr is not intrinsics:
-            # Resolution differs — update scene replica projection
-            scene_replica.cam_K = build_cam_K(scaled_intr)
-            scene_replica.W     = scaled_intr["width"]
-            scene_replica.H     = scaled_intr["height"]
-            scene_replica._compute_projection_matrix()
-            print(f"  Render resolution: {scene_replica.W}×{scene_replica.H}")
+    scaled_intr = check_and_scale_intrinsics(intrinsics, ref_frame)
+    if scaled_intr is not intrinsics:
+        scene_replica.cam_K = build_cam_K(scaled_intr)
+        scene_replica.W     = scaled_intr["width"]
+        scene_replica.H     = scaled_intr["height"]
+        scene_replica._compute_projection_matrix()
+        print(f"  Render resolution: {scene_replica.W}×{scene_replica.H}")
 
-        # Re-inject the first frame
-        frame_iter = itertools.chain([first], frame_iter)
+    frame_iter = itertools.chain([first], frame_iter)
+
+    render_W = scene_replica.W
+    render_H = scene_replica.H
+    render_K = scene_replica.cam_K
+
+    # ── Visual marker handling ────────────────────────────────────────────────
+    # Collect all unnamed bodies (visual markers — circles, X indicators, etc.)
+    # and save their original colours. These bodies appear in the segmentation
+    # image and would incorrectly reduce visible pixel counts for real objects.
+    #
+    # Strategy depends on the visualize flag:
+    #   visualize=False → hide markers permanently now; single render per frame,
+    #                     zero per-frame overhead.
+    #   visualize=True  → hide markers only during the computation render, then
+    #                     restore them for the display render each frame.
+    marker_ids       = []
+    marker_originals = {}
+    for i in range(p.getNumBodies()):
+        bid  = p.getBodyUniqueId(i)
+        name = p.getBodyInfo(bid)[1].decode("utf-8")
+        if name == "":
+            marker_ids.append(bid)
+            visual_data = p.getVisualShapeData(bid)
+            marker_originals[bid] = (
+                list(visual_data[0][7]) if visual_data else [1, 0, 0, 1]
+            )
+
+    if not visualize and marker_ids:
+        # Hide permanently — no restore needed, no per-frame cost
+        for bid in marker_ids:
+            p.changeVisualShapeColor(bid, -1, rgbaColor=[0, 0, 0, 0])
+        print(f"  Visual markers hidden ({len(marker_ids)}) — visualize=False")
 
     # ── Main annotation loop ──────────────────────────────────────────────────
-    frame_count = 0
+    frame_count   = 0
+    total_start   = time.perf_counter()
+    frame_times   = []
+
     for img_path, cam_key, turntable_deg in frame_iter:
-        filename   = os.path.basename(img_path)
-        image_stem = os.path.splitext(filename)[0]
+        frame_start = time.perf_counter()
+        filename    = os.path.basename(img_path)
+        image_stem  = os.path.splitext(filename)[0]
 
         R_cw_cv, t_cw_cv = get_camera_pose_from_extrinsics(
             cam_key, cameras, turntable_deg, global_offset, scale
@@ -547,12 +832,25 @@ def generate_pose_data(
         scene_replica.update_camera(R_cw_cv, t_cw_cv)
 
         if visualize:
+            # Render 1 — full scene including markers, for display overlay
             rgba = scene_replica.render_scene_image()
-            bgr  = cv2.imread(img_path)
+
+            # Hide markers, render again for clean segmentation
+            for bid in marker_ids:
+                p.changeVisualShapeColor(bid, -1, rgbaColor=[0, 0, 0, 0])
+            scene_replica.render_scene_image()
+            seg = scene_replica.seg   # clean segmentation, no marker pixels
+
+            # Restore markers for next frame's display render
+            for bid in marker_ids:
+                p.changeVisualShapeColor(bid, -1, rgbaColor=marker_originals[bid])
+
+            # Show display overlay
+            bgr = cv2.imread(img_path)
             if bgr is not None:
-                rh, rw = scene_replica.H, scene_replica.W
-                if bgr.shape[1] != rw or bgr.shape[0] != rh:
-                    bgr = cv2.resize(bgr, (rw, rh), interpolation=cv2.INTER_LINEAR)
+                if bgr.shape[1] != render_W or bgr.shape[0] != render_H:
+                    bgr = cv2.resize(bgr, (render_W, render_H),
+                                     interpolation=cv2.INTER_LINEAR)
                 bg    = bgr.astype(np.float32)
                 ov    = rgba[:, :, [2, 1, 0, 3]].astype(np.float32)
                 alpha = ov[:, :, 3:4] / 255.0
@@ -561,13 +859,27 @@ def generate_pose_data(
                 ).astype(np.uint8)
                 cv2.imshow("Annotation Verify", comp)
                 cv2.waitKey(1)
+        else:
+            # Markers already permanently hidden — single render, clean seg
+            rgba = scene_replica.render_scene_image()
+            seg  = scene_replica.seg
 
-        objects = get_object_poses_in_camera_frame(R_cw_cv, t_cw_cv)
+        objects = get_object_poses_in_camera_frame(
+            R_cw_cv, t_cw_cv,
+            seg         = seg,
+            cam_K       = render_K,
+            H           = render_H,
+            W           = render_W,
+            debug_masks = debug_masks,
+        )
 
+        # ── 1. Image dimensions included for self-contained annotations ───────
         annotation = {
             "frame":         filename,
             "cam_key":       cam_key,
             "turntable_deg": turntable_deg,
+            "width":         render_W,
+            "height":        render_H,
             "objects":       objects,
         }
 
@@ -575,14 +887,31 @@ def generate_pose_data(
         with open(output_path, "w") as f:
             json.dump(annotation, f, indent=2)
 
-        print(f"  {cam_key:>4}  {turntable_deg:>5.1f}°  {filename}"
-              f"  → {len(objects)} obj  →  {os.path.basename(output_path)}")
+        frame_time = time.perf_counter() - frame_start
+        frame_times.append(frame_time)
         frame_count += 1
+
+        print(f"  {cam_key:>4}  {turntable_deg:>5.1f}°  {filename}"
+              f"  → {len(objects)} obj"
+              f"  [{frame_time*1000:.0f}ms]"
+              f"  →  {os.path.basename(output_path)}")
 
     if visualize:
         cv2.destroyAllWindows()
 
-    print(f"\n  {frame_count} annotation(s) written to: {output_root}\n")
+    # ── Timing summary ────────────────────────────────────────────────────────
+    total_s   = time.perf_counter() - total_start
+    avg_ms    = (sum(frame_times) / len(frame_times) * 1000) if frame_times else 0.0
+    total_min = int(total_s // 60)
+    total_sec = total_s % 60
+
+    print(f"\n  {'─'*50}")
+    print(f"  Annotations written : {frame_count}")
+    print(f"  Output folder       : {output_root}")
+    print(f"  Average frame time  : {avg_ms:.0f} ms")
+    print(f"  Total time          : {total_min}m {total_sec:.1f}s")
+    print(f"  {'─'*50}\n")
+
     return frame_count
 
 
@@ -733,6 +1062,7 @@ def main(args):
                 frame_iter    = frame_iter,
                 output_subdir = cfg["output_subdir"],
                 visualize     = args.visualize,
+                debug_masks   = args.debug_masks,
             )
 
         if args.generate_bbs:
@@ -786,6 +1116,10 @@ if __name__ == "__main__":
                         help="Generate segmentation masks (not yet implemented)")
     parser.add_argument("--visualize",       action="store_true", default=True,
                         help="Show PyBullet overlay composited on each image")
+    parser.add_argument("--debug-masks",     action="store_true", default=False,
+                        help="[Not working] Show visibility mask debug windows (full silhouette vs "
+                             "visible seg mask) for each object each frame. "
+                             "Slows down generation — use on a single frame for debugging.")
 
     args = parser.parse_args()
     main(args)

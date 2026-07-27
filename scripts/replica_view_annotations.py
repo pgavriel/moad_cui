@@ -176,14 +176,26 @@ def transform_points(points: np.ndarray, R: np.ndarray, t: np.ndarray) -> np.nda
 # Drawing helpers
 # ---------------------------------------------------------------------------
 
-# Distinct BGR colours per object — cycles if more objects than colours
+# 16 visually distinct BGR colours — chosen for mutual contrast on both dark
+# and light backgrounds. Ordered so adjacent entries are maximally different,
+# avoiding repeats for scenes with up to 16 objects.
 OBJECT_COLORS = [
-    (  0, 200, 255),   # amber
-    ( 50, 255,  50),   # green
-    (255,  80,  80),   # blue
-    (255,  50, 200),   # pink
-    (  0, 255, 180),   # yellow-green
-    (200, 100, 255),   # purple
+    (  0, 200, 255),   #  0  amber
+    ( 50, 220,  50),   #  1  green
+    (255,  60,  60),   #  2  blue (vivid)
+    (200,  50, 255),   #  3  violet
+    (  0, 255, 160),   #  4  spring green
+    (255, 160,   0),   #  5  sky blue
+    (  0, 100, 255),   #  6  orange
+    (180, 255,   0),   #  7  lime
+    (255,   0, 160),   #  8  hot pink / magenta
+    ( 40, 200, 200),   #  9  olive/teal
+    (128,   0, 255),   # 10  deep orange
+    (  0, 255, 255),   # 11  yellow
+    (255,   0,   0),   # 12  pure blue
+    (  0, 180, 120),   # 13  dark green
+    (200, 200,   0),   # 14  cyan-green
+    (100,  60, 200),   # 15  brown-red
 ]
 
 
@@ -244,6 +256,115 @@ def _draw_label(img, text, pos, color, font_scale=0.55,
     cv2.putText(img, text, (x, y), font, font_scale, color, thickness, cv2.LINE_AA)
 
 
+# Cyclic annotation visualisation modes toggled by V key
+VIZ_MODES = ["pose", "bbox_obj", "bbox_visib"]
+VIZ_LABELS = {
+    "pose":       "POSE  (6D)",
+    "bbox_obj":   "BBOX  (full)",
+    "bbox_visib": "BBOX  (visible)",
+}
+
+
+def draw_bbox_2d(
+    img:   np.ndarray,
+    bbox:  list[int],
+    color: tuple,
+    label: str = "",
+    label_opacity: float = 0.75,
+) -> np.ndarray:
+    """
+    Draw a 2D axis-aligned bounding box [x, y, w, h] (BOP convention,
+    top-left origin) onto a copy of img.
+    """
+    img = img.copy()
+    x, y, w, h = bbox
+    cv2.rectangle(img, (x, y), (x + w, y + h), color, 2, cv2.LINE_AA)
+    if label:
+        _draw_label(img, label, (x, y - 4 if y > 12 else y + h + 12),
+                    color, label_opacity)
+    return img
+
+
+def draw_occlusion_panel(
+    img:        np.ndarray,
+    objects:    list[dict],
+    colors:     list[tuple],
+    bar_width:  int = 18,
+    bar_height: int = 80,
+    margin:     int = 8,
+) -> np.ndarray:
+    """
+    Draw a compact occlusion panel in the top-right corner of img.
+
+    Each object gets a vertical bar whose filled height represents its
+    visible fraction (0–100 %). The bar is split vertically:
+      - filled portion (bright colour)  = visible fraction
+      - empty portion (dark colour)     = occluded fraction
+
+    A small percentage label is drawn below each bar.
+
+    Args:
+        img        : BGR image (modified in-place copy returned)
+        objects    : list of annotation object dicts (must have visib_fract)
+        colors     : parallel list of BGR colours, one per object
+        bar_width  : pixel width of each bar
+        bar_height : total pixel height of each bar (100 % = full height)
+        margin     : gap from the right/top image edge and between bars
+    """
+    img = img.copy()
+    h, w = img.shape[:2]
+    font = cv2.FONT_HERSHEY_SIMPLEX
+
+    n = len(objects)
+    if n == 0:
+        return img
+
+    panel_w = n * bar_width + (n + 1) * margin
+    panel_h = bar_height + margin * 3 + 14   # bar + top/bottom margin + text
+
+    # Panel origin (top-right, with margin from edge)
+    px0 = w - panel_w - margin
+    py0 = 30   # sit just below the top hint bar
+
+    # Semi-transparent panel background
+    overlay = img.copy()
+    cv2.rectangle(overlay, (px0, py0), (px0 + panel_w, py0 + panel_h),
+                  (20, 20, 20), cv2.FILLED)
+    cv2.addWeighted(overlay, 0.6, img, 0.4, 0, img)
+
+    for i, (obj, color) in enumerate(zip(objects, colors)):
+        frac = float(obj.get("visib_fract", 0.0))
+        frac = max(0.0, min(1.0, frac))
+
+        bx = px0 + margin + i * (bar_width + margin)
+        by = py0 + margin
+
+        # Dark background bar (full height = 0 % visible)
+        dark = tuple(max(0, int(c * 0.25)) for c in color)
+        cv2.rectangle(img,
+                      (bx, by),
+                      (bx + bar_width, by + bar_height),
+                      dark, cv2.FILLED)
+
+        # Filled bar from the bottom up (fill height proportional to frac)
+        filled_h = int(round(frac * bar_height))
+        if filled_h > 0:
+            cv2.rectangle(img,
+                          (bx, by + bar_height - filled_h),
+                          (bx + bar_width, by + bar_height),
+                          color, cv2.FILLED)
+
+        # Percentage text below the bar
+        pct_str = f"{int(round(frac * 100))}%"
+        (tw, _), _ = cv2.getTextSize(pct_str, font, 0.32, 1)
+        tx = bx + (bar_width - tw) // 2
+        cv2.putText(img, pct_str,
+                    (tx, by + bar_height + margin + 6),
+                    font, 0.32, color, 1, cv2.LINE_AA)
+
+    return img
+
+
 def draw_overlay(
     img:           np.ndarray,
     annotation:    dict | None,
@@ -253,28 +374,56 @@ def draw_overlay(
     total_frames:  int,
     paused:        bool,
     source_count:  int,
-    label_opacity=0.75
+    viz_mode:      str   = "pose",
+    label_opacity: float = 0.75,
 ) -> np.ndarray:
     """
-    Composite all annotation overlays and the status bar onto a copy of img.
+    Composite all annotation overlays and UI chrome onto a copy of img.
 
-    Draws:
-      - 3D bounding boxes for all objects in the annotation
-      - Sensor / frame status bar at the bottom
-      - Annotation type badge and keyboard hint at the top
+    viz_mode controls what geometry is drawn per object:
+        "pose"       — 3D projected bounding box (6D pose visualisation)
+        "bbox_obj"   — 2D axis-aligned box of full object silhouette
+        "bbox_visib" — 2D axis-aligned box of visible object region
+
+    An occlusion panel is drawn in the top-right corner whenever
+    visib_fract data is present in the annotation.
     """
     img = img.copy()
     h, w = img.shape[:2]
+    font = cv2.FONT_HERSHEY_SIMPLEX
 
-    # ── Bounding boxes ────────────────────────────────────────────────────────
-    if annotation is not None:
-        for obj_idx, obj in enumerate(annotation.get("objects", [])):
-            R     = np.array(obj["R"],   dtype=np.float64)
-            t     = np.array(obj["t"],   dtype=np.float64)
-            size  = obj.get("size", [0.1, 0.1, 0.1])
-            label = obj.get("object_name", f"obj_{obj_idx}")
-            color = OBJECT_COLORS[obj_idx % len(OBJECT_COLORS)]
-            img   = draw_bbox_3d(img, R, t, size, cam_K, color, label, label_opacity=label_opacity)
+    objects = annotation.get("objects", []) if annotation else []
+
+    # Assign colours once so the occlusion panel matches the drawn boxes
+    obj_colors = [
+        OBJECT_COLORS[i % len(OBJECT_COLORS)] for i in range(len(objects))
+    ]
+
+    # ── Per-object geometry ───────────────────────────────────────────────────
+    for obj, color in zip(objects, obj_colors):
+        label = obj.get("object_name", "?")
+
+        if viz_mode == "pose":
+            R    = np.array(obj["R"], dtype=np.float64)
+            t    = np.array(obj["t"], dtype=np.float64)
+            size = obj.get("size", [0.1, 0.1, 0.1])
+            img  = draw_bbox_3d(img, R, t, size, cam_K, color, label,
+                                label_opacity=label_opacity)
+
+        elif viz_mode == "bbox_obj":
+            bbox = obj.get("bbox_obj")
+            if bbox:
+                img = draw_bbox_2d(img, bbox, color, label, label_opacity)
+
+        elif viz_mode == "bbox_visib":
+            bbox = obj.get("bbox_visib")
+            if bbox:
+                img = draw_bbox_2d(img, bbox, color, label, label_opacity)
+
+    # ── Occlusion panel (top-right) ───────────────────────────────────────────
+    # Only shown when at least one object has visib_fract in its annotation
+    if objects and any("visib_fract" in o for o in objects):
+        img = draw_occlusion_panel(img, objects, obj_colors)
 
     # ── Status bar (bottom) ───────────────────────────────────────────────────
     bar_h   = 36
@@ -282,9 +431,7 @@ def draw_overlay(
     cv2.rectangle(overlay, (0, h - bar_h), (w, h), (0, 0, 0), cv2.FILLED)
     cv2.addWeighted(overlay, 0.55, img, 0.45, 0, img)
 
-    font = cv2.FONT_HERSHEY_SIMPLEX
-
-    if annotation is not None:
+    if annotation:
         frame_name    = annotation.get("frame",         "—")
         cam_key       = annotation.get("cam_key",       "?")
         turntable_deg = annotation.get("turntable_deg", 0.0)
@@ -293,8 +440,8 @@ def draw_overlay(
                   f"cam: {cam_key}  |  turntable: {turntable_deg:.1f}deg  |  "
                   f"frame {frame_idx + 1}/{total_frames}")
     else:
-        status = f"  {'[PAUSED]' if paused else ''}  {sensor_name.upper()}  |  "  \
-                 f"frame {frame_idx + 1}/{total_frames}  |  NO ANNOTATION"
+        status = (f"  {'[PAUSED]' if paused else ''}  {sensor_name.upper()}  |  "
+                  f"frame {frame_idx + 1}/{total_frames}  |  NO ANNOTATION")
 
     cv2.putText(img, status, (8, h - bar_h // 2 + 5),
                 font, 0.48, (200, 200, 200), 1, cv2.LINE_AA)
@@ -302,16 +449,16 @@ def draw_overlay(
     # ── Top hint bar ──────────────────────────────────────────────────────────
     cv2.rectangle(img, (0, 0), (w, 24), (0, 0, 0), cv2.FILLED)
 
-    # Annotation type badge (top-left)
-    annot_type = "POSE"   # extend here when BBOX / MASK are implemented
-    cv2.putText(img, f"[ {annot_type} ]", (8, 16),
+    # Current viz mode badge (top-left, green)
+    mode_label = VIZ_LABELS.get(viz_mode, viz_mode.upper())
+    cv2.putText(img, f"[ {mode_label} ]", (8, 16),
                 font, 0.45, (80, 200, 80), 1, cv2.LINE_AA)
 
-    # Controls hint (right of badge)
-    tab_hint = "  Tab: next sensor" if source_count > 1 else ""
-    hint = f"Space: play/pause    A/D: step{tab_hint}    Q/Esc: quit"
-    cv2.putText(img, hint, (120, 16),
-                font, 0.40, (130, 130, 130), 1, cv2.LINE_AA)
+    # Controls hint
+    tab_hint = "  Tab: sensor" if source_count > 1 else ""
+    hint = f"Space: play/pause    A/D: step    V: viz mode{tab_hint}    Q: quit"
+    cv2.putText(img, hint, (200, 16),
+                font, 0.38, (130, 130, 130), 1, cv2.LINE_AA)
 
     return img
 
@@ -402,31 +549,29 @@ def run_viewer(sources, play_fps=10.0, label_opacity=0.75, display_width=None):
     """
     Main viewer loop.
 
-    Maintains a source index (which sensor) and a frame index (which frame
-    within that sensor). Tab cycles the source index, clamping the frame index
-    to the new source's length so out-of-bounds switches are handled gracefully.
-
-    Args:
-        sources  : list of SensorSource objects (at least one)
-        play_fps : playback speed in frames per second when not paused
+    Maintains a source index (which sensor), a frame index (which frame
+    within that sensor), and a viz mode index (which annotation type to draw).
+    Tab cycles sensors, V cycles viz modes, both preserve the frame position.
     """
-    source_idx     = 0
-    frame_idx      = 0
-    paused         = False
+    source_idx   = 0
+    frame_idx    = 0
+    viz_mode_idx = 0
+    paused       = False
     frame_delay_ms = max(1, int(1000.0 / play_fps))
 
     src = sources[source_idx]
     cv2.namedWindow("Annotation Viewer", cv2.WINDOW_NORMAL)
     cv2.resizeWindow("Annotation Viewer", src.width, src.height)
 
-    print(f"\n  {len(sources)} sensor source(s) available: "
-          f"{[s.name for s in sources]}")
-    print(f"  Space: play/pause  |  A/D: step  |  Tab: next sensor  |  Q/Esc: quit\n")
+    print(f"\n  {len(sources)} sensor source(s): {[s.name for s in sources]}")
+    print(f"  Space: play/pause  |  A/D: step  |  V: viz mode  "
+          f"|  Tab: next sensor  |  Q/Esc: quit\n")
 
     while True:
-        src       = sources[source_idx]
-        img_path  = src.image_paths[frame_idx]
-        ann_path  = src.annot_path_for(img_path)
+        src      = sources[source_idx]
+        viz_mode = VIZ_MODES[viz_mode_idx]
+        img_path = src.image_paths[frame_idx]
+        ann_path = src.annot_path_for(img_path)
 
         # ── Load image ────────────────────────────────────────────────────────
         bgr = cv2.imread(img_path)
@@ -435,7 +580,6 @@ def run_viewer(sources, play_fps=10.0, label_opacity=0.75, display_width=None):
             frame_idx = (frame_idx + 1) % len(src)
             continue
 
-        # Resize to display resolution if needed
         if bgr.shape[1] != src.width or bgr.shape[0] != src.height:
             bgr = cv2.resize(bgr, (src.width, src.height),
                              interpolation=cv2.INTER_LINEAR)
@@ -446,7 +590,6 @@ def run_viewer(sources, play_fps=10.0, label_opacity=0.75, display_width=None):
             with open(ann_path, "r") as f:
                 annotation = json.load(f)
         else:
-            # Draw a visible warning directly on the frame
             cv2.putText(bgr,
                         f"No annotation: {os.path.basename(ann_path)}",
                         (10, src.height // 2),
@@ -462,18 +605,19 @@ def run_viewer(sources, play_fps=10.0, label_opacity=0.75, display_width=None):
             total_frames = len(src),
             paused       = paused,
             source_count = len(sources),
-            label_opacity = label_opacity
+            viz_mode     = viz_mode,
+            label_opacity = label_opacity,
         )
 
         if display_width is not None:
             scale   = display_width / display.shape[1]
             disp_h  = int(display.shape[0] * scale)
             display = cv2.resize(display, (display_width, disp_h),
-                                interpolation=cv2.INTER_LINEAR)
+                                 interpolation=cv2.INTER_LINEAR)
             cv2.resizeWindow("Annotation Viewer", display_width, disp_h)
         else:
-            # Resize window if we switched to a source with different resolution
             cv2.resizeWindow("Annotation Viewer", src.width, src.height)
+
         cv2.imshow("Annotation Viewer", display)
 
         # ── Keyboard handling ─────────────────────────────────────────────────
@@ -494,10 +638,14 @@ def run_viewer(sources, play_fps=10.0, label_opacity=0.75, display_width=None):
             frame_idx = (frame_idx - 1) % len(src)
             paused = True
 
-        elif key == ord('\t'):                  # Tab — next sensor source
+        elif key == ord('v'):                   # V — cycle viz mode
+            viz_mode_idx = (viz_mode_idx + 1) % len(VIZ_MODES)
+            new_mode = VIZ_MODES[viz_mode_idx]
+            print(f"  Viz mode: {VIZ_LABELS[new_mode]}")
+
+        elif key == ord('\t'):                  # Tab — next sensor
             source_idx = (source_idx + 1) % len(sources)
             new_src    = sources[source_idx]
-            # Clamp frame index in case the new source has fewer frames
             frame_idx  = min(frame_idx, len(new_src) - 1)
             print(f"  Switched to: {new_src.name.upper()} "
                   f"(frame {frame_idx + 1}/{len(new_src)})")
@@ -561,7 +709,7 @@ if __name__ == "__main__":
     parser.add_argument("--fps",        type=float, default=20.0,
                         help="Playback speed in frames per second (default: 10)")
     
-    parser.add_argument("--label-opacity", type=float, default=0.75,
+    parser.add_argument("--label-opacity", type=float, default=0.5,
                     help="Opacity of object label backgrounds (0.0–1.0, default: 0.75)")
     parser.add_argument("--display-width", type=int, default=1500,
                         help="Optional display width in pixels. If set, the window is "
