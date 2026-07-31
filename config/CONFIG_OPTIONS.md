@@ -1,192 +1,164 @@
-## MOAD Data Collection JSON Config
+# MOAD Configuration Reference
+
+Documentation for all parameters in `moad_config.json`.
+Parameters are listed in the order they appear in the file.  
+The config can be updated, saved, and reloaded during runtime through the CUI menu (main menu option 0). The moad_config.json file is also frequently updated automatically when changing object_name, or a scan is in progress (updating *prev_state*).
 
-The fields within the actual file are currently organized alphabetically so to reflect this, the following descriptions are also as such. 
+---
 
-*Note 1: We are aware this makes things a bit confusing because ideally, priority fields would be at the very top of the readme and the json file. We believe that the json parsing library we use SHOULD be able to handle this and the reason for mixup might be due to some caching inconsistencies with our IDE or version control.*
+## Top-Level Parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `output_dir` | `string` | Root directory where all collected scan data is stored. Each object gets its own subfolder here. |
+| `object_name` | `string` | Name of the current object being collected. Determines the subfolder created under `output_dir`. Updated automatically when set via the CUI. |
+| `degree_inc` | `int` | Default turntable rotation step size in degrees per move when using `Full Scan`. Combined with `num_moves` determines the total angular coverage of a scan. |
+| `num_moves` | `int` | Default for `Full Scan`.Total number of turntable moves per full scan. At 5°/move, 72 moves = 360° full rotation. |
+| `thread_num` | `int` | Number of worker threads in the thread pool used for parallel sensor data collection. |
 
-[<https://stackoverflow.com/questions/72534844/removing-alphebatical-reordering-of-key-value-pairs-in-nlohmann-json>]
-[<https://github.com/nlohmann/json/discussions/4568>]
+---
 
-*Note 2: If any changes are made at runtime (ex., via the `Set Object Name` in the Control Menu), the config is fully rewritten (though only the necessary field will change) and saved.*
-<br>
+## `debug`
 
-___
-(config starts here)
-<br>
+Controls logging verbosity and log file output.
 
+| Parameter | Type | Description |
+|---|---|---|
+| `debug_verbosity` | `int` | Controls how much information is printed to the terminal. Higher values produce more output. `0` = errors only, `1` = threading events, `2` = general debug, `3` = verbose/low-level debug. |
+| `log` | `bool` | Whether to write log output to a file. Log file is created at `output_dir/<object_name>/debug_log.txt` at startup. |
 
+---
 
-- `"debug"` : `[true/false]` => Primarily displays extra timing and filter information during a scan. 
+## `dslr`
 
-- `"degree_inc"` : `[integer, ex=5]` => This is the degree the turntable will move at each step of a full scan. This is only used in a full scan.
+Configuration for the Canon DSLR camera array.
 
-<br>
+| Parameter | Type | Description |
+|---|---|---|
+| `enable_collection` | `bool` | Whether to collect DSLR images during a scan. Set to `false` to skip DSLR setup/collection entirely (e.g. for RealSense-only scans). |
+| `dslr_timeout_sec` | `int` | Timeout in seconds to wait for each camera to complete image download before reporting a failure. |
+| `camera_ids` | `object` | Maps logical camera names (`CAMERA_1` through `CAMERA_5`) to their physical serial number strings. Used to identify and rename cameras at initialization. |
+| `display_liveview_windows` | `bool` | Whether to display live view frames in OpenCV windows from within the CUI process. **Must be `false`** when an external live view script is running to avoid a race condition and seg fault. |
+| `safe_take_picture` | `bool` | If `true`, waits for full image download confirmation before proceeding to the next capture. Slower but safer. If `false`, fires the shutter without waiting (faster, requires robust download handling). |
 
+---
 
-**[DSLR]:** The following field covers information used by the software to configure the Canon DSLR cameras and their captures:
+## `realsense`
 
-- `"dslr"` : `{`
-  - `"camera_ids"` : `{`
-      - `"[string of a CAMERA]"` : `"[string of the serial id number]"`
-      - `"CAMERA_2"` : `"352074022019"` (example)
-    
-  `}`
-    
-    **This is where you should put the Canon camera serial numbers**. On the Canon EOS Rebel SL3 cameras, these are found on the bottom of the device itself as well as on the box. They consist of 12 digits. The software is also setup so that `CAMERA_5` refers to the camera directly above the center of the turntable and `CAMERA_1` refers to the camera closest to being on the same horizontal plane as the turntable. This naming is important because otherwise the OS would designate the mapping based on the order the devices were physically plugged in.
+Configuration for the Intel RealSense depth camera array.
 
+| Parameter | Type | Description |
+|---|---|---|
+| `enable_collection` | `bool` | Whether to collect RealSense data during a scan. Set to `false` to skip RealSense setup/collection entirely. |
+| `high_res` | `bool` | If `true`, streams at 1280×720. If `false`, streams at 640×480. |
+| `collect_pointcloud` | `bool` | Whether to generate and save a point cloud (`.ply`) from each depth frame. |
+| `collect_color` | `bool` | Whether to save the colour image (`_color.png`) from each frame. |
+| `collect_depth` | `bool` | Whether to save the raw depth image (`_depth.png`) from each frame. |
+| `normalize_depth_image` | `bool` | If `true`, normalises the depth image to 0–255 range before saving. Useful for visualisation but loses metric depth information — set to `false` for BOP evaluation. |
+| `compute_normals` | `bool` | Whether to compute and include surface normals in the saved point cloud. Adds computation time proportional to `normals_threads`. |
+| `normals_threads` | `int` | Number of CPU threads used for parallel normal estimation via OpenMP. |
+| `raw_pointcloud` | `bool` | If `true`, saves the point cloud in the raw camera coordinate frame without applying any transforms or filters. Used for debugging. |
+| `align_to_color` | `bool` | If `true`, aligns the depth frame to the colour camera's coordinate frame before processing. If set to `false`, aligns color data to the depth frame instead. For ease of calibration, should be left as `true`. |
+| `realsense_timeout_sec` | `int` | Timeout in seconds to wait for a RealSense frame before reporting a failure. |
+| `init_test_frames` | `int` | Number of warm-up frames to collect and discard at initialization. Allows auto-exposure to settle before real data collection begins. Set to `0` to skip. |
+| `calibration_file` | `string` | Full path to the `realsense_cam_parameters.json` calibration file. Used by the RealSense handler to load extrinsic transforms for each camera. |
+| `camera_ids` | `dict` | Maps logical RealSense camera names (`rs1` through `rs5`) to their physical serial number strings. Used to match connected devices to calibration entries. |
 
-  - `"collect_dslr"` : `[true/false]` => Used for toggling whether or not to take DSLR images during any of the scans. Useful if you only needed realsense data for example.
+### `realsense.filter`
 
-  - `"dslr_timeout_sec":` : `[integer, ex=20]` => Sets a wait time for the scans, tells the software to timeout if a DSLR image is not received in this time. 
+Point cloud filtering options applied after capture.
 
-  - `"safe_take_picture"` : `[true/false]` => Toggles a slower, more deliberate version of the function communicating with the EDSDK to trigger the DSLR cameras. This is useful for if any of the cameras are experiencing mechanical issues and a user needs to walk through the process slowly. Will also show a much more detailed CLI output including EDSDK feedback and thread numbers.
-  
-`}`
-<br>
-<br>
+| Parameter | Type | Description |
+|---|---|---|
+| `sor.apply` | `bool` | Whether to apply Statistical Outlier Removal filtering to the point cloud. (Computationally heavy in high-res mode) |
+| `sor.k` | `int` | Number of nearest neighbours used for mean distance estimation in SOR. |
+| `sor.stddev` | `float` | Standard deviation multiplier threshold for SOR outlier rejection. Lower values are more aggressive. |
+| `voxel.apply` | `bool` | Whether to apply voxel grid downsampling to the point cloud. |
+| `voxel.leaf_size` | `float` | Voxel grid leaf size in metres. Larger values produce sparser clouds. |
+| `xpass.apply` | `bool` | Whether to apply an X-axis passthrough filter to crop the point cloud. |
+| `xpass.min` | `float` | Minimum X value (metres) to retain after passthrough filtering. |
+| `xpass.max` | `float` | Maximum X value (metres) to retain after passthrough filtering. |
+| `ypass.apply` | `bool` | Whether to apply a Y-axis passthrough filter. |
+| `ypass.min` | `float` | Minimum Y value (metres) to retain. |
+| `ypass.max` | `float` | Maximum Y value (metres) to retain. |
+| `zpass.apply` | `bool` | Whether to apply a Z-axis passthrough filter. |
+| `zpass.min` | `float` | Minimum Z value (metres) to retain. Typically set to `0` to remove points below the turntable surface. |
+| `zpass.max` | `float` | Maximum Z value (metres) to retain. |
 
-**[Filecount Testing Script]**: The following field covers settings meant for the python script that checks if the appropriate number of images exist after taking a full scan. More info and more settings are included in both the comments at the top of the `filecount_test.py` file itself AND the .md file in `scripts/`. Reminder that these are also alphabetized, so `enabled` is not at the top even though this is likely the field that will be changed the most.
+---
 
-- `"filecount_testing"` : `{`
-  - `"check_single_object"` : `[true/false]` => Toggles if the user would like to only check the current object or recursively iterate over ALL item folders at the end of a scan and check each for the appropriate number of images inside each respective DSLR folder.
-  - `"count"` : `[true/false]` => Toggles if the user would like to count the images in the designated object folder(s). Useful on `false` if the user would like to only use the `create` functionality.
-  - `"create"` : `[true/false]` => Toggles subfolder creation, specifically, if set to `true`, will create `images`, `images_2`, `images_4`, `images_8` inside the `pose/` subdirectory of the object folder. These folders contain copies of the DSLR images, but downscaled by the factor at the end of the folder names (ex. `images_4` contains copies of the DSLR images downscaled by a factor of `4`). This functionality is meant to speedup Nerfacto reconstruction training by setting the files up in the format that Nerfacto requires for a run. 
-  - `"delay"` : `[true/false]` => Toggles a hardcoded delay for the printouts from counting, creating, and downscaling during this script execution. This is useful for allowing the user to read which object doesnt have the correct number of DSLR images for example.
-  - `"enabled"` : `[true/false]` => Toggles this script running at the end of scans. 
-  - `"manual_check"` : `[true/false]` => Toggles a CLI prompt at the end of each folder parse. Useful for allowing the user to visually confirm which object is being looked at if checking multiple objects at a time.
+## `turntable_control`
 
-`}`
-<br>
-<br>
+Settings for serial communication with the turntable stepper motor controller.
 
-- `"log_debug"` : `[true/false]` => Toggles detailed logging that gets saved into the file `debug_log.txt` which gets saved into the object folder. This log include things like the date and time of when the program runs as well as when it ends, and information during the scaning process similar to the outputs shown in the CLI. 
+| Parameter | Type | Description |
+|---|---|---|
+| `serial_com_port` | `string` | Serial port path for the turntable controller (e.g. `/dev/ttyACM0`). |
+| `delay_after_move_ms` | `int` | Additional wait time in milliseconds after each turntable move completes before capturing data. Allows mechanical vibration to settle. |
+| `command_timeout_s` | `int` | Maximum time in seconds to wait for a response from the turntable controller before reporting a timeout error. |
 
-- `"num_moves"` : `[integer, ex=72]` => Refers to the number of steps that occur during a scan. Should be considered when changing the `degree_inc` field. Ex: for a full 360 degree scan with a degree increment of `5`, the number of moves should be set to `72`. In other words, *"Move the turntable `5` degrees for `72` steps for a total of `5 * 72 = 360` degrees during a scan."*
+---
 
-- `object_name` : `[string, name of object to scan ex="atb3_thin-cable-mount"]` This name will be used to create a folder inside the given `output_dir` to store all the scan data. (Inside will be pose and DSLR folders).
+## `prev_state`
 
-- `"output_dir"` : `[string, directory path ex="home/uml_nerve/data-mount/ALL_ITEMS"]"` => Location where object *folders* will be stored. Recommended setup is something like `../ALL_ITEMS/atb1_timing-belt/pose-a...`
+Persisted state from the last run. Updated automatically by the software after each move and scan. Used by the "scan from saved state" feature to resume an interrupted scan.
 
+| Parameter | Type | Description |
+|---|---|---|
+| `current_move` | `int` | The last completed move index within the current scan (0-based). |
+| `current_object` | `string` | Name of the object being collected at the time of the last save. |
+| `current_pose` | `int` | ASCII integer code of the current pose letter (e.g. `97` = `'a'`, `98` = `'b'`). |
+| `turntable_pos` | `int` | Turntable angle in degrees at the time of the last save. |
 
-**[State Saving]**: The following field covers information changed at each step of a scan that are useful if something fails partway through (for example, mechanical shutter failure on the DSLR cameras). If "Scan from Save State" option is selected within the Control Menu option, these subfields will be read and used to run a scan starting at the *previous state* meaning whatever current data that was taken at this step in the process will be overwritten with new data of the exact same locations/rotation of the turntable before moving to the next step. 
+---
 
-Workflow example: 
-```text
-  [scanning on move 44/72]
-  > DSLR camera breaks
-  > user closes program and fixes camera
-  > user restarts software
-  > user selects "scan from save state" 
-  [scanning on move 44/72]
-  [scanning on move 45/72] 
-  ...
-```
+## `transform_generator`
 
-- `"prev_state"` : `{`
-  - `"current_move"` : `[integer, ex=10]` => Rewritten at each step of a full scan, counts up to the value at the `num_moves` field.
-  - `"current_pose"` : `[integer, ASCII of a char, ex=97]` => Rewritten at each step of a full scan, also useful for the user if software issues cause the pose to be misread, since the config is distinct from the internal pose check.
-  - `"turntable_pos"` : `[integer, ex=315]` => Rewritten at each step of a full scan, refers to the current degree measurement of the turntable. This counts up by `degree_inc` and ends at `degree_inc * num_moves` inclusive.
+Controls automatic generation of `transforms.json` for NeRF training after each scan. This is done by calling `scripts/transform_generator.py` from within the moad_cui program.
 
-`}`
+| Parameter | Type | Description |
+|---|---|---|
+| `enabled` | `bool` | Whether to automatically run `transform_generator.py` after a full scan completes. |
+| `calibration_dir` | `string` | Path to the root calibration directory containing named calibration subfolders. |
+| `calibration_mode` | `string` | Name of the calibration subfolder to use (e.g. `"55mm"` or `"55mm_joint"`). Must contain a `cam_parameters.json` file. |
+| `force` | `bool` | If `true`, overwrites any existing `transforms.json` file for the current scan. |
+| `visualize` | `bool` | If `true`, displays a 3D matplotlib visualisation of the generated camera transforms after generation. |
 
-<br>
-<br>
+---
 
-**[RealSense Cameras]**: The following field covers necessary settings for the RealSense cameras that allow the software to recognize the devices as well as take accurate data. Some of the fields may seem overlapping but the goal is to allow users full control over what's being taken. A possible usecase for different toggle configurations is if the user wants to only take Realsense depth images. Another usecase would be a user wanting to only take DSLR camera data and toggling Realsense collection off complete.y
+## `filecount_testing`
 
-- `"realsense"` : `{`
-  - `"align_to_color"` : `[true/false]` => Toggles whether to take color images or depth images
-  - `"collect_color"` : `[true/false]` => Toggles whether or not to take color images at all. 
-  - `"collect_depth"` : `[true/false]` => Toggles whether or not to take depth images at all. 
-  - `"collect_pointcloud"` : `[true/false]` => Toggles whether or not to take pointcloud data. 
-  - `"collect_realsense"` : `[true/false]` => Toggles Realsense collection.
-  - `"collect_normals"` : `[true/false]` => Toggles collection of information for normal vector calculations of surfaces by the Realsense cameras.
-  - `"collect_realsense"` : `[true/false]` => Toggles Realsense collection.
-  
-  - `"filter"` : `{`
-  
-    "Statistical Outlier Removal", calculates average of k-nearest neighbors, removes points outside of average + the standard deviation.
-    - `"sor"` : `{`
-      - `apply` : `[true/false]`
-      - `k` : `[integer, ex=6]`
-      - `stddev` : `[integer, ex=1]`
+Controls automatic post-scan image downscaling via `scripts/filecount_test.py`, which creates the `images`, `images_2`, `images_4`, and `images_8` subfolders expected by NeRF training and annotation generation pipelines.
 
-      `}`
-    <br>
+| Parameter | Type | Description |
+|---|---|---|
+| `enabled` | `bool` | Whether to run the filecount test script automatically after a full scan. |
+| `check_all` | `bool` | If `true`, checks image counts across all object folders, not just the current one. |
+| `check_single_object` | `bool` | If `true`, limits the check to the current object's folder only. |
+| `count` | `bool` | Whether to count and report the number of images found. |
+| `create` | `bool` | Whether to create downscaled image copies (`image`, `images_2`, `images_4`, `images_8`). |
+| `delay` | `bool` | Whether to add a small delay between file operations for readability. |
+| `manual_check` | `bool` | If `true`, pauses and prompts for user confirmation at each step. |
 
-    Deprecated, meant for downsampling points with their centroid. [<https://pointclouds.org/documentation/classpcl_1_1_voxel_grid.html#details>]
+---
 
-    - `"voxel"` : `{`
-      - `apply` : `[true/false]`
-      - `leaf_size` : `[floating point, ex=0.01]`
+## `scene_replica`
 
-      `}`
-    <br>
+Configuration for the Scene Replication pipeline — used for aligning virtual scenes to the physical rig and generating ground truth pose annotations.
 
-    The following filters control cropping of the pointcloud along their respective axes. If misalignment occurs, whether due to the cameras phyisically moving or if possible transformation matrix inaccuracy, the Realsense library might spit out errors that cause the program to crash. To check this, enable `raw_pointcloud`.
-    - `"[x/y/z]pass"` : `{`
-      - `apply` : `[true/false]`
-      - `max` : `[floating point, ex=0.3]`
-      - `min` : `[floating point, ex=-0.3]`
+| Parameter | Type | Description |
+|---|---|---|
+| `scene_root` | `string` | Root directory containing all scene subfolders (each subfolder holds an `.npz` scene layout file). |
+| `scene_folder` | `string` | Name of the specific scene subfolder to load (e.g. `"batch1_007"`). |
+| `scene_file` | `string` | Filename of the PyBullet scene layout file within `scene_folder` (e.g. `"scene_replica.npz"`). |
+| `config_file` | `string` | Filename of the scene configuration JSON within `scene_replica_moad/config`. Specifies calibration offsets and rendering options. |
 
-      `}`
+### `scene_replica.annotations`
 
-    `}`
+Controls what types of ground truth annotations are generated when running `replica_generate_annotations.py` through the moad_cui interface.
 
-
-
-  - `"high_res"` : `[true/false]` => Toggles collected image sizes to be 1280x720 or 640x480. Performance impact is almost negligible if using the higher resolution since the amount of time this takes is mostly determined by how fast the DSLR cameras take a picture and how quickly the turntable moves.
-  - `"normalize_depth_image"` : `[true/false]` => An OpenCV setting meant for the depth images to enhance contrast. Normalizes image data between 0 and 255.
-  - `"normals_threads"` : `[integer, ex=1]` => Refers to the number of threads used for calculating the normals. Varying impact to performance, best kept at `1` if the pointcloud size is not that large.
-  - `"raw_pointcloud"` : `[true/false]` => Toggles pointcloud collection with no added filters. **This is used in the calibration process** that generates the transform matrices relating the realworld positioning to the pointclouds.
-  - `"realsense_timeout_sec"` : `[integer, ex=9]` => Sets the maximum wait time for Realsense data. If the program keeps hitting this wait time and crashing, try checking physical connection points between the Realsense cameras and the motherboard. Also try unplugging the cameras, waiting for a bit, the plugging them back in (sometimes they get stuck in a 'waiting to send' state and never actually finishing the send).
-
-  - `"rs_info"` : `{`
-  
-    - `rs[1...5]` : `{`
-      - `serial` : `[string, 12 digits]`
-      - `transform_matrix` : `[4 lists of 4 floating point values, creates a 4x4 matrix]`
-
-      `}`
-
-    `}`
-
-  `}`
-
-<br>
-<br>
-
-  - `"serial_com_port"` : `[string, ex="/dev/ttyACM0"]` => Port that the DSLR cameras connect to/communicate with.
-
-  - `"thread_num"` : `[integer, ex=5]` => Sets the number of threads to use for the DSLR cameras. BE VERY CAREFUL WHEN CHANGING THIS. Thread race conditions between the software and EDSDK have lead to some errors and possible mechanical shutter failures.
-
-
-
-
-**[Transform Matrix Generation Script]**: The following fields set up the directory and a few arguments made for the `transform_generator.py` script in the `scripts/` directory. After each scan, this script runs and generates a matrix used by Nerfacto to reconstruct a pointcloud based on the current camera settings. It is important to make sure these line up because otherwise you will have to retrain the nerf for a positive result and each reconstruction can take over ~30 minutes depending on hardware.  
-
-
-  - `"transform_generator"` : `{`
-
-    - `"calibration_dir"` : `[string, ex="../calibration"]` => Path to the seperate transform matrices for each DSLR calibration. These should be located `../calibration/55mm` for example. The calibrations themselves are found by following the steps in the calibration document for DSLR cameras.
-
-    - `"calibration_mode"` : `[string, ex="55mm"]` => This sets the current calibration of the cameras. There should be an associated folder with the same name containing transform matrices. This is an important field to set because reconstructions with the assumption that the cameras are set to 18mm even though they were set to 55mm do not come out very well.
-
-    - `"force"` : `[true/false]` => Bypasses a prompt check before generating transforms.
-
-    - `"visualize"` : `[true/false]` => Tells the script to generate a 3d representation of the DSLR camnera locations in space. 
-
-
-  `}`
-
-
-  - `"turntable_delay_ms"` : `[integer, ex=10000]` => Sets the wait time for the turntable arduino to respond. Note: for bug-checking, make sure to double check arduino code as well.
-
-
-
-
-
-
-
-
-
+| Parameter | Type | Description |
+|---|---|---|
+| `model_library` | `string` | Path to the object model library folder containing URDF/mesh files for all objects in the scene. |
+| `pose` | `bool` | Whether to generate 6D pose annotations (object position and orientation per frame). |
+| `masks` | `bool` | Whether to generate segmentation mask images. *(Not yet implemented.)* |

@@ -1,15 +1,15 @@
 {
     "output_dir": "/home/csrobot/MOAD_DATA",
-    "object_name": "batch1_007",
+    "object_name": "test_scene",
     "degree_inc": 5,
     "num_moves": 72,
     "thread_num": 5,
     "debug": {
-        "debug_verbosity": 2,
+        "debug_verbosity": 3,
         "log": true
     },
     "dslr": {
-        "enable_collection": true,
+        "enable_collection": false,
         "dslr_timeout_sec": 20,
         "camera_ids": {
             "CAMERA_1": "352074022019",
@@ -28,15 +28,15 @@
         "collect_color": true,
         "collect_depth": true,
         "normalize_depth_image": false,
-        "compute_normals": true,
+        "compute_normals": false,
         "normals_threads": 1,
         "raw_pointcloud": false,
-        "align_to_color": false,
-        "realsense_timeout_sec": 9,
+        "align_to_color": true,
+        "realsense_timeout_sec": 15,
         "init_test_frames": 10,
         "filter": {
             "sor": {
-                "apply": true,
+                "apply": false,
                 "k": 6,
                 "stddev": 1
             },
@@ -46,13 +46,13 @@
             },
             "xpass": {
                 "apply": true,
-                "max": 0.3,
-                "min": -0.3
+                "max": 0.325,
+                "min": -0.325
             },
             "ypass": {
                 "apply": true,
-                "max": 0.3,
-                "min": -0.3
+                "max": 0.325,
+                "min": -0.325
             },
             "zpass": {
                 "apply": true,
@@ -60,152 +60,13 @@
                 "min": 0
             }
         },
-        "rs_info": {
-            "rs1": {
-                "serial": "215122257111",
-                "transform_matrix": [
-                    [
-                        0.999147,
-                        -0.038156,
-                        0.015767,
-                        -0.065587
-                    ],
-                    [
-                        -0.019141,
-                        -0.08974,
-                        0.995781,
-                        -0.768997
-                    ],
-                    [
-                        -0.03658,
-                        -0.995234,
-                        -0.090394,
-                        0.062987
-                    ],
-                    [
-                        0.0,
-                        0.0,
-                        0.0,
-                        1.0
-                    ]
-                ]
-            },
-            "rs2": {
-                "serial": "239222302632",
-                "transform_matrix": [
-                    [
-                        0.999973,
-                        0.006364,
-                        0.003667,
-                        -0.051927
-                    ],
-                    [
-                        -0.000289,
-                        -0.464743,
-                        0.885445,
-                        -0.729707
-                    ],
-                    [
-                        0.007339,
-                        -0.885423,
-                        -0.464729,
-                        0.378522
-                    ],
-                    [
-                        0.0,
-                        0.0,
-                        0.0,
-                        1.0
-                    ]
-                ]
-            },
-            "rs3": {
-                "serial": "213522251284",
-                "transform_matrix": [
-                    [
-                        0.998911,
-                        -0.042415,
-                        0.019426,
-                        -0.067072
-                    ],
-                    [
-                        -0.044301,
-                        -0.731919,
-                        0.67995,
-                        -0.585464
-                    ],
-                    [
-                        -0.014622,
-                        -0.68007,
-                        -0.733001,
-                        0.63901
-                    ],
-                    [
-                        0.0,
-                        0.0,
-                        0.0,
-                        1.0
-                    ]
-                ]
-            },
-            "rs4": {
-                "serial": "213622251144",
-                "transform_matrix": [
-                    [
-                        0.999262,
-                        -0.023629,
-                        0.030297,
-                        -0.069073
-                    ],
-                    [
-                        -0.031981,
-                        -0.948547,
-                        0.315016,
-                        -0.345242
-                    ],
-                    [
-                        0.021294,
-                        -0.315753,
-                        -0.948603,
-                        0.802384
-                    ],
-                    [
-                        0.0,
-                        0.0,
-                        0.0,
-                        1.0
-                    ]
-                ]
-            },
-            "rs5": {
-                "serial": "215122254603",
-                "transform_matrix": [
-                    [
-                        0.999434,
-                        -0.000964,
-                        0.03362,
-                        -0.075652
-                    ],
-                    [
-                        -0.000969,
-                        -1.0,
-                        0.000134,
-                        -0.046442
-                    ],
-                    [
-                        0.03362,
-                        -0.000167,
-                        -0.999435,
-                        0.857192
-                    ],
-                    [
-                        0.0,
-                        0.0,
-                        0.0,
-                        1.0
-                    ]
-                ]
-            }
+        "calibration_file": "/home/csrobot/moad_control/moad_cui/calibration/55mm_joint/realsense_cam_parameters.json",
+        "camera_ids": {
+            "rs1": "215122257111",
+            "rs2": "239222302632",
+            "rs3": "213522251284",
+            "rs4": "213622251144",
+            "rs5": "215122254603"
         }
     },
     "turntable_control": {
@@ -216,13 +77,13 @@
     "prev_state": {
         "current_move": 72,
         "current_object": "",
-        "current_pose": 97,
+        "current_pose": 98,
         "turntable_pos": 360
     },
     "transform_generator": {
         "enabled": true,
         "calibration_dir": "/home/csrobot/moad_control/moad_cui/calibration",
-        "calibration_mode": "55mm",
+        "calibration_mode": "55mm_joint",
         "force": true,
         "visualize": true
     },
@@ -243,7 +104,6 @@
         "annotations": {
             "model_library": "/home/csrobot/moad_control/scene_replica_moad/assets/object_sets/moad-atb1",
             "pose": true,
-            "bounding_boxes": false,
             "masks": false
         }
     }
