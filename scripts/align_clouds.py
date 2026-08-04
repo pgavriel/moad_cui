@@ -1,3 +1,10 @@
+"""
+DESCRIPTION:
+A testing script created to try to automate the process of aligning different
+poses of an object reconstruction. Seemed to work fine with well featured objects,
+but wasn't as helpful with the smaller, more symmetric objects scanned for MOADv2.
+"""
+
 import open3d as o3d
 import numpy as np
 import os

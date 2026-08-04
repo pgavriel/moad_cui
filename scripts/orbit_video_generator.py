@@ -1,3 +1,10 @@
+"""
+DESCRIPTION:
+Utility script that will generate an "orbit" video of an input 3D model. 
+Kind of a hacky script, modified as needed to showcase MOAD outputs of 
+3D models and point clouds.
+"""
+
 import open3d as o3d
 import numpy as np
 import cv2

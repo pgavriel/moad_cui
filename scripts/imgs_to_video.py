@@ -1,3 +1,10 @@
+"""
+DESCRIPTION: 
+A simple utility script that takes a sequence of image frames and outputs a video file.
+You can specify the framerate, scaling, and exclude file patterns.
+Intended to be modified as needed.
+"""
+
 import os
 from os.path import join
 import cv2

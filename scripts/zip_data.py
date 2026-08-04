@@ -1,3 +1,9 @@
+"""
+DESCRIPTION:
+[DEPRECATED] A small utility script used to compress batches of scan data. 
+Can likely be removed. 
+"""
+
 import os
 import shutil
 import time

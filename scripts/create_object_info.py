@@ -1,3 +1,15 @@
+"""
+DESCRIPTION:
+Creates a template json file containing object information in a designated folder.
+Called automatically by moad_cui when creating new object folders. 
+
+All information needs to be filled out manually, but historically these files haven't
+really been utilized, and were not included in the MOADv2 dataset.
+
+TODO: Base template could be specified in a separate json file under config, which
+        might make it easier to make changes.
+"""
+
 import os
 import argparse
 import platform

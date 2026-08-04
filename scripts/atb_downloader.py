@@ -1,3 +1,13 @@
+"""
+DESCRIPTION:
+[DEPRECATED] This script was created as a way to download the ORIGINAL MOAD(v1) dataset.
+Now MOADv2 has been released with it's own dedicated downloader tool, including much more
+data and better quality data for each object.
+MOADv2 Dataset: https://github.com/pgavriel/MOADv2 
+
+(Should be removed)
+"""
+
 import urllib.request
 from urllib.error import HTTPError
 import sys

@@ -1,3 +1,23 @@
+"""
+DESCRIPTION:
+A debug script that was created when we discovered some of the DSLR images were 
+coming out blurry for unknown reasons. This script analyzes the sharpness of images
+in an entire scan to look for outliers and identify blurry frames. 
+
+As of writing (8/4/26 -PG) I believe this issue with the cameras has long been resolved, although
+I don't exactly remember what the original problem was, whether it was cameras settings
+or turntable timing, or some secret third thing.
+I went back to look at my dev log when I was running these experiments, and I don't 
+actually see a final solution, but I did verify that a few blurry frames had seemingly 
+minimal impact on the NeRF reconstructions.
+
+If you identify blurry frames, you can manually exclude them inside the 
+transform_generator.py script, regenerate the transforms for that scan, excluding 
+those specific frames, and when you train the NeRF using those transforms, it will 
+simply ignore the missing frames. 
+
+"""
+
 import os
 import time
 import cv2
