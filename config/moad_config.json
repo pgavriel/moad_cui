@@ -1,6 +1,6 @@
 {
     "output_dir": "/home/csrobot/MOAD_DATA",
-    "object_name": "test_scene",
+    "object_name": "depth_test",
     "degree_inc": 5,
     "num_moves": 72,
     "thread_num": 5,
@@ -9,7 +9,7 @@
         "log": true
     },
     "dslr": {
-        "enable_collection": false,
+        "enable_collection": true,
         "dslr_timeout_sec": 20,
         "camera_ids": {
             "CAMERA_1": "352074022019",
@@ -77,7 +77,7 @@
     "prev_state": {
         "current_move": 72,
         "current_object": "",
-        "current_pose": 98,
+        "current_pose": 99,
         "turntable_pos": 360
     },
     "transform_generator": {
@@ -97,14 +97,19 @@
         "manual_check": false
     },
     "scene_replica": {
-        "scene_root": "/home/csrobot/moad_control/moad_cui/scene_replica_moad/assets/scenes",
-        "scene_folder": "batch1_007",
+        "scene_root": "/home/csrobot/moad_control/clutter_metrics/scenes",
+        "scene_folder": "ex2a_006",
         "scene_file": "scene_replica.npz",
         "config_file": "scene_cfg_notag_55mm.json",
         "annotations": {
-            "model_library": "/home/csrobot/moad_control/scene_replica_moad/assets/object_sets/moad-atb1",
+            "model_library": "/home/csrobot/moad_control/clutter_metrics/data_collection/object_sets/experiment2",
             "pose": true,
             "masks": false
         }
+    },
+    "da3_depth": {
+        "auto_run_after_scan": true,
+        "venv_path": "/home/csrobot/venvs/da3",
+        "hf_cache": "/home/csrobot/hf_cache"
     }
 }

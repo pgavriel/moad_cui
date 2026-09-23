@@ -243,6 +243,7 @@ static void finish_scan(std::chrono::milliseconds duration, int degree_inc, int 
 
     log_scan_time(duration);
 
+    // Save camera config and generate scan transforms
     if (config.getValue<bool>("dslr.enable_collection")) {
         std::string pose_path = scan_folder + PATH_SEP + "pose-" + curr_pose;
         saveCameraConfig(pose_path);
@@ -251,14 +252,23 @@ static void finish_scan(std::chrono::milliseconds duration, int degree_inc, int 
             generate_transforms(degree_inc, num_moves, curr_pose);
     }
 
+    // Generate downscaled DSLR frames - used for NeRF, SceneReplica, DA3, etc.
+    run_filecount_check(scan_folder);
+
+    // Generate DSLR Depth frames via DepthAnythingv3
+    if (config.getValue<bool>("dslr.enable_collection")) {
+        // Must run after image downscaling and transforms are generated
+        if (config.getValue<bool>("da3_depth.auto_run_after_scan"))
+            generate_dslr_depth();
+    }
+
+    // Update some tracking variables
     degree_tracker = degree_tracker % 360;
     object_info["Turntable Pos"] = std::to_string(degree_tracker);
-
     curr_pose++;
     object_info["Pose"] = curr_pose;
     config.writePose(curr_pose);
 
-    run_filecount_check(scan_folder);
     MenuHandler::WaitUntilKeypress();
 }
 

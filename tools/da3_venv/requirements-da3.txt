@@ -1,0 +1,8 @@
+# Depth Anything 3 toolchain for MOAD.
+# torch/torchvision are installed separately by setup_da3_env.sh so the
+# CUDA build matches the driver — do not pin them here.
+depth-anything-3
+addict                 # imported by da3 model code, missing from its metadata
+pyyaml                 # da3_config.yaml
+opencv-python-headless
+numpy

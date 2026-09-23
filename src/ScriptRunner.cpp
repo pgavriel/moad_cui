@@ -9,6 +9,7 @@
 #include "DebugUtils.h"
 #include "MOADGlobals.h"
 
+#include <cstdlib>
 #include <filesystem>
 #include <sstream>
 #include <string>
@@ -237,4 +238,44 @@ bool replica_generate_annotations() {
     system(command.c_str());
 
     return true;
+}
+
+/* -----------------------------------------------------------------------------
+Generates the depth frames for DSLR data by running inference on DepthAnythingv3 and scaling the output
+using the calibration/settings defined in tools/da3_venv/da3_config.yaml
+*/
+bool generate_dslr_depth() {
+    DebugUtils::logWhitespace();
+    DebugUtils::logInfo("Generating DSLR depth frames with DepthAnythingv3...");
+
+    ConfigHandler& config = ConfigHandler::getInstance();
+
+    std::string da3_venv = config.getValue<std::string>("da3_depth.venv_path");
+    std::string hf_cache = config.getValue<std::string>("da3_depth.hf_cache");
+    // Explicitly set environmental variables, otherwise if running as root, the venv wont be found
+    // 1 = overwrite if already set; use 0 to respect an existing value
+    setenv("DA3_VENV", da3_venv.c_str(), 1);
+    DebugUtils::logDebug("Set DA3_ENV: "+da3_venv);
+    setenv("HF_HOME",  hf_cache.c_str(), 1);
+    DebugUtils::logDebug("Set HF_HOME: "+hf_cache);
+
+    // std::string calibration_dir = config.getValue<std::string>("transform_generator.calibration_dir");
+    // std::string calibration     = config.getValue<std::string>("transform_generator.calibration_mode");
+    // std::string output_dir      = config.getValue<std::string>("output_dir");
+    char pose = config.getValue<char>("prev_state.current_pose");
+    std::string object_name     = config.getValue<std::string>("object_name");
+    std::string scan_str        = object_name+"/pose-"+pose;
+    DebugUtils::logInfo("Target Scan: "+scan_str);
+
+    std::stringstream cmd;
+    cmd << "python3 "
+        << moad_dir + "/tools/da3_venv/run_da3_scan.py "
+        << "--scan " << scan_str;
+
+    std::string command = cmd.str();
+    DebugUtils::logInfo("Executing: " + command);
+    std::this_thread::sleep_for(500ms);
+    system(command.c_str());
+
+    return false;
 }

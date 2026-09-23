@@ -968,6 +968,24 @@ bool SceneReplicaSubMenu(){
 	return true;
 }
 
+// bool DepthAnythingSubMenu() {
+// 	MenuHandler da3_menu_handler({
+// 		{"1", "Set Scene"},
+// 		{"2", "Live Scene Setup (Start Live View First)"},
+// 		{"3", "Generate Annotations"}
+// 	},{
+// 		{"1", setSceneToLoad},
+// 		{"2", run_replica_live_view},
+// 		{"3", replica_generate_annotations}
+// 	}, object_info);
+
+// 	ConfigHandler& config = ConfigHandler::getInstance();
+// 	std::string curr_scene = config.getValue<std::string>("scene_replica.scene_folder");
+// 	da3_menu_handler.setTitle("Scene Replica Menu\nCurrent Scene: "+curr_scene);
+// 	da3_menu_handler.initialize(curr_menu);
+// 	return true;
+// }
+
 /* ----------------------------------------------------------------------------------
 	MAIN FUNCTION
 ---------------------------------------------------------------------------------- */
@@ -1042,7 +1060,8 @@ int main(int argc, char* argv[])
 		{"p", "Scan from saved state"},
 		{"0", "Reload Config"},
 		{"f", "Run Filecount Check Script"},
-		{"s", "Scene Replica Menu"}
+		{"s", "Scene Replica Menu"},
+		{"d", "Generate DSLR Depth (Current obj/pose)"}
 	},
 	{
 		{"1", fullScan},
@@ -1057,7 +1076,8 @@ int main(int argc, char* argv[])
 		{"p", scanFromSaveState}, // TODO: "10" seemed to not work??
 		{"0", reloadConfig},
 		{"f", runFilecountCheck},
-		{"s", SceneReplicaSubMenu}
+		{"s", SceneReplicaSubMenu},
+		{"d", generate_dslr_depth}
 	}, object_info);
 	menu_handler.setTitle("MOAD - CLI Menu");
 	menu_handler.ClearScreen();

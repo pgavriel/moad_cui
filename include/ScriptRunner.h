@@ -59,3 +59,5 @@ bool replica_generate_annotations();
 /*
 Scene Viewer Script ?
 */
+
+bool generate_dslr_depth();

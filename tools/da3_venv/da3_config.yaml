@@ -1,0 +1,93 @@
+# =============================================================================
+# da3_config.yaml — default settings for the MOAD Depth Anything 3 tools
+# =============================================================================
+# Precedence (highest first):
+#   1. command-line flags
+#   2. MOAD_DA3_CONFIG environment variable (path to a config file)
+#   3. this file (or the one passed with --config)
+#   4. built-in defaults in da3_config.py
+#
+# Only the keys you want to change need to appear in a user config file;
+# anything missing falls back to the built-in defaults.
+# =============================================================================
+
+paths:
+  # Root containing scans, e.g. <data_root>/ex2_006/pose-b
+  data_root: /home/csrobot/MOAD_DATA
+  # Joint DSLR + RealSense calibration directory (cam_parameters.json etc.)
+  calib_dir: /home/csrobot/moad_control/moad_cui/calibration/55mm_joint
+
+model:
+  # HuggingFace model id. da3-small/base/giant are Apache-2.0; the nested
+  # giant model is CC BY-NC 4.0 — check before shipping outputs in a dataset.
+  name: depth-anything/da3-base
+  # torch device; "auto" picks cuda when available.
+  device: auto
+
+inference:
+  # Processing resolution (long side) INSIDE the model. This — not the
+  # input image size — determines the resolution of the predicted depth.
+  # Raising it costs VRAM roughly quadratically.
+  process_res: 504
+
+  # How camera poses are handled:
+  #   calibrated -> feed metric extrinsics + pinhole K (pose-conditioned);
+  #                 depth comes back in METERS in the calibration frame
+  #   none       -> feed images only; DA3 estimates poses. Output is
+  #                 scale-free and in DA3's own frame: NOT metric, and not
+  #                 interchangeable with calibrated output. Debug only.
+  pose_source: calibrated
+
+  # Replace predicted extrinsics with the input ones and rescale depth to
+  # their metric scale (only meaningful when pose_source is "calibrated").
+  align_to_input_ext_scale: true
+
+input:
+  # Which images_N folder to read. This sets undistortion quality and the
+  # upsample target for raw-geometry depth. It does NOT raise the model's
+  # output resolution — that is inference.process_res.
+  images_subdir: images_4
+
+  # Undistort before inference. DA3 takes a pinhole K with no distortion
+  # term, and the DSLR calibration has k1 = 0.358, so this should stay on.
+  undistort: true
+
+output:
+  # Subdirectory created inside the scan/pose folder.
+  subdir: DSLR_depth
+
+  # Append model name, process_res and pose source to the subdir so two
+  # different settings cannot silently share one output folder.
+  auto_suffix: false
+
+  depth:
+    # Resample depth back into the raw (distorted) DSLR frame, so the maps
+    # are pixel-aligned with images_subdir and with the RealSense pipeline.
+    raw: true
+    # Also keep the model's native undistorted output.
+    undistorted: false
+    # Upsample raw-geometry depth to the images_subdir resolution.
+    upsample_to_images: true
+
+  cloud:
+    # Colored PLY per turntable position. Off by default: a full scan is
+    # 72 files and a lot of disk. Useful as a spot check.
+    enabled: false
+    # Drop the lowest N% of confidence pixels from clouds (not from depth).
+    conf_pct: 20.0
+    units: meters          # meters | model
+    max_points: 3000000
+    # Also write camera frustums (predicted vs calibrated) as a PLY.
+    cameras: true
+
+  # RGB | depth | blend preview every N positions (0 disables).
+  preview_every: 12
+  # Keep the raw prediction npz per position (re-export without re-running).
+  save_npz: false
+
+runtime:
+  # Skip positions whose outputs already exist.
+  skip_existing: false
+  # Refuse to write into an output dir whose meta.json disagrees about
+  # pose_source / metric / geometry. Strongly recommended.
+  strict_meta: true

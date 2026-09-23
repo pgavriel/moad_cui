@@ -28,7 +28,7 @@ sudo ./build/MultiCamCui
   * [Build and Run](#Build-and-run-the-software)
   * [Using the program](#Using-the-program)
     * [Control Menu](#Control-Menu)
-  * [Debugging](#Debugging)
+  * [Additional Tools](#additional-tools)
 
 
 
@@ -283,12 +283,44 @@ After this, the next step is to try a full scan. Select `1  Full Scan` and see i
 
 Finally, if everything runs with no issues, the last recommendation is to look at your DSLR image output, and tweak any settings so that the lighting is not too dark or too washed out. The settings can be altered through the Control Menu and is best accomplished by first selecting option `9  Live View...`, starting up the Live View, then returning to the main screen and selecting `7  Camera Options...`. This will allow you to tweak camera settings while getting a preview of the result. Remember to turn off the Live View before trying to run any of the scans.
 
+## Additional Tools  
+### DepthAnythingv3 for DSLR Depth   
+[DepthAnythingv3 (DA3)](https://github.com/ByteDance-Seed/Depth-Anything-3/) is a foundational multi-view depth estimation (and camera pose estimation) model with the ability to have it's output conditioned on known camera intrinsics/extrinsics. Through experiments, we found that our calibration files and camera transform files provided all the necessary information to cleanly generate metric-scale depth data for our RGB DSLR scan frames.  
+We provide the necessary tooling for leveraging DA3 to generate depth data for scans under **moad_cui/tools/da3_venv**.  
+  
+**setup_da3_venv.sh** - Creates & sets up a python virtual environment for running DA3 model inference *OR* activates the DA3 venv if it has already been created. 
+```
+./setup_da3_env.sh        # run venv setup (does not activate)
+source setup_da3_env.sh   # run setup and/or activate in current terminal
+```  
+**da3_venv.py** - Provides a function *ensure_venv()* which, when called at the top of another python script, will re-execute that python script with the python executable associated with the DA3 venv, implicitly running it from within that venv.   
+**da3_config.yaml** - Provides the default configuration options when running any of the inference scripts.   
+  
+With the venv setup, there are two scripts which can be called directly:  
+**run_da3_scan.py** - This is more of a specialized script specifically for generating depth frames for an entire completed scan and can be run very simply with only the target \<scan>/\<pose> (using --help will show additional arguments). For example:  
+```
+python3 run_da3_scan.py --scan ex2_009/pose-a    
+```  
+**run_da3_infer.py** -  This script is designed for more specific kinds of inference, for specific turntable positions, specific cameras, or whether to ignore calibration poses, etc. For example: 
+```
+python3 run_da3_infer.py --scan ex2_009/pose-a --positions 0 90 --cameras 1 2 3
+```
 
-## Debugging
+**util_generate_depth_video.py** - For debugging purposes, an additional utility script is including to produce side by side RGB/Depth videos for a full scan after the depth frames have been generated. For example:  
+```
+python3 util_generate_depth_video.py --mode png                 \
+	--depth-dir  ~/MOAD_DATA/depth_test/pose-a/DSLR_depth  \
+	--images-dir ~/MOAD_DATA/depth_test/pose-a/images_4        \
+	--output-dir ~/MOAD_DATA/depth_test/pose-a/output          \
+	--vmin 0.55 --vmax 1.35
+```
+
+
+<!-- ## Debugging
 
 ### Execution flow:
 ![Flowchart PNG](./moadcui_flowchart_v1.png)
 
 ### DevLog
 
-(needs cleaning)
+(needs cleaning) -->
