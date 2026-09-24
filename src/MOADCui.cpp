@@ -97,7 +97,8 @@ int create_folder(std::string path, bool quiet);
 // Function wrapper so run_filecount_check(scan_folder) can be 
 // bound to the menu, which only accepts plain bool(*)() function pointers.
 bool runFilecountCheck() {
-    return run_filecount_check(scan_folder);
+	int total_frames = 360; // Hardcoded, since it should rarely ever be used like this
+    return run_filecount_check(total_frames);
 }
 
 

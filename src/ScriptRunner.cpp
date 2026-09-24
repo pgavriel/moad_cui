@@ -61,7 +61,7 @@ Generates the "virtual" camera transforms for a scan using a set of camera calib
 extrinsics/intrinsics. Outputs a transforms.json file containing the camera pose for each 
 DSLR image frame. Required for NeRF reconstruction and SceneReplica annotation generation.
 */
-bool generate_transforms(int degree_inc, int num_moves, char curr_pose) {
+bool generate_transforms(int degree_inc, int num_moves, char curr_pose, std::string include_cameras_str) {
     DebugUtils::logWhitespace();
     DebugUtils::logInfo("Generating transforms.json...");
 
@@ -85,7 +85,8 @@ bool generate_transforms(int degree_inc, int num_moves, char curr_pose) {
         << "-c " << calibration     << " "
         << "--calibration_dir " << calibration_dir << " "
         << "-p " << output_dir      << " "
-        << "--pose pose-"    << curr_pose;
+        << "--pose pose-"    << curr_pose << " "
+        << "--include-cameras " << include_cameras_str;
 
     if (visualize) cmd << " -v";
     if (force)     cmd << " -f";
@@ -103,7 +104,7 @@ bool generate_transforms(int degree_inc, int num_moves, char curr_pose) {
 Checks that all expected image frames are accounted for (no missing data).
 Additionally handles the image copying/downscaling/renaming required for NeRF training.
 */
-bool run_filecount_check(const std::string& scan_folder) {
+bool run_filecount_check(int total_frames) {
     ConfigHandler& config = ConfigHandler::getInstance();
 
     if (!config.getValue<bool>("filecount_testing.enabled")) {
@@ -113,23 +114,22 @@ bool run_filecount_check(const std::string& scan_folder) {
 
     DebugUtils::logWhitespace();
     DebugUtils::logInfo("Running file count checking script...");
+    bool check_filecount        = config.getValue<bool>("filecount_testing.check_filecount");
+    bool downscale_frames       = config.getValue<bool>("filecount_testing.downscale_frames");
+    std::string output_dir      = config.getValue<std::string>("output_dir");
+    std::string object_name     = config.getValue<std::string>("object_name");
+    char pose = config.getValue<char>("prev_state.current_pose");
+
+    
+    std::string target = object_name+"/pose-"+pose;
 
     std::stringstream cmd;
-    cmd << "python3 " + moad_dir +"/scripts/filecount_test.py ";
-
-    if (config.getValue<bool>("filecount_testing.count"))
-        cmd << "--count ";
-    if (config.getValue<bool>("filecount_testing.create"))
-        cmd << "--create ";
-    if (config.getValue<bool>("filecount_testing.manual_check"))
-        cmd << "--manual_check ";
-    if (config.getValue<bool>("filecount_testing.delay"))
-        cmd << "--prog_delay --delay=0.1 ";
-
-    cmd << "--directory=\"" << scan_folder << "\" ";
-
-    if (config.getValue<bool>("filecount_testing.check_single_object"))
-        cmd << "--check_single_object ";
+    cmd << "python3 " + moad_dir + "/scripts/filecount_test.py ";
+    cmd << "--data-root " << output_dir << " ";
+    cmd << "--target-scans " << target << " ";
+    cmd << "--total-frames " << total_frames << " ";
+    cmd << "--check-count " << check_filecount << " ";
+    cmd << "--downscale " << downscale_frames;
 
     std::string command = cmd.str();
     DebugUtils::logInfo("Executing: " + command);

@@ -32,7 +32,7 @@ void create_obj_info_json(const std::string& output_dir, const std::string& obje
         num_moves   : total number of moves in the scan
         curr_pose   : current pose letter (e.g. 'a', 'b', ...)
 */
-bool generate_transforms(int degree_inc, int num_moves, char curr_pose);
+bool generate_transforms(int degree_inc, int num_moves, char curr_pose,  std::string include_cameras_str);
 
 /*
     Run scripts/filecount_test.py to verify and optionally create
@@ -45,7 +45,7 @@ bool generate_transforms(int degree_inc, int num_moves, char curr_pose);
         true  if the script was run
         false if filecount_testing is disabled in config
 */
-bool run_filecount_check(const std::string& scan_folder);
+bool run_filecount_check(int total_frames);
 
 /* ========================================================================
     SCENE REPLICA SUB-MODULE

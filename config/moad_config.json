@@ -1,6 +1,6 @@
 {
     "output_dir": "/home/csrobot/MOAD_DATA",
-    "object_name": "depth_test",
+    "object_name": "dddtest",
     "degree_inc": 5,
     "num_moves": 72,
     "thread_num": 5,
@@ -89,12 +89,8 @@
     },
     "filecount_testing": {
         "enabled": true,
-        "check_all": false,
-        "check_single_object": true,
-        "count": true,
-        "create": true,
-        "delay": true,
-        "manual_check": false
+        "check_filecount": true,
+        "downscale_frames": true
     },
     "scene_replica": {
         "scene_root": "/home/csrobot/moad_control/clutter_metrics/scenes",

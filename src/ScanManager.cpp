@@ -248,18 +248,29 @@ static void finish_scan(std::chrono::milliseconds duration, int degree_inc, int 
         std::string pose_path = scan_folder + PATH_SEP + "pose-" + curr_pose;
         saveCameraConfig(pose_path);
         saveScanTime(duration, pose_path);
-        if (config.getValue<bool>("transform_generator.enabled"))
-            generate_transforms(degree_inc, num_moves, curr_pose);
-    }
+        if (config.getValue<bool>("transform_generator.enabled")){
+            std::string include_cameras_str;
+            for (const auto& [key, value] : canonhandle.camera_names) {
+                DebugUtils::logDebug("Key: "+key+"  Val: "+value,3);
+                if (!include_cameras_str.empty()) include_cameras_str += ' ';
+                include_cameras_str += value;
+            }
+            DebugUtils::logDebug("Include Cameras: "+include_cameras_str);
+            generate_transforms(degree_inc, num_moves, curr_pose, include_cameras_str);
+        }
+            
 
-    // Generate downscaled DSLR frames - used for NeRF, SceneReplica, DA3, etc.
-    run_filecount_check(scan_folder);
+        if (config.getValue<bool>("filecount_testing.enabled")) {
+            // Generate downscaled DSLR frames - used for NeRF, SceneReplica, DA3, etc.
+            size_t num_cameras = canonhandle.cameraArray.size();
+            int total_frames = num_moves * num_cameras;
+            run_filecount_check(total_frames);
 
-    // Generate DSLR Depth frames via DepthAnythingv3
-    if (config.getValue<bool>("dslr.enable_collection")) {
-        // Must run after image downscaling and transforms are generated
-        if (config.getValue<bool>("da3_depth.auto_run_after_scan"))
-            generate_dslr_depth();
+            // Generate DSLR Depth frames via DepthAnythingv3
+            // Must run after image downscaling and transforms are generated
+            if (config.getValue<bool>("da3_depth.auto_run_after_scan"))
+                generate_dslr_depth();
+        }
     }
 
     // Update some tracking variables

@@ -18,7 +18,20 @@ import json
 import numpy as np
 import transforms3d
 import matplotlib.pyplot as plt
+from pathlib import Path
 # from mpl_toolkits.mplot3d import Axes3D
+
+def count_files(directory: str | Path, pattern: str = "*.jpg") -> int:
+    """
+    Count files matching `pattern` directly inside `directory`.
+
+    Returns 0 if the path doesn't exist or isn't a directory.
+    """
+    path = Path(directory).expanduser()
+    print(f"Checking \'{path}\' for \'{pattern}\'")
+    if not path.is_dir():
+        return -1
+    return sum(1 for p in path.glob(pattern) if p.is_file())
 
 def list_folders_by_creation_date(directory, target_date):
     """
@@ -127,6 +140,7 @@ class MoadTransformGenerator:
         self.num_cameras = 5
 
         self.exclude_cameras = []
+        self.include_cameras = [] # Empty list includes all
         self.exclude_frames = None
 
         # self.apply_alignment = False
@@ -195,9 +209,15 @@ class MoadTransformGenerator:
         
         # Assemble list of camera transforms
         cameras = self.calibration_dict["cameras"]
-        self.num_cameras = len(cameras)
+        if len(self.include_cameras) > 0:
+            self.num_cameras = len(self.include_cameras)
+        else:
+            self.num_cameras = len(cameras)
         self.camera_keys = sorted(self.calibration_dict["cameras"].keys())
         print(f"Found Camera Keys: {self.camera_keys}")
+
+        # self.total_frames = (self.scan_range // self.scan_angle_inc) * self.num_cameras
+        # print(f"Calculated Total Scan Frames: {self.total_frames}")
 
         # Get the base transform for each camera
         transforms = []
@@ -214,6 +234,7 @@ class MoadTransformGenerator:
         # Print some state information (mostly for debug)
         print(f"Cameras: {self.num_cameras}")
         print(f"Angle Inc: {self.scan_angle_inc}")
+        print(f"Angle Range: {self.scan_range}")
         print(f"Frames Per Camera: {len(position_list)}")
         print(f"Positions: {position_list}")
         print(f"Total Frames: {self.total_frames}")
@@ -236,6 +257,7 @@ class MoadTransformGenerator:
         # For each camera...
         for i in range(self.num_cameras):
             current_camera = i+1
+            if len(self.include_cameras) > 0 and current_camera not in self.include_cameras: continue # Skip specified camera which is not included
             if current_camera in self.exclude_cameras: continue # Skip an excluded camera
             # Generate a frame for each position...
             for pos in position_list:
@@ -275,6 +297,7 @@ class MoadTransformGenerator:
             # print(f"point: {point}")
             transformed_points.append(point)
         transformed_points = np.asarray(transformed_points)
+        print(f"Transformed Points shape: {transformed_points.shape}")
         max_z  = np.max(transformed_points[:, 2])
         max_xy = np.max(np.abs(transformed_points[:, 0:2]))
         max_xy = max(1,max_xy)
@@ -293,10 +316,11 @@ class MoadTransformGenerator:
         ax.set_zlabel('Z')
         ax.set_title(f'Camera Transforms\nCalibration: {self.calibration}')
         c = 1
+        print(f"Scattering {len(transformed_points)} points...")
         for p in transformed_points:
             ax.scatter(p[0], p[1], p[2])
-            if len(frames) <= 5:
-                ax.text(p[0], p[1], p[2], f"cam{c}", color='black')
+            # if len(frames) <= 5:
+            #     ax.text(p[0], p[1], p[2], f"cam{c}", color='black')
             # print(f'Point {c}: {point}')
             c += 1
     
@@ -341,7 +365,7 @@ class MoadTransformGenerator:
 # Set some default values here for convenience
 DEFAULT_DATA_DIR = "/home/csrobot/MOAD_DATA"
 DEFAULT_CALIBRATION_DIR = "/home/csrobot/moad_control/moad_cui/calibration"
-DEFAULT_CALIBRATION = "55mm"
+DEFAULT_CALIBRATION = "55mm_joint"
 # Get CLI arguments
 parser = argparse.ArgumentParser()
 parser.add_argument('object_name', help="Name of the scanned object")
@@ -349,9 +373,13 @@ parser.add_argument('-p', '--path', type=str, default=DEFAULT_DATA_DIR, help="Di
 parser.add_argument('--pose', type=str, default="pose-a", help="The target pose of the scan (Pose folder name, Default: pose-a)")
 parser.add_argument('-d', '--degree', type=int, default=5, help="Degree difference between each image (Default: 5)")
 parser.add_argument('-r', '--range', type=int, default=360, help="Max angle of rotation (Default: 360)")
-parser.add_argument('-t', '--totalframes', type=int, default=360, help="Total images collected in the target scan (Default: 360)")
+# parser.add_argument('-t', '--totalframes', type=int, default=360, help="Total images collected in the target scan (Default: 360)")
+parser.add_argument('--frames_subdir', type=str, default="DSLR", help="Subdirectory to count total frames")
 parser.add_argument('-c', '--calibration', type=str, default=DEFAULT_CALIBRATION, help="Calibration used for object data collection (Calibration folder name)")
 parser.add_argument('--calibration_dir', type=str, default=DEFAULT_CALIBRATION_DIR, help="Directory where the calibration files are")
+
+parser.add_argument('--include-cameras', nargs='*', type=str, help="A space-separated list of camera ID numbers to include in the output transforms. Empty list includes all. ")
+
 parser.add_argument('-v', '--visualize', action="store_true", help="Flag: Visualize the 3D position of the camera")
 parser.add_argument('-f', '--force', action="store_true", help="Bypass the confirmation prompt before calculating the transform position")
 
@@ -361,6 +389,15 @@ print("\n" + "="*30 + "\n   COMMAND LINE ARGUMENTS\n" + "="*30)
 for key, value in vars(args).items():
     print(f"{key:<15} : {value}")
 print("="*30 + "\n")
+
+if args.frames_subdir is not None:
+    frame_dir = join(args.path,args.object_name,args.pose,args.frames_subdir)
+    total_frames = count_files(frame_dir)
+if total_frames == 0 or args.frames_subdir is None: 
+    total_frames = 360
+    print(f"WARNING: Couldn't count frames, defaulting to {total_frames} total frames...")
+else:
+    print(f"Found {total_frames} total frames.")
 
 tf_gen = MoadTransformGenerator()
 # Set the directory containing calibrations and the calibration (subfolder) to use.
@@ -372,17 +409,23 @@ tf_gen.object_name = args.object_name #"t1_zoomcan"
 tf_gen.pose = args.pose
 # Set the angle increment of the collected image data.
 tf_gen.scan_range = args.range
-tf_gen.total_frames = args.totalframes
+tf_gen.total_frames = total_frames
 tf_gen.scan_angle_inc = args.degree
 tf_gen.visualize = args.visualize
 tf_gen.auto_save = True
 
+# SPECIFY WHICH CAMERAS ARE INCLUDED IN THE SCAN 
+#(EMPTY LIST OR NO ARGUMENT INCLUDES ALL CAMERAS IN THE CALIBRATION BY DEFAULT)
+tf_gen.include_cameras = [int(cam_id) for cam_id in args.include_cameras]
+print(f"INCLUDE CAMERAS: {tf_gen.include_cameras}")
 
 # CAMERA/FRAME EXCLUSION (FOR TESTING) =========================================================
 #   You can manually exclude specific cameras/frames from the generated transforms
 #   This was useful for some experiments but generally doesn't need to be used.
 # Camera IDs to exclude entirely
 tf_gen.exclude_cameras = [] # [1, 2, 3, 4, 5]
+
+
 # Specific frames to exclude
 tf_gen.exclude_frames = {
     1: [],
