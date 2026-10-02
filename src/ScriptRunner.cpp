@@ -265,12 +265,16 @@ bool generate_dslr_depth() {
     char pose = config.getValue<char>("prev_state.current_pose");
     std::string object_name     = config.getValue<std::string>("object_name");
     std::string scan_str        = object_name+"/pose-"+pose;
+    int internal_res            = config.getValue<int>("da3_depth.internal_model_resolution");
+    std::string out_dir_name    = config.getValue<std::string>("da3_depth.output_subdir");
     DebugUtils::logInfo("Target Scan: "+scan_str);
 
     std::stringstream cmd;
     cmd << "python3 "
         << moad_dir + "/tools/da3_venv/run_da3_scan.py "
-        << "--scan " << scan_str;
+        << "--scan " << scan_str << " "
+        << "--process-res " << internal_res << " "
+        << "--out-subdir " << out_dir_name;
 
     std::string command = cmd.str();
     DebugUtils::logInfo("Executing: " + command);

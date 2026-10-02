@@ -28,7 +28,7 @@ inference:
   # Processing resolution (long side) INSIDE the model. This — not the
   # input image size — determines the resolution of the predicted depth.
   # Raising it costs VRAM roughly quadratically.
-  process_res: 504
+  process_res: 1008
 
   # How camera poses are handled:
   #   calibrated -> feed metric extrinsics + pinhole K (pose-conditioned);

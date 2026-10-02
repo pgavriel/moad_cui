@@ -699,14 +699,14 @@ if __name__ == "__main__":
 
     parser.add_argument("--data-root",  default="/home/csrobot/MOAD_DATA",
                         help="Root data directory")
-    parser.add_argument("--object",     default="batch1_007",
+    parser.add_argument("--object",     default="ex2_026",
                         help="Object subfolder name")
-    parser.add_argument("--pose",       default="pose-b",
+    parser.add_argument("--pose",       default="pose-a",
                         help="Pose subfolder name")
     parser.add_argument("--calib-root", default="/home/csrobot/moad_control/moad_cui/calibration/55mm_joint",
                         help="Calibration folder containing cam_parameters files "
                              "(must match entries in VIEWER_SENSOR_CONFIGS)")
-    parser.add_argument("--fps",        type=float, default=20.0,
+    parser.add_argument("--fps",        type=float, default=30.0,
                         help="Playback speed in frames per second (default: 10)")
     
     parser.add_argument("--label-opacity", type=float, default=0.5,

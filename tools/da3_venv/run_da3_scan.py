@@ -45,6 +45,8 @@ def main() -> int:
     ap.add_argument("--model", default=None, help="override model.name")
     ap.add_argument("--process-res", type=int, default=None,
                     help="override inference.process_res")
+    ap.add_argument("--out-subdir", default=None,
+                    help="output folder name; default <output.subdir>")
     ap.add_argument("--out-dir", default=None,
                     help="absolute output dir; default <scan>/<output.subdir>")
     ap.add_argument("--resume", action="store_true",
@@ -56,6 +58,7 @@ def main() -> int:
     cfg = load_config(args.config, overrides={
         "model.name": args.model,
         "inference.process_res": args.process_res,
+        "output.subdir": args.out_subdir,
         "runtime.skip_existing": True if args.resume else None,
     })
     try:

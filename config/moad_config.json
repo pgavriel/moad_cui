@@ -105,6 +105,8 @@
     },
     "da3_depth": {
         "auto_run_after_scan": true,
+        "output_subdir": "DSLR_depth",
+        "internal_model_resolution": 1008,
         "venv_path": "/home/csrobot/venvs/da3",
         "hf_cache": "/home/csrobot/hf_cache"
     }

@@ -720,6 +720,7 @@ def generate_pose_data(
     frame_iter,
     output_subdir: str,
     visualize:     bool = False,
+    save_video:    bool = False,
     debug_masks:   bool = False,
 ) -> int:
     """
@@ -759,6 +760,11 @@ def generate_pose_data(
     print(f"  Output: {output_root}")
 
     global_offset = np.asarray(scene_cfg["CALIBRATION_OFFSET"], dtype=np.float64)
+
+    if save_video:
+        print(" = SAVING VIDEO FRAMES = ")
+        video_path = os.path.join(pose_path, "scene_replica", f"{output_subdir}_video.mp4")
+        video_writer = None
 
     # ── Resolve render resolution ─────────────────────────────────────────────
     # Always peek at the first frame to determine actual image resolution so
@@ -813,7 +819,7 @@ def generate_pose_data(
     if not visualize and marker_ids:
         # Hide permanently — no restore needed, no per-frame cost
         for bid in marker_ids:
-            p.changeVisualShapeColor(bid, -1, rgbaColor=[0, 0, 0, 0])
+            p.changeVisualShape(bid, -1, rgbaColor=[0, 0, 0, 0])
         print(f"  Visual markers hidden ({len(marker_ids)}) — visualize=False")
 
     # ── Main annotation loop ──────────────────────────────────────────────────
@@ -830,6 +836,7 @@ def generate_pose_data(
             cam_key, cameras, turntable_deg, global_offset, scale
         )
         scene_replica.update_camera(R_cw_cv, t_cw_cv)
+        comp = None
 
         if visualize:
             # Render 1 — full scene including markers, for display overlay
@@ -837,13 +844,13 @@ def generate_pose_data(
 
             # Hide markers, render again for clean segmentation
             for bid in marker_ids:
-                p.changeVisualShapeColor(bid, -1, rgbaColor=[0, 0, 0, 0])
+                p.changeVisualShape(bid, -1, rgbaColor=[0, 0, 0, 0])
             scene_replica.render_scene_image()
             seg = scene_replica.seg   # clean segmentation, no marker pixels
 
             # Restore markers for next frame's display render
             for bid in marker_ids:
-                p.changeVisualShapeColor(bid, -1, rgbaColor=marker_originals[bid])
+                p.changeVisualShape(bid, -1, rgbaColor=marker_originals[bid])
 
             # Show display overlay
             bgr = cv2.imread(img_path)
@@ -859,11 +866,38 @@ def generate_pose_data(
                 ).astype(np.uint8)
                 cv2.imshow("Annotation Verify", comp)
                 cv2.waitKey(1)
+
+                
         else:
             # Markers already permanently hidden — single render, clean seg
             rgba = scene_replica.render_scene_image()
             seg  = scene_replica.seg
 
+            if save_video:
+                bgr = cv2.imread(img_path)
+                if bgr is not None:
+                    if bgr.shape[1] != render_W or bgr.shape[0] != render_H:
+                        bgr = cv2.resize(bgr, (render_W, render_H),
+                                         interpolation=cv2.INTER_LINEAR)
+                    bg   = bgr.astype(np.float32)
+                    ov   = rgba[:, :, [2, 1, 0, 3]].astype(np.float32)
+                    alpha = ov[:, :, 3:4] / 255.0
+                    comp = np.clip(
+                        ov[:, :, :3] * alpha + bg * (1.0 - alpha), 0, 255
+                    ).astype(np.uint8)
+                else:
+                    comp = None
+
+        
+        if save_video:
+            if comp is not None:
+                if video_writer is None:
+                    fourcc       = cv2.VideoWriter_fourcc(*"mp4v")
+                    video_writer = cv2.VideoWriter(
+                        video_path, fourcc, 15.0, (render_W, render_H)
+                    )
+                video_writer.write(comp)
+        
         objects = get_object_poses_in_camera_frame(
             R_cw_cv, t_cw_cv,
             seg         = seg,
@@ -898,6 +932,14 @@ def generate_pose_data(
 
     if visualize:
         cv2.destroyAllWindows()
+
+    if save_video:
+        if video_writer is not None:
+            video_writer.release()
+            print(f"  Video saved: {video_path}")
+        else:
+            print("  [WARNING] save_video=True but no frames were written "
+                  "(frame_iter may have been empty or all images failed to load)")
 
     # ── Timing summary ────────────────────────────────────────────────────────
     total_s   = time.perf_counter() - total_start
@@ -1062,6 +1104,7 @@ def main(args):
                 frame_iter    = frame_iter,
                 output_subdir = cfg["output_subdir"],
                 visualize     = args.visualize,
+                save_video    = args.save_video,
                 debug_masks   = args.debug_masks,
             )
 
@@ -1090,7 +1133,7 @@ if __name__ == "__main__":
     # ── Target data ───────────────────────────────────────────────────────────
     parser.add_argument("--data-root", default="/home/csrobot/MOAD_DATA",
                         help="Root data directory")
-    parser.add_argument("--object",    default="batch1_007",
+    parser.add_argument("--object",    default="ex2_006",
                         help="Object subfolder name")
     parser.add_argument("--pose",      default="pose-b",
                         help="Pose subfolder name")
@@ -1104,7 +1147,7 @@ if __name__ == "__main__":
 
     # ── Model library ─────────────────────────────────────────────────────────
     parser.add_argument("--model-library",
-                        default="/home/csrobot/moad_control/scene_replica_moad/assets/object_sets/moad-atb1",
+                        default="/home/csrobot/moad_control/clutter_metrics/data_collection/object_sets/experiment2",
                         help="Folder containing URDF models referenced by the scene")
 
     # ── Output options ────────────────────────────────────────────────────────
@@ -1114,12 +1157,14 @@ if __name__ == "__main__":
                         help="Generate bounding box annotations (not yet implemented)")
     parser.add_argument("--generate-masks",  action="store_true", default=False,
                         help="Generate segmentation masks (not yet implemented)")
-    parser.add_argument("--visualize",       action="store_true", default=True,
+    parser.add_argument("--visualize",       action="store_true", default=False,
                         help="Show PyBullet overlay composited on each image")
     parser.add_argument("--debug-masks",     action="store_true", default=False,
                         help="[Not working] Show visibility mask debug windows (full silhouette vs "
                              "visible seg mask) for each object each frame. "
                              "Slows down generation — use on a single frame for debugging.")
+    parser.add_argument("--save-video",       action="store_true", default=True,
+                        help="Outputs a video of each visualized frame")
 
     args = parser.parse_args()
     main(args)
