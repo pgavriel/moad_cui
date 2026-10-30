@@ -9,3 +9,11 @@ live_view_filestream/
 
 
 _deps/
+
+# Ignore old calibrations
+calibration/old
+
+config/moad_config_backup.json
+
+# Ignore pycache folders
+*__pycache__

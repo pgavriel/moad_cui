@@ -64,6 +64,53 @@ ADDING A NEW SENSOR TYPE
   Add one entry to SENSOR_CONFIGS below and implement a corresponding
   iter_<sensor>_frames() function. No other changes are needed.
 
+FRAME IDS
+    Every frame has a 1-based frame_id equal to its position in the sorted
+    image list — the same number the BOP converter uses as image_id, the [i/N]
+    index in vis_bop_predictions.py, and vis_index in analyze_poses.py:
+      DSLR      : the number in frame_NNNNN.jpg
+      RealSense : position in the sorted rs*_color.png list (camera-major, so
+                  frame_id N is the same camera / turntable angle as DSLR N)
+    IDs are assigned BEFORE any frame is skipped, so they never drift.
+
+DEBUG MODE  (--debug-frames 1 137 222)
+    Processes ONLY the listed frames and writes detailed diagnostics instead of
+    annotations. Real annotation files are never touched in this mode.
+    Output: <debug-dir>/<sensor>/{frame_id:06d}_{description}.{ext}
+        _info.json               everything numeric (see write_frame_debug)
+        _annotation.json         the annotation the normal run would write
+        _image.jpg / _render.png / _overlay.png / _seg.png / _depth.png
+        _<object>_mask_full.png      projected silhouette  (the denominator)
+        _<object>_mask_visible.png   PyBullet seg mask     (the numerator)
+        _<object>_breakdown.png      every silhouette pixel coloured by what
+                                     the seg image says is there
+        _<object>_crop.png           breakdown around the object, zoomed
+    The per-sensor subfolder keeps DSLR and RealSense output apart; frame ids
+    match across sensors, so 000137 in both folders is the same view.
+
+VISIBILITY  (visib_fract = px_count_visib / px_count_all)
+    Both counts come from PyBullet, on the same pixel grid, with the same
+    rasteriser — so for an unoccluded object they agree exactly:
+      px_count_visib : pixels labelled with the object in the normal scene render
+      px_count_all   : pixels of the object rendered ALONE (every other body,
+                       objects and markers, moved out of view)
+    The in-frame part of each full mask is rendered at EXACTLY the scene
+    render's size with EXACTLY its projection matrix. That matters: the
+    hardware (EGL) renderer does not land renders of different sizes on the
+    same pixel grid (measured: ~0.5 px shift between a full-image render and a
+    cropped-window render of the same view; TinyRenderer is exact either way).
+    Identical render calls are identical on both renderers.
+    When an object extends past the image border, a second render of a window
+    around its projected extent counts the pixels OUTSIDE the image, so
+    truncated parts still count — as in BOP, truncation lowers visibility.
+    --full-mask-method projection restores the old cv2 mesh rasterisation.
+
+MARKERS
+    Visual-only markers are excluded from every annotation render by MOVING
+    them out of view, not by setting alpha to 0: whether an alpha-0 body still
+    writes to the seg / depth buffers differs between TinyRenderer and the
+    hardware (EGL) renderer.
+
 COORDINATE CONVENTIONS
     - cam_parameters.json stores w2c in OpenCV convention (X right, Y down, Z fwd).
     - get_camera_pose_from_extrinsics() mirrors live_view_demo.py exactly:
@@ -80,6 +127,7 @@ import sys
 import glob
 import json
 import argparse
+import contextlib
 import itertools
 import time
 import numpy as np
@@ -296,7 +344,8 @@ def iter_dslr_frames(
     step_deg:       float = DSLR_STEP_DEG,
 ):
     """
-    Yield (img_path, cam_key, turntable_deg) for DSLR frame_NNNNN.jpg images.
+    Yield (frame_id, img_path, cam_key, turntable_deg) for DSLR frame_NNNNN.jpg
+    images. frame_id is the 1-based number in the filename.
 
     Camera identity and turntable angle are derived arithmetically from the
     1-based frame number:
@@ -328,7 +377,7 @@ def iter_dslr_frames(
             print(f"  [SKIP] {filename} → {cam_key} not in calibration")
             continue
 
-        yield img_path, cam_key, turntable_deg
+        yield frame_number, img_path, cam_key, turntable_deg
 
 
 def iter_realsense_frames(
@@ -336,7 +385,9 @@ def iter_realsense_frames(
     cameras:    dict,
 ):
     """
-    Yield (img_path, cam_key, turntable_deg) for RealSense rs*_color.png images.
+    Yield (frame_id, img_path, cam_key, turntable_deg) for RealSense
+    rs*_color.png images. frame_id is the 1-based position in the sorted file
+    list, assigned before any skip so it matches the BOP converter's image_id.
 
     Both cam_key and turntable angle are parsed directly from the filename:
         rs1_000_color.png → cam_key="rs1", turntable_deg=0.0
@@ -352,7 +403,7 @@ def iter_realsense_frames(
 
     pattern = re.compile(r"^(rs\d+)_(\d{3})_color\.png$")
 
-    for img_path in image_paths:
+    for frame_id, img_path in enumerate(image_paths, start=1):
         filename = os.path.basename(img_path)
         match    = pattern.match(filename)
         if not match:
@@ -366,7 +417,7 @@ def iter_realsense_frames(
             print(f"  [SKIP] {filename} → {cam_key} not in calibration")
             continue
 
-        yield img_path, cam_key, turntable_deg
+        yield frame_id, img_path, cam_key, turntable_deg
 
 
 # Registry maps the string names in SENSOR_CONFIGS to the actual functions.
@@ -386,6 +437,11 @@ FRAME_ITER_REGISTRY = {
 # _vertex_cache : body_name → (N,3) float64 vertices in metres (scaled by mesh_scale)
 _size_cache:   dict = {}
 _vertex_cache: dict = {}
+# _mesh_info_cache : body_name → mesh file, scale, vertex/face counts, and the
+#                    local visual / inertial frame offsets (debug only: a
+#                    non-zero offset means the silhouette is projected from a
+#                    different origin than PyBullet renders from)
+_mesh_info_cache: dict = {}
 
 
 def _parse_obj_vertices(obj_path: str) -> tuple[np.ndarray, np.ndarray]:
@@ -478,7 +534,7 @@ def compute_full_silhouette(
     cam_K:      np.ndarray,
     H:          int,
     W:          int,
-    debug_masks: bool = False,
+    keep_mask:  bool = False,
 ) -> dict:
     """
     Compute the full object silhouette (including occluded parts) by rasterising
@@ -496,22 +552,27 @@ def compute_full_silhouette(
         t_obj_cam   : (3,)  object-to-camera translation
         cam_K       : (3,3) camera intrinsic matrix (at render resolution)
         H, W        : image dimensions
-        debug_masks : if True, show the full silhouette mask in a CV window
+        keep_mask   : if True, also return the in-frame mask (debug mode)
 
     Returns:
         {
-            "px_count_all" : int,
-            "bbox_obj"     : [x, y, w, h] or None,
-            "full_mask"    : (H,W) uint8 — included when debug_masks=True, else None
+            "px_count_all"   : int   (includes out-of-frame pixels),
+            "bbox_obj"       : [x, y, w, h] or None,
+            "full_mask"      : (H,W) uint8 in-frame mask if keep_mask, else None,
+            "n_tris_drawn"   : int,
+            "silhouette_ms"  : float,
         }
     """
+    t_start = time.perf_counter()
+    empty = {"px_count_all": 0, "bbox_obj": None, "full_mask": None,
+             "n_tris_drawn": 0, "silhouette_ms": 0.0}
     cached = _vertex_cache.get(body_name)
     if cached is None:
-        return {"px_count_all": 0, "bbox_obj": None, "full_mask": None}
+        return empty
 
     verts_obj, faces = cached
     if len(verts_obj) == 0:
-        return {"px_count_all": 0, "bbox_obj": None, "full_mask": None}
+        return empty
 
     # Project all vertices to image plane in one batched operation
     verts_cam = (R_obj_cam @ verts_obj.T).T + t_obj_cam     # (N, 3) camera space
@@ -549,9 +610,15 @@ def compute_full_silhouette(
 
     # Rasterise into the padded canvas
     mask_full = np.zeros((canvas_H, canvas_W), dtype=np.uint8)
+    n_tris_drawn = 0
     if len(faces) > 0:
         v0, v1, v2  = faces[:, 0], faces[:, 1], faces[:, 2]
         tri_valid   = valid[v0] & valid[v1] & valid[v2]
+        n_tris_drawn = int(tri_valid.sum())
+        # NOTE (known issue, kept as-is so debug output reflects production):
+        # astype(int32) truncates sub-pixel vertex positions, and
+        # fillConvexPoly fills every pixel an edge touches, whereas PyBullet
+        # samples pixel centres. Both inflate px_count_all, most for small objects.
         for tri in faces[tri_valid]:
             pts = px_canvas[tri].astype(np.int32)
             cv2.fillConvexPoly(mask_full, pts, 1)
@@ -562,17 +629,226 @@ def compute_full_silhouette(
     mask_inframe = mask_full[pad_top:pad_top + H, pad_left:pad_left + W]
     bbox_obj = _bbox_from_mask(mask_inframe)
 
-    # Optional: display the silhouette mask for debugging
-    if debug_masks:
-        display = np.zeros((H, W, 3), dtype=np.uint8)
-        display[:, :, 1] = mask_inframe * 255   # green channel = full silhouette
-        cv2.imshow(f"Full silhouette - {body_name}", display)
-        cv2.waitKey(0)
+    return {
+        "px_count_all":  px_count_all,
+        "bbox_obj":      bbox_obj,
+        "full_mask":     mask_inframe.copy() if keep_mask else None,
+        "n_tris_drawn":  n_tris_drawn,
+        "silhouette_ms": (time.perf_counter() - t_start) * 1000.0,
+    }
+
+
+# ---------------------------------------------------------------------------
+# PyBullet full masks — each object rendered alone
+# ---------------------------------------------------------------------------
+
+# Bodies are "parked" at (0, 0, -PARK_FACTOR * far): far beyond the far clip
+# plane of any camera within reach of the turntable, so they render nowhere.
+PARK_FACTOR = 10.0
+# Extra pixels around an object's projected extent in its full-mask window.
+FULL_MASK_PAD = 3
+# Cap on a full-mask window side, as a multiple of the image's larger side.
+# Only reached when an object nearly touches the camera plane.
+FULL_MASK_MAX_FACTOR = 4
+
+
+def park_position(scene_replica) -> list[float]:
+    return [0.0, 0.0, -PARK_FACTOR * float(scene_replica.far)]
+
+
+@contextlib.contextmanager
+def parked(body_ids, park_pos):
+    """Move bodies out of view for the duration of the block, then restore
+    their exact poses (base frame in, base frame out — lossless)."""
+    saved = {b: p.getBasePositionAndOrientation(b) for b in body_ids}
+    try:
+        for b in body_ids:
+            p.resetBasePositionAndOrientation(b, park_pos, [0, 0, 0, 1])
+        yield
+    finally:
+        for b, (pos, orn) in saved.items():
+            p.resetBasePositionAndOrientation(b, pos, orn)
+
+
+def _window_projection(scene_replica, cam_K: np.ndarray, x0: int, y0: int,
+                       w: int, h: int):
+    """
+    Projection matrix covering the pixel window [x0, x0+w) x [y0, y0+h) of
+    the full image. Identical to TaglessSceneReplica._compute_projection_matrix
+    with the principal point shifted by the window origin, so window pixels
+    coincide exactly with full-render pixels.
+    """
+    near, far = scene_replica.near, scene_replica.far
+    fx, fy = cam_K[0, 0], cam_K[1, 1]
+    cx, cy = cam_K[0, 2] - x0, cam_K[1, 2] - y0
+    left = -cx * near / fx
+    right = (w - cx) * near / fx
+    bottom = -(h - cy) * near / fy
+    top = cy * near / fy
+    return p.computeProjectionMatrix(left, right, bottom, top, near, far)
+
+
+def _projected_window(verts_obj, R_obj_cam, t_obj_cam, cam_K, W, H):
+    """Integer pixel window enclosing the object's projected vertices, or None
+    if the object is entirely behind the camera."""
+    vc = verts_obj @ R_obj_cam.T + t_obj_cam
+    vc = vc[vc[:, 2] > 1e-6]
+    if len(vc) == 0:
+        return None
+    uv = (vc @ cam_K.T)[:, :2] / vc[:, 2:3]
+    x0 = int(np.floor(uv[:, 0].min())) - FULL_MASK_PAD
+    y0 = int(np.floor(uv[:, 1].min())) - FULL_MASK_PAD
+    x1 = int(np.ceil(uv[:, 0].max())) + FULL_MASK_PAD + 1
+    y1 = int(np.ceil(uv[:, 1].max())) + FULL_MASK_PAD + 1
+    cap = FULL_MASK_MAX_FACTOR * max(W, H)
+    x0, y0 = max(x0, -cap), max(y0, -cap)
+    x1, y1 = min(x1, W + cap), min(y1, H + cap)
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return x0, y0, x1, y1
+
+
+def render_full_masks(
+    scene_replica,
+    targets:     list[tuple[int, str, np.ndarray, np.ndarray]],
+    all_bodies:  list[int],
+    cam_K:       np.ndarray,
+    H:           int,
+    W:           int,
+    keep_mask:   bool = False,
+) -> dict[int, dict]:
+    """
+    Full (unoccluded) mask of each target, rendered by PyBullet with every
+    other body parked out of view.
+
+    targets    : (body_id, name, R_obj_cam, t_obj_cam) per object
+    all_bodies : every body in the scene (objects + markers) — all are parked,
+                 then each target is brought back alone for its render(s)
+
+    Per object:
+      1. In-frame mask: the SAME getCameraImage call as the scene render
+         (size, view and projection matrices), so it shares the scene seg's
+         pixel grid exactly on every renderer.
+      2. Only if the object's projected extent leaves the image: a window
+         render around it, used purely to count pixels OUTSIDE the image.
+
+    True poses are read before parking and restored afterwards by parked(),
+    so the scene is left exactly as it was found.
+
+    Returns per body_id:
+        px_count_all    : object pixels, INCLUDING any outside the image
+        out_of_frame_px : the part of px_count_all outside the image
+        bbox_obj        : [x, y, w, h] of the in-frame part, or None
+        full_mask       : (H, W) uint8 in-frame mask if keep_mask, else None
+        window          : [x0, y0, x1, y1] of the truncation render, or None
+        renders         : PyBullet renders used (1, or 2 when truncated)
+        render_ms       : time for this object
+    """
+    renderer = getattr(p, scene_replica.PB_RENDER)
+    park = park_position(scene_replica)
+    view, proj = scene_replica.view_matrix, scene_replica.projection_matrix
+    true_pose = {b: p.getBasePositionAndOrientation(b) for b, *_ in targets}
+    out: dict[int, dict] = {}
+
+    with parked(all_bodies, park):
+        for body_id, name, R_oc, t_oc in targets:
+            t0 = time.perf_counter()
+            rec = {"px_count_all": 0, "out_of_frame_px": 0, "bbox_obj": None,
+                   "full_mask": None, "window": None, "renders": 0, "render_ms": 0.0}
+            p.resetBasePositionAndOrientation(body_id, *true_pose[body_id])
+
+            # 1. In-frame mask on the scene's exact pixel grid
+            img = p.getCameraImage(W, H, viewMatrix=view, projectionMatrix=proj,
+                                   shadow=0, renderer=renderer)
+            inframe = (np.asarray(img[4], dtype=np.int64).reshape(H, W) == body_id)
+            rec["renders"] = 1
+
+            # 2. Truncated? Count the pixels outside the image with a window render.
+            cached = _vertex_cache.get(name)
+            win = (_projected_window(cached[0], R_oc, t_oc, cam_K, W, H)
+                   if cached is not None and len(cached[0]) else None)
+            if win is not None and (win[0] < 0 or win[1] < 0 or win[2] > W or win[3] > H):
+                x0, y0, x1, y1 = win
+                w, h = x1 - x0, y1 - y0
+                wimg = p.getCameraImage(
+                    w, h, viewMatrix=view,
+                    projectionMatrix=_window_projection(scene_replica, cam_K, x0, y0, w, h),
+                    shadow=0, renderer=renderer)
+                sub = np.asarray(wimg[4], dtype=np.int64).reshape(h, w) == body_id
+                ys, xs = np.nonzero(sub)
+                xs, ys = xs + x0, ys + y0
+                rec["out_of_frame_px"] = int(((xs < 0) | (xs >= W) | (ys < 0) | (ys >= H)).sum())
+                rec["window"] = [x0, y0, x1, y1]
+                rec["renders"] = 2
+
+            p.resetBasePositionAndOrientation(body_id, park, [0, 0, 0, 1])
+
+            rec["px_count_all"] = int(inframe.sum()) + rec["out_of_frame_px"]
+            rec["bbox_obj"] = _bbox_from_mask(inframe.astype(np.uint8))
+            if keep_mask:
+                rec["full_mask"] = inframe.astype(np.uint8)
+            rec["render_ms"] = (time.perf_counter() - t0) * 1000.0
+            out[body_id] = rec
+    return out
+
+
+def visibility_breakdown(
+    full_mask:  np.ndarray,
+    seg:        np.ndarray,
+    body_id:    int,
+    body_names: dict[int, str],
+    marker_ids: set[int],
+) -> dict:
+    """
+    Attribute every in-frame silhouette pixel to what the seg image shows there.
+
+    For a fully visible object everything should land in "visible". The other
+    buckets each point at a different cause:
+        occluded_by_object : genuine occlusion — or interpenetration / z-fighting
+        occluded_by_marker : visual-only markers still writing to the seg image
+        background         : seg is empty where the silhouette says the object
+                             is — the two renderers DISAGREE (rasterisation or
+                             projection mismatch), not occlusion
+        other_id           : seg ids that are neither objects nor markers
+        seg_outside_silhouette : object pixels in seg the silhouette misses —
+                             also a renderer disagreement, in the other direction
+    """
+    full = full_mask.astype(bool)
+    own  = seg == body_id
+    under = seg[full]                       # seg value at every silhouette pixel
+
+    occl_obj: dict[str, int] = {}
+    occl_mrk: dict[str, int] = {}
+    other = 0
+    ids, counts = np.unique(under, return_counts=True)
+    for sid, n in zip(ids.tolist(), counts.tolist()):
+        if sid == body_id or sid == -1:
+            continue
+        if sid in body_names:
+            occl_obj[f"{body_names[sid]} ({sid})"] = n
+        elif sid in marker_ids:
+            occl_mrk[str(sid)] = n
+        else:
+            other += n
+
+    inter = int((full & own).sum())
+    union = int((full | own).sum())
+    cent = None
+    if full.any() and own.any():
+        fy, fx = np.argwhere(full).mean(axis=0)
+        oy, ox = np.argwhere(own).mean(axis=0)
+        cent = [round(float(ox - fx), 3), round(float(oy - fy), 3)]
 
     return {
-        "px_count_all": px_count_all,
-        "bbox_obj":     bbox_obj,
-        "full_mask":    mask_inframe if debug_masks else None,
+        "silhouette_px_in_frame": int(full.sum()),
+        "visible":                inter,
+        "occluded_by_object":     occl_obj,
+        "occluded_by_marker":     occl_mrk,
+        "background":             int((under == -1).sum()),
+        "other_id":               other,
+        "seg_outside_silhouette": int((own & ~full).sum()),
+        "iou_silhouette_vs_seg":  round(inter / union, 4) if union else None,
+        "centroid_offset_px_seg_minus_silhouette": cent,
     }
 
 
@@ -583,7 +859,10 @@ def get_object_poses_in_camera_frame(
     cam_K:       np.ndarray | None = None,
     H:           int = 0,
     W:           int = 0,
-    debug_masks: bool = False,
+    debug:       dict | None = None,
+    marker_ids:  set[int] | None = None,
+    scene_replica = None,
+    full_mask_method: str = "pybullet",
 ) -> list[dict]:
     """
     Query every named body from PyBullet, transform its pose into the OpenCV
@@ -607,6 +886,14 @@ def get_object_poses_in_camera_frame(
         seg     : (H,W) int32 PyBullet segmentation image, or None to skip
         cam_K   : (3,3) camera intrinsic matrix at render resolution, or None
         H, W    : render image dimensions
+        debug   : optional dict. When given, it is filled with per-object
+                  diagnostics keyed by body_id: masks, the occlusion
+                  breakdown, mesh info and timings. The returned annotation
+                  list is identical with or without it.
+        marker_ids : body ids of visual-only markers (for the breakdown)
+        scene_replica    : needed for full_mask_method="pybullet"
+        full_mask_method : "pybullet" (each object rendered alone; default) or
+                           "projection" (legacy cv2 mesh rasterisation)
 
     Returns:
         List of dicts with keys: object_name, body_id, R, t, size,
@@ -634,6 +921,21 @@ def get_object_poses_in_camera_frame(
             verts       *= mesh_scale
             _size_cache[body_name]   = (verts.max(axis=0) - verts.min(axis=0)).tolist()
             _vertex_cache[body_name] = (verts, faces)   # (N,3) verts + (M,3) face indices
+            # Debug metadata. getBasePositionAndOrientation() returns the base
+            # INERTIAL frame; the silhouette uses raw mesh coordinates. If the
+            # local visual frame or inertial offset is non-zero, the two differ.
+            dyn = p.getDynamicsInfo(body_id, -1)
+            _mesh_info_cache[body_name] = {
+                "mesh_file":                 mesh_path,
+                "mesh_scale":                mesh_scale.tolist(),
+                "n_visual_shapes":           len(visual_shapes),
+                "n_vertices":                int(len(verts)),
+                "n_faces":                   int(len(faces)),
+                "local_visual_frame_pos":    list(shape[5]),
+                "local_visual_frame_orn":    list(shape[6]),
+                "local_inertial_pos":        list(dyn[3]),
+                "local_inertial_orn":        list(dyn[4]),
+            }
             print(f"  [CACHE] {body_name}: size={[f'{v:.4f}' for v in _size_cache[body_name]]}"
                   f"  verts={len(verts)}  faces={len(faces)}")
 
@@ -645,16 +947,29 @@ def get_object_poses_in_camera_frame(
         body_ids = [bid for bid, _ in named_bodies]
         vis_data = compute_visibility_from_seg(seg, body_ids, H, W)
 
-    # Build annotation list
-    annotations = []
+    # Object poses in the camera frame (needed by both full-mask methods)
+    poses_cam = {}
     for body_id, body_name in named_bodies:
         pos_w, quat_w = p.getBasePositionAndOrientation(body_id)
         R_mat     = np.array(p.getMatrixFromQuaternion(quat_w)).reshape(3, 3)
-        T_obj_w   = Rt_to_T(R_mat, np.array(pos_w))
-        T_obj_cam = T_cw @ T_obj_w
+        T_obj_cam = T_cw @ Rt_to_T(R_mat, np.array(pos_w))
+        poses_cam[body_id] = (T_obj_cam[:3, :3], T_obj_cam[:3, 3])
 
-        R_obj_cam = T_obj_cam[:3, :3]
-        t_obj_cam = T_obj_cam[:3,  3]
+    # Full masks rendered by PyBullet: every body parked, each object alone
+    full_masks = {}
+    if compute_vis and full_mask_method == "pybullet":
+        if scene_replica is None:
+            raise ValueError("full_mask_method='pybullet' needs scene_replica")
+        all_bodies = [p.getBodyUniqueId(i) for i in range(p.getNumBodies())]
+        full_masks = render_full_masks(
+            scene_replica,
+            [(bid, nm, *poses_cam[bid]) for bid, nm in named_bodies],
+            all_bodies, cam_K, H, W, keep_mask=debug is not None)
+
+    # Build annotation list
+    annotations = []
+    for body_id, body_name in named_bodies:
+        R_obj_cam, t_obj_cam = poses_cam[body_id]
 
         ann = {
             "object_name": body_name,
@@ -670,28 +985,40 @@ def get_object_poses_in_camera_frame(
             px_visib = vd.get("px_count_visib", 0)
             bbox_vis = vd.get("bbox_visib", None)
 
-            # Full silhouette from mesh triangle rasterisation (no extra render)
-            sil = compute_full_silhouette(
-                body_name, R_obj_cam, t_obj_cam, cam_K, H, W,
-                debug_masks=debug_masks,
-            )
+            if full_mask_method == "pybullet":
+                fm = full_masks[body_id]
+                sil = {"px_count_all": fm["px_count_all"], "bbox_obj": fm["bbox_obj"],
+                       "full_mask": fm["full_mask"], "n_tris_drawn": None,
+                       "silhouette_ms": fm["render_ms"], "window": fm["window"],
+                       "renders": fm["renders"]}
+            else:
+                # Legacy: full silhouette from cv2 mesh rasterisation
+                sil = compute_full_silhouette(
+                    body_name, R_obj_cam, t_obj_cam, cam_K, H, W,
+                    keep_mask=debug is not None,
+                )
+                sil["window"] = None
             px_all   = sil["px_count_all"]
             bbox_obj = sil["bbox_obj"]
 
             visib_fract = (px_visib / px_all) if px_all > 0 else 0.0
 
-            # Optionally show the visible seg mask alongside the full silhouette
-            if debug_masks:
-                vis_mask = (seg == body_id).astype(np.uint8)
-                display  = np.zeros((H, W, 3), dtype=np.uint8)
-                display[:, :, 1] = sil["full_mask"] * 255 if sil["full_mask"] is not None else 0
-                display[:, :, 2] = vis_mask * 255
-                # Result: green = full silhouette only, yellow = visible (both channels)
-                cv2.imshow(f"Visibility - {body_name}-{body_id}", display)
-                cv2.waitKey(1)
-                print(f"  [DEBUG] {body_name}: "
-                      f"px_all={px_all}  px_visib={px_visib}  "
-                      f"visib_fract={visib_fract:.3f}")
+            if debug is not None:
+                names = {bid: nm for bid, nm in named_bodies}
+                debug[body_id] = {
+                    "object_name":  body_name,
+                    "full_mask":    sil["full_mask"],
+                    "visible_mask": (seg == body_id).astype(np.uint8),
+                    "breakdown":    visibility_breakdown(
+                        sil["full_mask"], seg, body_id, names, marker_ids or set()),
+                    "out_of_frame_px": px_all - int(sil["full_mask"].sum()),
+                    "n_tris_drawn":  sil["n_tris_drawn"],
+                    "silhouette_ms": round(sil["silhouette_ms"], 2),
+                    "full_mask_method": full_mask_method,
+                    "full_mask_window": sil["window"],
+                    "full_mask_renders": sil.get("renders"),
+                    "mesh":          _mesh_info_cache.get(body_name, {}),
+                }
 
             ann.update({
                 "px_count_all":   px_all,
@@ -704,6 +1031,270 @@ def get_object_poses_in_camera_frame(
         annotations.append(ann)
 
     return annotations
+
+
+# ---------------------------------------------------------------------------
+# Debug output — only used with --debug-frames
+# ---------------------------------------------------------------------------
+
+# Breakdown colours (BGR). Each bucket of visibility_breakdown() has one.
+BREAKDOWN_COLORS = {
+    "visible":                (60, 200, 60),     # green   — silhouette AND seg agree
+    "occluded_by_object":     (230, 120, 30),    # blue    — another object in front
+    "occluded_by_marker":     (230, 40, 230),    # magenta — a hidden marker in seg
+    "background":             (40, 40, 230),     # red     — seg empty: renderers disagree
+    "other_id":               (0, 200, 230),     # yellow  — unknown seg id
+    "seg_outside_silhouette": (240, 240, 240),   # white   — seg has object, silhouette doesn't
+}
+DEBUG_CROP_PAD  = 6       # px of context around the object in _crop.png
+DEBUG_CROP_ZOOM = 8       # nearest-neighbour zoom factor for _crop.png
+DEBUG_CROP_MAX  = 1600    # cap on the zoomed crop's longest side
+_GEOM_NAMES = {2: "sphere", 3: "box", 4: "cylinder", 5: "mesh", 6: "plane", 7: "capsule"}
+
+
+def _jsonable(o):
+    """json.dump default= hook for numpy types."""
+    if isinstance(o, np.ndarray):
+        return o.tolist()
+    if isinstance(o, (np.integer,)):
+        return int(o)
+    if isinstance(o, (np.floating,)):
+        return float(o)
+    return str(o)
+
+
+def render_debug_depth(scene_replica) -> np.ndarray:
+    """
+    Metric depth (metres, z along the optical axis) of the current view,
+    from ONE extra PyBullet render. Debug frames only, so the normal
+    annotation path is unchanged. Background pixels are NaN.
+
+    PyBullet returns a non-linear OpenGL depth buffer d in [0, 1]:
+        z = far * near / (far - (far - near) * d)
+    """
+    img = p.getCameraImage(
+        scene_replica.W, scene_replica.H,
+        viewMatrix=scene_replica.view_matrix,
+        projectionMatrix=scene_replica.projection_matrix,
+        shadow=0, renderer=getattr(p, scene_replica.PB_RENDER))
+    d = np.asarray(img[3], dtype=np.float64).reshape(scene_replica.H, scene_replica.W)
+    near, far = scene_replica.near, scene_replica.far
+    z = far * near / (far - (far - near) * d)
+    z[d >= 1.0] = np.nan
+    return z
+
+
+def marker_inventory(marker_ids: list[int]) -> dict[str, dict]:
+    """What each unnamed (visual-only) body is, so seg hits can be identified."""
+    out = {}
+    for bid in marker_ids:
+        vs = p.getVisualShapeData(bid)
+        pos, _ = p.getBasePositionAndOrientation(bid)
+        shape = vs[0] if vs else None
+        out[str(bid)] = {
+            "geometry":   _GEOM_NAMES.get(shape[2], str(shape[2])) if shape else None,
+            "dimensions": list(shape[3]) if shape else None,
+            "mesh_file":  shape[4].decode("utf-8") if shape and shape[4] else None,
+            "position":   [round(v, 5) for v in pos],
+            "rgba":       list(shape[7]) if shape else None,
+        }
+    return out
+
+
+def _colorize_seg(seg: np.ndarray, names: dict[int, str], markers: set[int]) -> np.ndarray:
+    """Seg image with a fixed colour per id; markers striped magenta-ish."""
+    out = np.zeros((*seg.shape, 3), np.uint8)
+    rng = np.random.default_rng(7)
+    for sid in np.unique(seg):
+        if sid == -1:
+            continue
+        if sid in markers:
+            col = (200, 40, 200)
+        else:
+            col = tuple(int(c) for c in rng.integers(60, 255, 3))
+        out[seg == sid] = col
+    y = 22
+    for sid in sorted(set(np.unique(seg).tolist()) - {-1}):
+        label = names.get(sid, "MARKER" if sid in markers else "?")
+        cv2.putText(out, f"{sid}: {label}", (8, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                    (255, 255, 255), 1, cv2.LINE_AA)
+        y += 20
+    return out
+
+
+def _colorize_depth(z: np.ndarray) -> np.ndarray:
+    """Turbo-coloured depth, near = red, far = blue; background black."""
+    valid = np.isfinite(z)
+    out = np.zeros((*z.shape, 3), np.uint8)
+    if valid.any():
+        lo, hi = np.percentile(z[valid], [1, 99])
+        norm = np.clip((z - lo) / max(hi - lo, 1e-9), 0, 1)
+        out = cv2.applyColorMap(((1 - np.nan_to_num(norm)) * 255).astype(np.uint8),
+                                cv2.COLORMAP_TURBO)
+        out[~valid] = 0
+    return out
+
+
+def _breakdown_image(full: np.ndarray, seg: np.ndarray, body_id: int,
+                     names: dict[int, str], markers: set[int]) -> np.ndarray:
+    """Every silhouette pixel coloured by its visibility_breakdown() bucket."""
+    full = full.astype(bool)
+    own = seg == body_id
+    img = np.zeros((*seg.shape, 3), np.uint8)
+    named_other = np.isin(seg, [i for i in names if i != body_id])
+    marker = np.isin(seg, list(markers)) if markers else np.zeros_like(own)
+    img[full & own] = BREAKDOWN_COLORS["visible"]
+    img[full & named_other] = BREAKDOWN_COLORS["occluded_by_object"]
+    img[full & marker] = BREAKDOWN_COLORS["occluded_by_marker"]
+    img[full & (seg == -1)] = BREAKDOWN_COLORS["background"]
+    img[full & ~own & ~named_other & ~marker & (seg != -1)] = BREAKDOWN_COLORS["other_id"]
+    img[own & ~full] = BREAKDOWN_COLORS["seg_outside_silhouette"]
+    return img
+
+
+def _zoom_crop(img: np.ndarray, mask_any: np.ndarray, label: str) -> np.ndarray | None:
+    """Crop around the object and enlarge with nearest-neighbour for pixel-level reading."""
+    bb = _bbox_from_mask(mask_any)
+    if bb is None:
+        return None
+    x, y, w, h = bb
+    H, W = img.shape[:2]
+    x0, y0 = max(0, x - DEBUG_CROP_PAD), max(0, y - DEBUG_CROP_PAD)
+    x1, y1 = min(W, x + w + DEBUG_CROP_PAD), min(H, y + h + DEBUG_CROP_PAD)
+    crop = img[y0:y1, x0:x1]
+    zoom = max(1, min(DEBUG_CROP_ZOOM, DEBUG_CROP_MAX // max(crop.shape[:2])))
+    big = cv2.resize(crop, (crop.shape[1] * zoom, crop.shape[0] * zoom),
+                     interpolation=cv2.INTER_NEAREST)
+    legend = np.zeros((22 * (len(BREAKDOWN_COLORS) + 1) + 6, max(big.shape[1], 420), 3), np.uint8)
+    cv2.putText(legend, label, (6, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+    for i, (k, c) in enumerate(BREAKDOWN_COLORS.items(), start=1):
+        cv2.rectangle(legend, (6, 8 + 22 * i), (22, 22 + 22 * i), c, -1)
+        cv2.putText(legend, k, (30, 21 + 22 * i), cv2.FONT_HERSHEY_SIMPLEX, 0.45,
+                    (230, 230, 230), 1, cv2.LINE_AA)
+    pad = np.zeros((big.shape[0], legend.shape[1] - big.shape[1], 3), np.uint8) \
+        if legend.shape[1] > big.shape[1] else None
+    big = np.hstack([big, pad]) if pad is not None else big
+    return np.vstack([big, legend])
+
+
+def _safe(name: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "-", name)
+
+
+def write_frame_debug(
+    out_dir:     str,
+    frame_id:    int,
+    context:     dict,
+    annotation:  dict,
+    images:      dict,
+    seg:         np.ndarray,
+    per_object:  dict,
+    names:       dict[int, str],
+    markers:     set[int],
+    depth:       np.ndarray | None,
+) -> list[str]:
+    """
+    Write every debug file for one frame. Returns the files written.
+
+    _info.json holds everything numeric:
+        frame       : sensor, ids, paths, camera, turntable angle, resolution, K,
+                      near/far, renderer
+        timing_ms   : render, pose query + visibility, each object's silhouette,
+                      debug depth render, file writing
+        seg_ids     : pixel count per seg id, labelled object / marker / unknown
+        markers     : what each hidden marker is and how many seg pixels it holds
+                      (should be 0 — non-zero means markers still occlude)
+        objects     : per object: the annotation numbers, the occlusion
+                      breakdown, silhouette-vs-seg IoU and centroid offset,
+                      out-of-frame pixels, depth stats, mesh / frame-offset info
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    stem = os.path.join(out_dir, f"{frame_id:06d}")
+    written = []
+
+    def _write_png(desc, img):
+        path = f"{stem}_{desc}"
+        if img is not None and cv2.imwrite(path, img):
+            written.append(os.path.basename(path))
+
+    # --- frame-level images ---------------------------------------------------
+    _write_png("image.jpg", images.get("image"))
+    _write_png("render.png", images.get("render"))
+    _write_png("overlay.png", images.get("overlay"))
+    _write_png("seg.png", _colorize_seg(seg, names, markers))
+    if depth is not None:
+        _write_png("depth.png", _colorize_depth(depth))
+        mm = np.nan_to_num(depth * 1000.0, nan=0.0)
+        _write_png("depth_mm.png", np.clip(mm, 0, 65535).astype(np.uint16))
+
+    # --- per-object masks -----------------------------------------------------
+    obj_info = {}
+    for body_id, d in per_object.items():
+        name = _safe(d["object_name"])
+        full, vis = d["full_mask"], d["visible_mask"]
+        _write_png(f"{name}_mask_full.png", (full > 0).astype(np.uint8) * 255)
+        _write_png(f"{name}_mask_visible.png", (vis > 0).astype(np.uint8) * 255)
+        bd_img = _breakdown_image(full, seg, body_id, names, markers)
+        _write_png(f"{name}_breakdown.png", bd_img)
+        ann = next(a for a in annotation["objects"] if a["body_id"] == body_id)
+        label = (f"{d['object_name']}  visib {ann['visib_fract']:.3f}  "
+                 f"all {ann['px_count_all']}  visib {ann['px_count_visib']}")
+        _write_png(f"{name}_crop.png",
+                   _zoom_crop(bd_img, (full > 0) | (vis > 0), label))
+
+        depth_stats = None
+        if depth is not None and vis.any():
+            zv = depth[vis.astype(bool)]
+            zv = zv[np.isfinite(zv)]
+            if zv.size:
+                depth_stats = {"min_m": float(zv.min()), "median_m": float(np.median(zv)),
+                               "max_m": float(zv.max())}
+        obj_info[str(body_id)] = {
+            "object_name":     d["object_name"],
+            "px_count_all":    ann["px_count_all"],
+            "px_count_visib":  ann["px_count_visib"],
+            "visib_fract":     ann["visib_fract"],
+            "bbox_obj":        ann["bbox_obj"],
+            "bbox_visib":      ann["bbox_visib"],
+            "t_cam_m":         ann["t"],
+            "out_of_frame_px": d["out_of_frame_px"],
+            "breakdown":       d["breakdown"],
+            "visible_depth":   depth_stats,
+            "full_mask_method": d.get("full_mask_method"),
+            "full_mask_window": d.get("full_mask_window"),
+            "n_tris_drawn":    d["n_tris_drawn"],
+            "full_mask_ms":    d["silhouette_ms"],
+            "mesh":            d["mesh"],
+        }
+
+    # --- seg id histogram -----------------------------------------------------
+    ids, counts = np.unique(seg, return_counts=True)
+    seg_ids = {}
+    for sid, n in zip(ids.tolist(), counts.tolist()):
+        kind = ("background" if sid == -1 else "object" if sid in names
+                else "marker" if sid in markers else "unknown")
+        seg_ids[str(sid)] = {"pixels": n, "kind": kind, "name": names.get(sid)}
+    marker_px = {str(m): seg_ids.get(str(m), {}).get("pixels", 0) for m in markers}
+
+    info = {
+        "frame":     context["frame"],
+        "timing_ms": context["timing_ms"],
+        "seg_ids":   seg_ids,
+        "markers": {
+            "count": len(markers),
+            "pixels_in_seg": marker_px,
+            "any_marker_in_seg": any(v > 0 for v in marker_px.values()),
+            "inventory": context.get("marker_inventory", {}),
+        },
+        "objects":   obj_info,
+    }
+    with open(f"{stem}_info.json", "w") as f:
+        json.dump(info, f, indent=2, default=_jsonable)
+    written.append(os.path.basename(f"{stem}_info.json"))
+    with open(f"{stem}_annotation.json", "w") as f:
+        json.dump(annotation, f, indent=2, default=_jsonable)
+    written.append(os.path.basename(f"{stem}_annotation.json"))
+    return written
 
 
 # ---------------------------------------------------------------------------
@@ -721,7 +1312,10 @@ def generate_pose_data(
     output_subdir: str,
     visualize:     bool = False,
     save_video:    bool = False,
-    debug_masks:   bool = False,
+    sensor_name:   str  = "sensor",
+    debug_frames:  set[int] | None = None,
+    debug_dir:     str | None = None,
+    full_mask_method: str = "pybullet",
 ) -> int:
     """
     Sensor-agnostic annotation engine.
@@ -751,13 +1345,27 @@ def generate_pose_data(
         frame_iter    : iterator yielding (img_path, cam_key, turntable_deg)
         output_subdir : annotation output subfolder name under scene_replica/
         visualize     : render PyBullet overlay on each frame while processing
+        sensor_name   : "dslr" / "realsense"; names the debug subfolder
+        debug_frames  : if given, process ONLY these frame ids and write debug
+                        output instead of annotations (see DEBUG MODE above)
+        debug_dir     : debug output root (a <sensor_name>/ subfolder is used)
+        full_mask_method : "pybullet" (default) or "projection" (legacy)
 
     Returns:
-        Number of annotation files written.
+        Number of frames processed (annotations or debug sets written).
     """
+    debug_mode  = bool(debug_frames)
     output_root = os.path.join(pose_path, "scene_replica", output_subdir)
-    os.makedirs(output_root, exist_ok=True)
-    print(f"  Output: {output_root}")
+    if debug_mode:
+        debug_out = os.path.join(debug_dir or os.path.join(pose_path, "scene_replica", "debug"),
+                                 sensor_name)
+        os.makedirs(debug_out, exist_ok=True)
+        save_video = False        # a handful of frames is not worth a video
+        print(f"  DEBUG MODE — frames {sorted(debug_frames)}")
+        print(f"  Debug output: {debug_out}  (annotations NOT written)")
+    else:
+        os.makedirs(output_root, exist_ok=True)
+        print(f"  Output: {output_root}")
 
     global_offset = np.asarray(scene_cfg["CALIBRATION_OFFSET"], dtype=np.float64)
 
@@ -770,15 +1378,21 @@ def generate_pose_data(
     # Always peek at the first frame to determine actual image resolution so
     # intrinsics are correctly scaled for visibility computation regardless of
     # whether visualize is enabled.
+    found_ids: set[int] = set()
+    if debug_mode:
+        # Filter on frame_id; ids come from the iterator, so skipping can't shift them.
+        frame_iter = (f for f in frame_iter if f[0] in debug_frames)
+
     try:
         first = next(frame_iter)
     except StopIteration:
-        print("  [WARNING] frame_iter is empty — no annotations generated.")
+        print("  [WARNING] no frames to process"
+              + (f" — none of {sorted(debug_frames)} exist for this sensor" if debug_mode else ""))
         return 0
 
-    ref_frame = cv2.imread(first[0])
+    ref_frame = cv2.imread(first[1])
     if ref_frame is None:
-        raise RuntimeError(f"Cannot read reference frame: {first[0]}")
+        raise RuntimeError(f"Cannot read reference frame: {first[1]}")
 
     scaled_intr = check_and_scale_intrinsics(intrinsics, ref_frame)
     if scaled_intr is not intrinsics:
@@ -799,38 +1413,38 @@ def generate_pose_data(
     # and save their original colours. These bodies appear in the segmentation
     # image and would incorrectly reduce visible pixel counts for real objects.
     #
-    # Strategy depends on the visualize flag:
-    #   visualize=False → hide markers permanently now; single render per frame,
-    #                     zero per-frame overhead.
-    #   visualize=True  → hide markers only during the computation render, then
-    #                     restore them for the display render each frame.
-    marker_ids       = []
-    marker_originals = {}
+    # Markers are excluded by MOVING them out of view (see MARKERS above), not
+    # by alpha 0, which some renderers still write to the seg buffer.
+    #   visualize=False → park markers permanently now; one render per frame.
+    #   visualize=True  → keep them for the display render, park them only for
+    #                     the segmentation render each frame.
+    marker_ids = []
     for i in range(p.getNumBodies()):
         bid  = p.getBodyUniqueId(i)
         name = p.getBodyInfo(bid)[1].decode("utf-8")
         if name == "":
             marker_ids.append(bid)
-            visual_data = p.getVisualShapeData(bid)
-            marker_originals[bid] = (
-                list(visual_data[0][7]) if visual_data else [1, 0, 0, 1]
-            )
+    park = park_position(scene_replica)
 
     if not visualize and marker_ids:
-        # Hide permanently — no restore needed, no per-frame cost
         for bid in marker_ids:
-            p.changeVisualShape(bid, -1, rgbaColor=[0, 0, 0, 0])
-        print(f"  Visual markers hidden ({len(marker_ids)}) — visualize=False")
+            p.resetBasePositionAndOrientation(bid, park, [0, 0, 0, 1])
+        print(f"  Visual markers moved out of view ({len(marker_ids)}) — visualize=False")
+    print(f"  Full masks: {full_mask_method}"
+          + ("  (each object rendered alone by PyBullet)" if full_mask_method == "pybullet"
+             else "  (legacy cv2 mesh rasterisation)"))
 
     # ── Main annotation loop ──────────────────────────────────────────────────
     frame_count   = 0
     total_start   = time.perf_counter()
     frame_times   = []
 
-    for img_path, cam_key, turntable_deg in frame_iter:
+    for frame_id, img_path, cam_key, turntable_deg in frame_iter:
         frame_start = time.perf_counter()
         filename    = os.path.basename(img_path)
         image_stem  = os.path.splitext(filename)[0]
+        found_ids.add(frame_id)
+        timing: dict[str, float] = {}
 
         R_cw_cv, t_cw_cv = get_camera_pose_from_extrinsics(
             cam_key, cameras, turntable_deg, global_offset, scale
@@ -838,19 +1452,15 @@ def generate_pose_data(
         scene_replica.update_camera(R_cw_cv, t_cw_cv)
         comp = None
 
+        t_render = time.perf_counter()
         if visualize:
             # Render 1 — full scene including markers, for display overlay
             rgba = scene_replica.render_scene_image()
 
-            # Hide markers, render again for clean segmentation
-            for bid in marker_ids:
-                p.changeVisualShape(bid, -1, rgbaColor=[0, 0, 0, 0])
-            scene_replica.render_scene_image()
-            seg = scene_replica.seg   # clean segmentation, no marker pixels
-
-            # Restore markers for next frame's display render
-            for bid in marker_ids:
-                p.changeVisualShape(bid, -1, rgbaColor=marker_originals[bid])
+            # Markers out of view for the segmentation render, then back
+            with parked(marker_ids, park):
+                scene_replica.render_scene_image()
+                seg = scene_replica.seg   # clean segmentation, no marker pixels
 
             # Show display overlay
             bgr = cv2.imread(img_path)
@@ -869,7 +1479,7 @@ def generate_pose_data(
 
                 
         else:
-            # Markers already permanently hidden — single render, clean seg
+            # Markers already parked — single render, clean seg
             rgba = scene_replica.render_scene_image()
             seg  = scene_replica.seg
 
@@ -889,6 +1499,8 @@ def generate_pose_data(
                     comp = None
 
         
+        timing["render"] = (time.perf_counter() - t_render) * 1000.0
+
         if save_video:
             if comp is not None:
                 if video_writer is None:
@@ -898,14 +1510,20 @@ def generate_pose_data(
                     )
                 video_writer.write(comp)
         
+        t_query  = time.perf_counter()
+        dbg_objs = {} if debug_mode else None
         objects = get_object_poses_in_camera_frame(
             R_cw_cv, t_cw_cv,
             seg         = seg,
             cam_K       = render_K,
             H           = render_H,
             W           = render_W,
-            debug_masks = debug_masks,
+            debug       = dbg_objs,
+            marker_ids  = set(marker_ids),
+            scene_replica    = scene_replica,
+            full_mask_method = full_mask_method,
         )
+        timing["pose_query_and_visibility"] = (time.perf_counter() - t_query) * 1000.0
 
         # ── 1. Image dimensions included for self-contained annotations ───────
         annotation = {
@@ -917,21 +1535,82 @@ def generate_pose_data(
             "objects":       objects,
         }
 
-        output_path = os.path.join(output_root, f"{image_stem}.json")
-        with open(output_path, "w") as f:
-            json.dump(annotation, f, indent=2)
+        if debug_mode:
+            t_dbg = time.perf_counter()
+            depth = render_debug_depth(scene_replica)
+            timing["debug_depth_render"] = (time.perf_counter() - t_dbg) * 1000.0
+            for oid, d in dbg_objs.items():
+                timing[f"full_mask[{d['object_name']}]"] = d["silhouette_ms"]
+
+            src = cv2.imread(img_path)
+            if src is not None and (src.shape[1] != render_W or src.shape[0] != render_H):
+                src = cv2.resize(src, (render_W, render_H), interpolation=cv2.INTER_AREA)
+            render_bgr = cv2.cvtColor(np.ascontiguousarray(scene_replica.rgb[:, :, :3]),
+                                      cv2.COLOR_RGB2BGR)
+            overlay = comp
+            if overlay is None and src is not None:
+                ov = rgba[:, :, [2, 1, 0, 3]].astype(np.float32)
+                a = ov[:, :, 3:4] / 255.0
+                overlay = np.clip(ov[:, :, :3] * a + src.astype(np.float32) * (1 - a),
+                                  0, 255).astype(np.uint8)
+
+            names = {o["body_id"]: o["object_name"] for o in objects}
+            context = {
+                "frame": {
+                    "frame_id":        frame_id,
+                    "sensor":          sensor_name,
+                    "image":           img_path,
+                    "cam_key":         cam_key,
+                    "turntable_deg":   turntable_deg,
+                    "render_size":     [render_W, render_H],
+                    "cam_K":           render_K,
+                    "near_far_m":      [scene_replica.near, scene_replica.far],
+                    "renderer":        scene_replica.PB_RENDER,
+                    "R_cw_cv":         R_cw_cv,
+                    "t_cw_cv":         t_cw_cv,
+                },
+                "timing_ms": {k: round(v, 2) for k, v in timing.items()},
+                "marker_inventory": marker_inventory(marker_ids),
+            }
+            t_w = time.perf_counter()
+            written = write_frame_debug(
+                debug_out, frame_id, context, annotation,
+                {"image": src, "render": render_bgr, "overlay": overlay},
+                seg, dbg_objs, names, set(marker_ids), depth)
+            context["timing_ms"]["write_debug_files"] = round((time.perf_counter() - t_w) * 1000.0, 2)
+            dest = f"{len(written)} debug files"
+
+            for oid, d in dbg_objs.items():
+                bd = d["breakdown"]
+                ann = next(a for a in objects if a["body_id"] == oid)
+                print(f"      {d['object_name']:<22} visib {ann['visib_fract']:.3f}"
+                      f"  all {ann['px_count_all']:>7}  visib {ann['px_count_visib']:>7}"
+                      f"  | bg {bd['background']:>6}  obj {sum(bd['occluded_by_object'].values()):>6}"
+                      f"  marker {sum(bd['occluded_by_marker'].values()):>6}"
+                      f"  seg-outside {bd['seg_outside_silhouette']:>5}"
+                      f"  IoU {bd['iou_silhouette_vs_seg']}")
+        else:
+            output_path = os.path.join(output_root, f"{image_stem}.json")
+            with open(output_path, "w") as f:
+                json.dump(annotation, f, indent=2)
+            dest = os.path.basename(output_path)
 
         frame_time = time.perf_counter() - frame_start
         frame_times.append(frame_time)
         frame_count += 1
 
-        print(f"  {cam_key:>4}  {turntable_deg:>5.1f}°  {filename}"
+        print(f"  {frame_id:06d}  {cam_key:>4}  {turntable_deg:>5.1f}°  {filename}"
               f"  → {len(objects)} obj"
               f"  [{frame_time*1000:.0f}ms]"
-              f"  →  {os.path.basename(output_path)}")
+              f"  →  {dest}")
 
     if visualize:
         cv2.destroyAllWindows()
+
+    if debug_mode:
+        missing = sorted(set(debug_frames) - found_ids)
+        if missing:
+            print(f"  [WARNING] requested frames not found for {sensor_name}: {missing}")
 
     if save_video:
         if video_writer is not None:
@@ -948,8 +1627,8 @@ def generate_pose_data(
     total_sec = total_s % 60
 
     print(f"\n  {'─'*50}")
-    print(f"  Annotations written : {frame_count}")
-    print(f"  Output folder       : {output_root}")
+    print(f"  {'Debug frames' if debug_mode else 'Annotations written'} : {frame_count}")
+    print(f"  Output folder       : {debug_out if debug_mode else output_root}")
     print(f"  Average frame time  : {avg_ms:.0f} ms")
     print(f"  Total time          : {total_min}m {total_sec:.1f}s")
     print(f"  {'─'*50}\n")
@@ -1105,7 +1784,10 @@ def main(args):
                 output_subdir = cfg["output_subdir"],
                 visualize     = args.visualize,
                 save_video    = args.save_video,
-                debug_masks   = args.debug_masks,
+                sensor_name   = sensor_name,
+                debug_frames  = set(args.debug_frames) if args.debug_frames else None,
+                debug_dir     = args.debug_dir,
+                full_mask_method = args.full_mask_method,
             )
 
         if args.generate_bbs:
@@ -1147,7 +1829,7 @@ if __name__ == "__main__":
 
     # ── Model library ─────────────────────────────────────────────────────────
     parser.add_argument("--model-library",
-                        default="/home/csrobot/moad_control/clutter_metrics/data_collection/object_sets/experiment2",
+                        default="/home/csrobot/moad_control/clutter_metrics/data_collection/object_sets/experiment2-dec",
                         help="Folder containing URDF models referenced by the scene")
 
     # ── Output options ────────────────────────────────────────────────────────
@@ -1159,12 +1841,27 @@ if __name__ == "__main__":
                         help="Generate segmentation masks (not yet implemented)")
     parser.add_argument("--visualize",       action="store_true", default=False,
                         help="Show PyBullet overlay composited on each image")
-    parser.add_argument("--debug-masks",     action="store_true", default=False,
-                        help="[Not working] Show visibility mask debug windows (full silhouette vs "
-                             "visible seg mask) for each object each frame. "
-                             "Slows down generation — use on a single frame for debugging.")
+    parser.add_argument("--debug-frames", type=int, nargs="+", default=None,
+                        help="Process ONLY these frame ids (1-based; same numbering as the "
+                             "BOP converter and vis_bop_predictions.py) and write detailed "
+                             "debug output instead of annotations. Applies to every sensor; "
+                             "frame N is the same camera/turntable view in each.")
+    parser.add_argument("--full-mask-method", choices=["pybullet", "projection"],
+                        default="pybullet",
+                        help="How px_count_all is computed. pybullet (default): each object "
+                             "rendered alone by PyBullet on the scene's pixel grid, so it "
+                             "matches px_count_visib exactly. projection: legacy cv2 mesh "
+                             "rasterisation (off by up to a pixel at every edge).")
+    parser.add_argument("--debug-dir", default=None,
+                        help="Debug output root (default <pose>/scene_replica/debug). "
+                             "A subfolder per sensor keeps DSLR and RealSense apart.")
+    parser.add_argument("--debug-masks", action="store_true", default=False,
+                        help=argparse.SUPPRESS)   # removed; superseded by --debug-frames
     parser.add_argument("--save-video",       action="store_true", default=True,
                         help="Outputs a video of each visualized frame")
 
     args = parser.parse_args()
+    if args.debug_masks:
+        print("  [NOTE] --debug-masks has been replaced by --debug-frames "
+              "(writes masks to files instead of blocking windows); ignoring it.")
     main(args)

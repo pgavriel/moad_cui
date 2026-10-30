@@ -699,9 +699,9 @@ if __name__ == "__main__":
 
     parser.add_argument("--data-root",  default="/home/csrobot/MOAD_DATA",
                         help="Root data directory")
-    parser.add_argument("--object",     default="ex2_026",
+    parser.add_argument("--object",     default="ex2_006",
                         help="Object subfolder name")
-    parser.add_argument("--pose",       default="pose-a",
+    parser.add_argument("--pose",       default="pose-b",
                         help="Pose subfolder name")
     parser.add_argument("--calib-root", default="/home/csrobot/moad_control/moad_cui/calibration/55mm_joint",
                         help="Calibration folder containing cam_parameters files "

@@ -219,7 +219,7 @@ def main() -> None:
 
     scan  = Path(args.scan_dir).expanduser()
     calib = Path(args.calib_dir).expanduser()
-    out   = Path(args.out_dir).expanduser() if args.out_dir else scan / "DSLR_depth"
+    out   = Path(args.out_dir).expanduser() if args.out_dir else scan / "DSLR_depth_rs"
     img_dir = scan / args.images_subdir
     out.mkdir(parents=True, exist_ok=True)
 
